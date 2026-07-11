@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Path options must live in a config whose own directory is apps/api:
+    // "extends" resolves relative paths against the file that sets them, so
+    // an outDir set in the shared @cerp/typescript-config package would
+    // write into that package's folder instead of this one's. This also
+    // can't live in tsconfig.json itself, since that config's include set
+    // still spans test/ (rootDir must contain everything included there).
+    "outDir": "./dist",
+    "rootDir": "./src"
+  },
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+}

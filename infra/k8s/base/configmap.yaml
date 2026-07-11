@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+data:
+  NODE_ENV: 'production'
+  PORT: '3000'
+  JWT_ACCESS_TTL: '15m'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+data:
+  NODE_ENV: 'production'
+  PORT: '3000'
+  API_URL: 'http://api'

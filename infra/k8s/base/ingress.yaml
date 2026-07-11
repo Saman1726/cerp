@@ -1,0 +1,33 @@
+# Two distinct hosts, not a wildcard: v1 resolves tenants via header/JWT claim,
+# not subdomain (see apps/api/src/tenancy). A wildcard host for per-tenant
+# subdomains is the natural v2 upgrade once that resolution source changes -
+# nothing else here would need to.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cerp
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.cerp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 80
+    - host: app.cerp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

@@ -1,0 +1,25 @@
+{
+  "name": "cerp",
+  "private": true,
+  "packageManager": "pnpm@11.11.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "migrate:platform": "pnpm --filter api run migrate:platform",
+    "migrate:tenants": "pnpm --filter api run migrate:tenants",
+    "tenant:provision": "pnpm --filter api run tenant:provision --"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.5",
+    "turbo": "^2.10.4",
+    "typescript": "^5.9.3"
+  }
+}

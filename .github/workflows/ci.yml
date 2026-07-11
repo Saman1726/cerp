@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: cerp
+          POSTGRES_PASSWORD: cerp
+          POSTGRES_DB: cerp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U cerp"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      DATABASE_URL: postgresql://cerp:cerp@localhost:5432/cerp
+      JWT_ACCESS_SECRET: ci_test_access_secret_please_ignore
+      JWT_REFRESH_SECRET: ci_test_refresh_secret_please_ignore
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm turbo run lint typecheck build
+
+      - name: Run platform migration
+        run: pnpm --filter api run migrate:platform
+
+      - name: Run tenancy isolation e2e test
+        run: pnpm --filter api run test:e2e
