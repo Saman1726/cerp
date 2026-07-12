@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
-import { getSession, clearSession } from '@/lib/session';
+import { getSession, clearSession } from '@cerp/core-web/lib/session';
+import { AppShell } from '@cerp/core-web/shell';
+import { branding } from '@/branding.config';
+import { navItems } from '@/nav.config';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await getSession();
@@ -15,22 +18,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '12px 24px',
-          borderBottom: '1px solid #ddd',
-        }}
-      >
-        <strong>{session.tenantSlug}</strong>
-        <form action={logout}>
-          <button type="submit">Log out</button>
-        </form>
-      </header>
-      <main style={{ padding: 24 }}>{children}</main>
-    </div>
+    <AppShell branding={branding} navItems={navItems} tenantSlug={session.tenantSlug} logoutAction={logout}>
+      {children}
+    </AppShell>
   );
 }

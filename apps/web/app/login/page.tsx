@@ -1,11 +1,19 @@
-import { LoginForm } from './login-form';
+import { LoginForm } from '@cerp/core-web/auth';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@cerp/core-web/components/ui';
+import { loginAction } from './actions';
 
 export default function LoginPage() {
   return (
-    <main style={{ maxWidth: 360, margin: '80px auto', fontFamily: 'system-ui' }}>
-      <h1>cerp</h1>
-      <p>Sign in to your organization</p>
-      <LoginForm />
+    <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">cerp</CardTitle>
+          <CardDescription>Sign in to your organization</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LoginForm action={loginAction} />
+        </CardContent>
+      </Card>
     </main>
   );
 }
