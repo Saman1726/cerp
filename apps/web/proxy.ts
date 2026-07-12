@@ -1,27 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createAuthProxy } from '@cerp/core-web/proxy';
 
-const AUTHENTICATED_PREFIXES = ['/properties'];
+export const proxy = createAuthProxy({ authenticatedPrefixes: ['/properties'] });
 
-// Cookie-presence check only - real enforcement is the API returning 401,
-// which Server Components/Actions surface as an ApiClientError. This just
-// avoids an obviously-logged-out user rendering a page that will fail.
-export function proxy(request: NextRequest): NextResponse {
-  const hasSession = request.cookies.has('cerp_session');
-  const { pathname } = request.nextUrl;
-
-  const isAuthenticatedRoute = AUTHENTICATED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-
-  if (isAuthenticatedRoute && !hasSession) {
-    return NextResponse.redirect(new URL('/login', request.url));
-  }
-
-  if (pathname === '/login' && hasSession) {
-    return NextResponse.redirect(new URL('/properties', request.url));
-  }
-
-  return NextResponse.next();
-}
-
+// Must stay an inline literal here - Next's build-time config extractor only
+// accepts literal values for this export, and silently drops an unresolvable
+// (computed/imported) matcher rather than failing the build.
 export const config = {
   matcher: ['/properties/:path*', '/login'],
 };

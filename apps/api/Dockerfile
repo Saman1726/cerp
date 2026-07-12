@@ -11,15 +11,21 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
+COPY packages/core-api/package.json ./packages/core-api/package.json
+COPY packages/core-web/package.json ./packages/core-web/package.json
 COPY packages/shared-types/package.json ./packages/shared-types/package.json
 COPY packages/typescript-config/package.json ./packages/typescript-config/package.json
 COPY packages/eslint-config/package.json ./packages/eslint-config/package.json
+COPY examples/demo-overlay/api/package.json ./examples/demo-overlay/api/package.json
+COPY examples/demo-overlay/web/package.json ./examples/demo-overlay/web/package.json
+COPY services/partner-system/package.json ./services/partner-system/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- build: compile, then produce a pruned, symlink-free deploy dir ----
 FROM deps AS build
 COPY . .
 RUN pnpm --filter @cerp/shared-types build
+RUN pnpm --filter @cerp/core-api build
 RUN pnpm --filter api build
 # --legacy: pnpm v10+ deploy defaults to requiring workspace dependencies to
 # be "injected" (copied) rather than symlinked; --legacy restores the deploy

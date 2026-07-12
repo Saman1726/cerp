@@ -48,5 +48,8 @@ jobs:
       - name: Run platform migration
         run: pnpm --filter api run migrate:platform
 
-      - name: Run tenancy isolation e2e test
+      - name: Run reference app e2e test (tenancy isolation)
         run: pnpm --filter api run test:e2e
+
+      - name: Run demo overlay e2e test (tenancy isolation + all extension points)
+        run: pnpm --filter demo-overlay-api run test:e2e

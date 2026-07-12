@@ -17,6 +17,25 @@ services:
       timeout: 5s
       retries: 10
 
+  partner-system:
+    build:
+      context: .
+      dockerfile: services/partner-system/Dockerfile
+      target: deps
+    container_name: cerp-partner-system
+    working_dir: /app
+    environment:
+      NODE_ENV: development
+      PORT: 3020
+    ports:
+      - '3020:3020'
+    volumes:
+      - ./services/partner-system:/app/services/partner-system
+      - ./packages:/app/packages
+      - /app/node_modules
+      - /app/services/partner-system/node_modules
+    command: pnpm --filter partner-system run dev
+
   api:
     build:
       context: .
@@ -27,6 +46,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      partner-system:
+        condition: service_started
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -34,6 +55,7 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_only_change_me_access}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_only_change_me_refresh}
       JWT_ACCESS_TTL: 15m
+      PARTNER_SYSTEM_URL: http://partner-system:3020
     ports:
       - '3000:3000'
     volumes:
