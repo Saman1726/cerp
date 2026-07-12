@@ -1,21 +1,25 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Partner, PARTNERS } from './partner.model';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Partner } from './entities/partner.entity';
 
 @Injectable()
 export class PartnersService {
-  findAll(): Partner[] {
-    return PARTNERS;
+  constructor(@InjectRepository(Partner) private readonly partnerRepo: Repository<Partner>) {}
+
+  findAll(): Promise<Partner[]> {
+    return this.partnerRepo.find({ order: { name: 'ASC' } });
   }
 
-  findOne(id: string): Partner {
-    const partner = PARTNERS.find((p) => p.id === id);
+  async findOne(id: string): Promise<Partner> {
+    const partner = await this.partnerRepo.findOne({ where: { id } });
     if (!partner) {
       throw new NotFoundException(`Partner ${id} not found`);
     }
     return partner;
   }
 
-  findByCode(code: string): Partner | undefined {
-    return PARTNERS.find((p) => p.code === code);
+  findByCode(code: string): Promise<Partner | null> {
+    return this.partnerRepo.findOne({ where: { code } });
   }
 }

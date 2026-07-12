@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from '@cerp/core-api';
-import { PartnersModule } from './partners/partners.module';
 
 // The reference app: zero overrides of core's own extension points. See
 // examples/demo-overlay/api for a version of this same file with those
-// wired in. PartnersModule is a separate, additive integration with the
-// external Partner System (services/partner-system) - not part of the
-// core/overlay extension mechanism at all.
+// wired in. Partner System integration (GET /partners, POST
+// /auth/partner-login) now comes from CoreModule itself via
+// PartyRegistryModule, since Construction Engineering needs to resolve
+// contractors too - not just this app's own Partners page.
 @Module({
-  imports: [CoreModule.forRoot({}), PartnersModule],
+  imports: [CoreModule.forRoot({})],
 })
 export class AppModule {}

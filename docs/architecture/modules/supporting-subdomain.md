@@ -35,26 +35,26 @@ for the template these entries follow.
 | **Entities & value objects** | `MaterialInventoryItem`, `InterSiteTransfer`, `GoodsReceipt` (entities); `Money`, `Quantity`, `SupplierRef` (value objects) |
 | **Domain events** | `PurchaseOrderRaised`, `GoodsReceived`, `InterSiteTransferCompleted` |
 | **Inbound ports** | `RaisePurchaseOrderPort` |
-| **Outbound ports** | `PurchaseOrderRepositoryPort`, `PartnerDirectoryReadPort` (suppliers), `LedgerPostingGatewayPort` (accrue liability) |
+| **Outbound ports** | `PurchaseOrderRepositoryPort`, `PartyRegistryReadPort` (suppliers), `LedgerPostingGatewayPort` (accrue liability) |
 | **Hydration strategy** | State-based |
-| **Relationships** | Receives requisitions from Construction Engineering and Facility Management; Conformist consumer of Partner Directory. |
+| **Relationships** | Receives requisitions from Construction Engineering and Facility Management; Conformist consumer of Party Registry. |
 
 ---
 
-## Partner Directory
+## Party Registry
 
 | | |
 |---|---|
 | **Subdomain** | Supporting |
-| **Purpose** | The registry of external suppliers, contractors, and real-estate agents, plus login/SSO delegation for their portal access. Not an explicit In4Suite module by name, but the implicit registry every module referencing a "supplier," "contractor," or "agent" depends on - and the same concept behind In4Suite's Customer/Agent portals. |
-| **Status** | **existing and working** - this is the one context in the full catalog already implemented end-to-end: `services/partner-system` (a standalone mock external system) + `apps/api/src/partners` (the integration module: `PartnersService` calling out over HTTP, `PartnersController`/`PartnerAuthController` as inbound adapters). |
-| **Aggregate root** | `Partner` (see `services/partner-system/src/partners/partner.model.ts`) |
-| **Entities & value objects** | `PartnerUser` (see `partner-user.model.ts`); `PartnerCode`, `PartnerType` (value objects, currently plain string fields - not yet formalized as value objects) |
-| **Domain events** | none published yet - `services/partner-system` is a separate deployable with no event bus connection to cerp's own contexts today |
-| **Inbound ports** | `apps/api/src/partners/partners.controller.ts` (`GET /partners`), `partner-auth.controller.ts` (`POST /auth/partner-login`, marked `@Public()`) |
-| **Outbound ports** | `PartnersService` in `apps/api` is, in hexagonal terms, the outbound gateway adapter: it implements an (currently implicit, not yet extracted as a named interface) `PartnerDirectoryGatewayPort` over `fetch()` against `PARTNER_SYSTEM_URL` |
-| **Hydration strategy** | N/A - stateless HTTP calls to an external system, no local aggregate persistence in `apps/api` today |
-| **Relationships** | Open Host Service to every context needing a supplier/contractor/agent lookup (Construction Engineering, Procurement, Facility Management, Leasing); those contexts are Conformists, accepting Partner Directory's model as-is. |
+| **Purpose** | Pure master-data registry of external business entities - suppliers, contractors, real-estate agents: name, type, contact info, status. No login lives here. This is deliberately narrower than what this context used to be called ("Partner Directory") - see [generic-and-platform.md](./generic-and-platform.md#identity--access) for why authentication for these entities' representatives is now Identity & Access's job via `Membership`, not this context's. Not an explicit In4Suite module by name, but the implicit registry every module referencing a "supplier," "contractor," or "agent" depends on. |
+| **Status** | partially existing, needs reframing - `services/partner-system`'s `Partner` model (see `services/partner-system/src/partners/partner.model.ts`) is already exactly this concept's data shape. Its `PartnerUser` model (login, password) is the part that conceptually belongs to Identity & Access instead, per the redesign - today's code doesn't reflect that split yet; this entry describes the target, not a completed migration. |
+| **Aggregate root** | `Party` |
+| **Entities & value objects** | `PartyType` (supplier \| contractor \| real-estate-agent), `ContactInfo` (value objects) |
+| **Domain events** | `PartyRegistered`, `PartyStatusChanged` (none published yet in the existing code - `services/partner-system` is a separate deployable with no event bus connection to cerp's own contexts today) |
+| **Inbound ports** | `apps/api/src/partners/partners.controller.ts` (`GET /partners`) is the existing shape of a `ListPartiesPort` |
+| **Outbound ports** | `PartyRepositoryPort`. `PartnersService` in `apps/api` is, in hexagonal terms, the existing outbound gateway adapter implementing an (currently implicit, not yet extracted as a named interface) `PartyRegistryGatewayPort` over `fetch()` against `PARTNER_SYSTEM_URL` |
+| **Hydration strategy** | State-based (today: stateless HTTP calls to an external system, no local aggregate persistence in `apps/api`) |
+| **Relationships** | Open Host Service to every context needing a supplier/contractor/agent lookup (Construction Engineering, Procurement, Facility Management, Leasing) - those contexts are Conformists, accepting this context's model as-is. New relationship: Identity & Access references a `Party` by id from a `Membership` when `MembershipContext.type = 'party'` (Customer-Supplier - Identity & Access depends on this context's published ids, never the reverse). The `POST /auth/partner-login` login-delegation endpoint that exists in today's code moves conceptually to Identity & Access's `AuthenticateIdentityPort` under the redesign. |
 
 ---
 

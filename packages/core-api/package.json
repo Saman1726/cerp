@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "echo \"no tests yet\""
+    "test": "jest --passWithNoTests"
   },
   "peerDependencies": {
     "@nestjs/common": "^11",
@@ -56,6 +56,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^7.2.0",
     "eslint": "^9.39.4",
+    "jest": "^30.4.2",
     "nestjs-cls": "^6.2.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -63,7 +64,17 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "supertest": "^7.2.2",
+    "ts-jest": "^29.4.11",
     "typeorm": "^1.0.0",
     "typescript": "^5.9.3"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".spec.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testEnvironment": "node"
   }
 }

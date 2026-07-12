@@ -70,9 +70,9 @@ these entries follow.
 | **Entities & value objects** | `BillOfQuantities`, `BoqLineItem`, `SiteBudget` (entities); `Money`, `Quantity`, `UnitOfMeasure`, `ContractorRef` (value objects) |
 | **Domain events** | `WorkOrderIssued`, `BoqApproved`, `SiteBudgetExceeded`, `WorkOrderCompleted` |
 | **Inbound ports** | `IssueWorkOrderPort`, `ApproveBoqPort` |
-| **Outbound ports** | `WorkOrderRepositoryPort`, `PartnerDirectoryReadPort` (resolve a contractor), `ProcurementGatewayPort` (raise a purchase requisition) |
+| **Outbound ports** | `WorkOrderRepositoryPort`, `PartyRegistryReadPort` (resolve a contractor), `ProcurementGatewayPort` (raise a purchase requisition) |
 | **Hydration strategy** | State-based |
-| **Relationships** | Consumes Project Delivery's `ProjectId`; drives Procurement (Customer-Supplier); assigns work to Partner Directory contractors (Conformist - accepts that context's supplier/contractor model as-is). |
+| **Relationships** | Consumes Project Delivery's `ProjectId`; drives Procurement (Customer-Supplier); assigns work to Party Registry contractors (Conformist - accepts that context's supplier/contractor model as-is). |
 
 ---
 
@@ -121,6 +121,6 @@ these entries follow.
 | **Entities & value objects** | `SubcontractWorkOrder`, `MaintenanceSchedule` (entities); `Priority`, `SlaWindow`, `Money` (value objects) |
 | **Domain events** | `MaintenanceTicketRaised`, `SubcontractWorkOrderIssued`, `MaintenanceTicketResolved` |
 | **Inbound ports** | `RaiseMaintenanceTicketPort` |
-| **Outbound ports** | `MaintenanceTicketRepositoryPort`, `PartnerDirectoryReadPort` (subcontractors), `ProcurementGatewayPort` |
+| **Outbound ports** | `MaintenanceTicketRepositoryPort`, `PartyRegistryReadPort` (subcontractors), `ProcurementGatewayPort` |
 | **Hydration strategy** | State-based |
-| **Relationships** | Operates on units already delivered by Project Delivery or leased via Leasing; uses Partner Directory for subcontractors (Conformist). |
+| **Relationships** | Operates on units already delivered by Project Delivery or leased via Leasing; uses Party Registry for subcontractors (Conformist). |

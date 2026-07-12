@@ -1,6 +1,9 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import * as argon2 from 'argon2';
 import { PartnersService } from '../partners/partners.service';
-import { PARTNER_USERS } from './partner-user.model';
+import { PartnerUser } from './entities/partner-user.entity';
 import { PartnerLoginDto } from './dto/partner-login.dto';
 
 export interface PartnerLoginResult {
@@ -13,18 +16,21 @@ export interface PartnerLoginResult {
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly partnersService: PartnersService) {}
+  constructor(
+    private readonly partnersService: PartnersService,
+    @InjectRepository(PartnerUser) private readonly partnerUserRepo: Repository<PartnerUser>,
+  ) {}
 
-  login(dto: PartnerLoginDto): PartnerLoginResult {
-    const user = PARTNER_USERS.find(
-      (u) => u.username === dto.username && u.password === dto.password && u.partnerCode === dto.partnerCode,
-    );
-    if (!user) {
+  async login(dto: PartnerLoginDto): Promise<PartnerLoginResult> {
+    const partner = await this.partnersService.findByCode(dto.partnerCode);
+    const user = partner
+      ? await this.partnerUserRepo.findOne({ where: { username: dto.username, partnerId: partner.id } })
+      : null;
+
+    if (!partner || !user || !(await argon2.verify(user.passwordHash, dto.password))) {
       throw new UnauthorizedException('Invalid partner code, username or password');
     }
-
-    const partner = this.partnersService.findByCode(user.partnerCode);
-    if (!partner || partner.status !== 'active') {
+    if (partner.status !== 'active') {
       throw new UnauthorizedException('Partner is not active');
     }
 

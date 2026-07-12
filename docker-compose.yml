@@ -17,6 +17,28 @@ services:
       timeout: 5s
       retries: 10
 
+  partner-system-db:
+    image: postgres:17-alpine
+    container_name: cerp-partner-system-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PARTNER_SYSTEM_DB_USER:-partner_system}
+      POSTGRES_PASSWORD: ${PARTNER_SYSTEM_DB_PASSWORD:-partner_system_dev_password}
+      POSTGRES_DB: ${PARTNER_SYSTEM_DB_NAME:-partner_system}
+    ports:
+      - '5433:5432'
+    volumes:
+      - cerp_partner_system_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${PARTNER_SYSTEM_DB_USER:-partner_system} -d ${PARTNER_SYSTEM_DB_NAME:-partner_system}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   partner-system:
     build:
       context: .
@@ -24,9 +46,13 @@ services:
       target: deps
     container_name: cerp-partner-system
     working_dir: /app
+    depends_on:
+      partner-system-db:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       PORT: 3020
+      DATABASE_URL: postgresql://${PARTNER_SYSTEM_DB_USER:-partner_system}:${PARTNER_SYSTEM_DB_PASSWORD:-partner_system_dev_password}@partner-system-db:5432/${PARTNER_SYSTEM_DB_NAME:-partner_system}
     ports:
       - '3020:3020'
     volumes:
@@ -86,5 +112,27 @@ services:
       - /app/apps/web/node_modules
     command: pnpm --filter web run dev
 
+  demo-web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: deps
+    container_name: cerp-demo-web
+    working_dir: /app
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: development
+      API_URL: http://api:3000
+    ports:
+      - '3011:3011'
+    volumes:
+      - ./examples/demo-overlay/web:/app/examples/demo-overlay/web
+      - ./packages:/app/packages
+      - /app/node_modules
+      - /app/examples/demo-overlay/web/node_modules
+    command: pnpm --filter demo-overlay-web run dev
+
 volumes:
   cerp_postgres_data:
+  cerp_partner_system_db_data:

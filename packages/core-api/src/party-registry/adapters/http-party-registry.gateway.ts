@@ -1,35 +1,35 @@
 import { BadGatewayException, Injectable, UnauthorizedException } from '@nestjs/common';
+import type { PartyRegistryGateway } from '../party-registry-gateway.interface';
+import type { PartnerLoginResult, PartyRegistryEntry } from '../party-registry.types';
 
-export interface Partner {
-  id: string;
-  code: string;
-  name: string;
-  type: string;
-  contactEmail: string;
-  status: string;
-}
-
-export interface PartnerLoginResult {
-  partnerId: string;
-  partnerCode: string;
-  partnerName: string;
-  username: string;
-  role: string;
-}
-
-// Talks to the external Partner System (services/partner-system) - a
-// separate deployment, not part of cerp's own tenant database, so there's no
-// TenancyService/schema-per-tenant involvement here at all.
+// Default adapter: calls the external Partner System over HTTP. A consumer
+// overlay needing a different partner-directory backend swaps this via
+// PartyRegistryModule.forRoot({ gatewayClass }), same seam as
+// CorePropertiesModule.forRoot({ validatorClass }).
 @Injectable()
-export class PartnersService {
+export class HttpPartyRegistryGateway implements PartyRegistryGateway {
   private readonly baseUrl = process.env.PARTNER_SYSTEM_URL ?? 'http://localhost:3020';
 
-  async findAll(): Promise<Partner[]> {
+  async findAll(): Promise<PartyRegistryEntry[]> {
     const res = await fetch(`${this.baseUrl}/partners`).catch(() => undefined);
     if (!res || !res.ok) {
       throw new BadGatewayException('Partner system is unreachable');
     }
-    return (await res.json()) as Partner[];
+    return (await res.json()) as PartyRegistryEntry[];
+  }
+
+  async findById(id: string): Promise<PartyRegistryEntry | null> {
+    const res = await fetch(`${this.baseUrl}/partners/${id}`).catch(() => undefined);
+    if (!res) {
+      throw new BadGatewayException('Partner system is unreachable');
+    }
+    if (res.status === 404) {
+      return null;
+    }
+    if (!res.ok) {
+      throw new BadGatewayException('Partner system returned an unexpected error');
+    }
+    return (await res.json()) as PartyRegistryEntry;
   }
 
   async login(partnerCode: string, username: string, password: string): Promise<PartnerLoginResult> {

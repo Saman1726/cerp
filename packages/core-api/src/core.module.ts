@@ -11,11 +11,17 @@ import { PlatformAdmin } from './platform/entities/platform-admin.entity';
 import { User } from './auth/entities/user.entity';
 import { RefreshToken } from './auth/entities/refresh-token.entity';
 import { Property } from './properties/entities/property.entity';
+import { WorkOrder } from './construction-engineering/entities/work-order.entity';
+import { PurchaseOrder } from './procurement/entities/purchase-order.entity';
+import { GoodsReceipt } from './procurement/entities/goods-receipt.entity';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { TenancyGuard } from './tenancy/tenancy.guard';
 import { PlatformModule } from './platform/platform.module';
 import { AuthModule } from './auth/auth.module';
 import { CorePropertiesModule, CorePropertiesModuleOptions } from './properties/properties.module';
+import { PartyRegistryModule, PartyRegistryModuleOptions } from './party-registry/party-registry.module';
+import { ConstructionEngineeringModule } from './construction-engineering/construction-engineering.module';
+import { ProcurementModule } from './procurement/procurement.module';
 import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import type { EntityClass } from './database/types';
@@ -25,6 +31,7 @@ export interface CoreModuleOptions {
     extraEntities?: EntityClass[];
   };
   properties?: CorePropertiesModuleOptions;
+  partyRegistry?: PartyRegistryModuleOptions;
 }
 
 // The single composition root a consuming app imports. Everything a
@@ -60,6 +67,9 @@ export class CoreModule {
               User,
               RefreshToken,
               Property,
+              WorkOrder,
+              PurchaseOrder,
+              GoodsReceipt,
               ...(options.database?.extraEntities ?? []),
             ],
           }),
@@ -68,6 +78,9 @@ export class CoreModule {
         PlatformModule,
         AuthModule,
         CorePropertiesModule.forRoot(options.properties ?? {}),
+        PartyRegistryModule.forRoot(options.partyRegistry ?? {}),
+        ConstructionEngineeringModule,
+        ProcurementModule,
         HealthModule,
       ],
       providers: [
@@ -77,10 +90,19 @@ export class CoreModule {
         { provide: APP_GUARD, useClass: TenancyGuard },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
       ],
-      // CorePropertiesModule exported too: a consumer's own sibling module
-      // (e.g. one wrapping PropertiesService to add fields via a satellite
-      // table) needs to inject it without re-importing/reconfiguring it.
-      exports: [TenancyModule, AuthModule, CorePropertiesModule],
+      // CorePropertiesModule/PartyRegistryModule exported too: a consumer's
+      // own sibling module (e.g. one wrapping PropertiesService to add
+      // fields via a satellite table, or Construction Engineering resolving
+      // a contractor) needs to inject them without re-importing/
+      // reconfiguring them - this module being global makes that transitive.
+      exports: [
+        TenancyModule,
+        AuthModule,
+        CorePropertiesModule,
+        PartyRegistryModule,
+        ConstructionEngineeringModule,
+        ProcurementModule,
+      ],
     };
   }
 }

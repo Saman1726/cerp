@@ -11,6 +11,8 @@
     "./auth": "./src/auth/index.ts",
     "./properties": "./src/properties/index.ts",
     "./partners": "./src/partners/index.ts",
+    "./construction-engineering": "./src/construction-engineering/index.ts",
+    "./procurement": "./src/procurement/index.ts",
     "./shell": "./src/shell/index.ts",
     "./components": "./src/components/index.ts",
     "./components/ui": "./src/components/ui/index.ts",

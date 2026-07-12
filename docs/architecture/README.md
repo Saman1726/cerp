@@ -26,12 +26,13 @@ The module catalog itself is split by subdomain classification:
   Compliance, Project Delivery, Construction Engineering, Sales, Leasing,
   Facility Management).
 - [modules/supporting-subdomain.md](./modules/supporting-subdomain.md) -
-  necessary but not differentiating (CRM & Leads, Procurement, Partner
-  Directory, Cost & Invoicing, Bookkeeping & Ledger, HR & Payroll, Expense &
+  necessary but not differentiating (CRM & Leads, Procurement, Party
+  Registry, Cost & Invoicing, Bookkeeping & Ledger, HR & Payroll, Expense &
   Reimbursement, Asset Management).
 - [modules/generic-and-platform.md](./modules/generic-and-platform.md) -
   commodity capabilities and cross-cutting infrastructure (Document
-  Management, Reporting & Analytics, Identity & Access, Tenancy & Platform).
+  Management, Document Intelligence, Reporting & Analytics, Identity &
+  Access, Tenancy & Platform).
 
 ## Methodology and sources
 
@@ -84,4 +85,6 @@ referenced throughout the catalogs rather than repeated:
 - **`services/partner-system` + `apps/api/src/partners`** - the existing,
   working example of an external system (a separate deployable) integrated
   through an outbound gateway port, exactly the shape the catalog calls
-  `Partner Directory`.
+  Party Registry - though its login/auth piece (`PartnerUser`) is being
+  redesigned into Identity & Access's `Membership` model rather than staying
+  owned by this service; see that catalog entry for why.

@@ -1,7 +1,7 @@
 import { createAuthProxy } from '@cerp/core-web/proxy';
 
 export const proxy = createAuthProxy({
-  authenticatedPrefixes: ['/dashboard', '/properties', '/construction', '/tenants', '/partners', '/settings'],
+  authenticatedPrefixes: ['/dashboard', '/properties', '/construction', '/procurement', '/tenants', '/partners', '/settings'],
   postLoginRedirect: '/dashboard',
 });
 
@@ -13,6 +13,7 @@ export const config = {
     '/dashboard/:path*',
     '/properties/:path*',
     '/construction/:path*',
+    '/procurement/:path*',
     '/tenants/:path*',
     '/partners/:path*',
     '/settings/:path*',

@@ -116,6 +116,36 @@ discussed: a PM/investor dashboard aggregating across thousands of active
 projects live, on every page load, does not survive real volume; a
 precomputed, incrementally-updated projection does.
 
+### Is a projection allowed to depend on what the frontend needs?
+
+Yes - and that's a feature of the pattern, not a violation of modularity, as
+long as the dependency runs in the right direction. A projection's *shape* is
+supposed to be driven by one specific consumer's needs (a dashboard chart, a
+summary card, a report) - that's the entire reason CQRS separates reads from
+writes in the first place: the write-side aggregate has to stay neutral,
+usable by every command that touches it, so it can never bend toward any one
+screen's convenience. A projection has no such obligation. It's disposable
+and rebuildable from the event log, not a source of truth, so it's free to be
+shaped however its one reader wants.
+
+What would actually be a problem is the *opposite* direction: display-shaped
+fields leaking backward into the write-side aggregate itself (a `displayColor`
+field on `Project` because some chart wants one). That's the coupling this
+pattern exists to prevent, and the read side is where that pressure is meant
+to land instead - in a cheap, disposable, per-screen table, not in the
+domain model everyone else depends on.
+
+The discipline that keeps this healthy is **many small, single-purpose
+projections, not one that tries to serve every screen**. If a new dashboard
+chart needs different aggregates than `PortfolioDashboardProjection` already
+provides, that's a new projection (e.g. `MonthlyRevenueProjection`, built
+from overlapping events like `InvoiceRaised`/`PaymentReceived` but aggregated
+differently) - not a field bolted onto the existing one. Each projection
+stays independently owned, independently rebuildable, and reusable by any
+consumer that wants that exact shape (a different dashboard, a mobile app),
+rather than becoming a growing, special-cased dumping ground for whatever the
+frontend asked for most recently.
+
 ### The dual-write problem, and why an outbox is the recommended evolution
 
 Calling `save(aggregate)` and then `emitAsync(events)` as two separate steps
