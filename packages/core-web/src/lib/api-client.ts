@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { API_URL } from './env';
+import { SESSION_COOKIE, TENANT_COOKIE } from './session-cookies';
 
 const HTTP_NO_CONTENT = 204;
 
@@ -21,8 +22,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('Content-Type', 'application/json');
 
-  const token = store.get('cerp_session')?.value;
-  const tenant = store.get('cerp_tenant')?.value;
+  const token = store.get(SESSION_COOKIE)?.value;
+  const tenant = store.get(TENANT_COOKIE)?.value;
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (tenant) headers.set('X-Tenant-Id', tenant);
 
