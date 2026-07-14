@@ -21,6 +21,9 @@ How
 - Architecture: Domain-Driven Design with bounded contexts, CQRS and targeted Event Sourcing for high-audit domains, Kafka-backed event backbone with replayable projections for low-latency reads.
 - Security and multi-tenancy: OAuth2/OIDC via Keycloak with tenant-scoped claims, RBAC, strong data isolation (RLS or schema-per-tenant), encrypted storage, and comprehensive audit trails via event streams.
 - Operations: microservices on Kubernetes, PostgreSQL for OLTP, S3 for documents, optional Elasticsearch for search, Redis for caching, and end-to-end observability (logs, metrics, traces).
+- Delivery model: Cloud-neutral native cloud (no AWS/Azure dependency) multi-tenant SaaS by default; optional on-prem/private cloud Kubernetes offering targeted for Phase 5 enterprise deals (feature parity constraints and higher TCO). Dev environment runs fully locally.
+- High-value exemplar use cases: (a) Urgent material request-to-delivery in <48h; (b) Steel tender attracting 5+ qualified bidders in <7 days; (c) Progress claim verified with photo evidence within 72h and auto-invoiced.
+- Success measures (executive): procurement cycle time reduction, on-time delivery confirmations, GMV and take rate (marketplace), on-platform retention, audit findings (zero material issues).
 
 ## 2. Problem Statement and Market Context
 
@@ -53,6 +56,9 @@ How ConstructHub addresses these
 - Prevent off-platform leakage: commission recognized only upon confirmed delivery/verified milestone, with project-level commission caps that reward volume and promote on-platform retention.
 - Strengthen compliance: immutable event streams, versioned documents, and fine-grained RBAC support audits and legal defensibility.
 - Integration-ready: APIs and webhooks connect ERP, BIM, and logistics partners for end-to-end data flow.
+- Typical pre-digital baselines (for ROI framing): quote cycles 5–10 days; delivery confirmation >72h after arrival; inventory accuracy 85–92%; paper document handling 10–20 minutes per file.
+- Change management: phased pilots with on-site champions, role-based training, and KPI dashboards; integration adapters to minimize double entry during transition.
+- Industry context: aligns with ISO 19650 (information management), common FIDIC contract workflows, GDPR for personal data, and VAT/GST compliance for invoicing.
 
 ## 3. Business Objectives (Measurable)
 
@@ -95,6 +101,9 @@ Targets (definitions, baselines, and data sources)
 Guardrails
 
 - Event capture completeness ≥99%; projection lag P95 <30s; 0 critical security incidents; data retention and privacy policies enforced per region.
+- No PII in logs; secrets never logged; periodic access reviews and attestations.
+- Error budget policy: if error budget burn exceeds 50% mid-cycle, feature releases pause in favor of reliability work.
+- Support SLAs (pilot): P1 <1h response, P2 <4h, P3 <1 business day; incident postmortems within 5 business days with corrective actions.
 
 ## 4. Customer Segments and Personas
 
@@ -153,6 +162,9 @@ Personas
 Access Model Notes
 
 - Default RBAC roles map to personas with per-project overrides; vendor/subcontractor tenants are isolated; legal entity and tax profiles support invoicing and compliance.
+- Role presets (indicative): Org Admin, Project Admin, PM, Site Engineer, Finance Approver, Vendor Rep, Subcontractor Rep; custom roles per tenant.
+- Scope model: Global (org) → Project → SubProject; permissions are the intersection of role and scope. Field roles default to mobile-first surfaces and offline capabilities.
+- Localization and accessibility: WCAG 2.1 AA targets; right-to-left support (Phase 4); unit/currency/timezone localization per project.
 
 ## 5. Core Value Propositions
 
@@ -188,6 +200,11 @@ Value by persona (with indicative KPIs)
 - Executives / Owners
   - Value: Portfolio visibility, risk signals, and savings from competitive sourcing and waste reduction.
   - KPIs: Cost savings vs. baseline; on-time delivery rate; on-platform retention ≥95%.
+
+Proof of value and attribution
+
+- Feature-to-value examples: delivery confirmations with evidence → lower dispute rate; bidding with credit economy → more bidders and better pricing; progress-to-invoice automation → faster cash cycles.
+- Evidence artifacts: before/after KPI dashboards, timeline snapshots of key procurements, anonymized tender outcomes, and audit-ready event trails.
 
 ## 6. Functional Modules (Scope)
 
@@ -265,6 +282,16 @@ Modules (scope and key artifacts)
   - Scope: Early-stage quantity/cost ranges; learning from historical project data.
   - Entities/Events: EstimationRun; EstimationRequested, EstimationCompleted.
   - Notes: Guardrails and confidence intervals; not a substitute for engineering takeoff.
+
+Cross-cutting and shared services
+
+- API Gateway/BFF, Identity (Keycloak), Observability (traces/logs/metrics), Feature Flags, Schema Registry, Event Catalog.
+- Data governance service for code lists/reference data; cost and usage telemetry; export and integration hub.
+
+Out of scope (vNext)
+
+- Full-fledged scheduling (Primavera/MS Project parity), BIM authoring, heavy equipment telematics; these integrate via APIs.
+- Native payments/escrow beyond invoice generation in early phases (evaluated in Phase 3+).
 
 ## 7. High-Level Business Workflows
 
@@ -345,6 +372,8 @@ Key workflows (actors, steps, events, SLAs)
   3. Linkage: Documents linked to entities (request, PO, delivery, claim) for full traceability.
   4. Retention: RetentionApplied per policy; legal hold supported.
 - SLAs: Review within configured windows; immutable audit of all actions.
+- Edge cases and exceptions: superseded drawings auto-archived with cross-links; emergency releases allowed with post-facto review; redaction workflows for sensitive PII.
+- Automation hooks: OCR/AI extraction populates metadata; automatic reviewer assignment by discipline; reminders/escalations on SLA breach.
 
 ## 8. Domain-Driven Design Overview
 
@@ -392,6 +421,12 @@ How
 - Multi-Tenancy in the Domain
   - Tenant context carried in commands and events; data isolation enforced in write models and projections; document storage partitioned per tenant and project.
 
+Context mapping and boundaries
+
+- Relationships: conformist (Reporting consumes domains), anti-corruption layers to ERPs, customer/supplier separate bounded contexts.
+- Examples: Procurement (core) integrates with ERP via ACL for invoices; Marketplace remains separate from Procurement write model and links via events.
+- Deprecation: versioned commands/events with sunset policies; compatibility shims during migrations.
+
 ## 9. Software Architecture
 
 What
@@ -419,7 +454,7 @@ How
   - Idempotency: Deduplication keys on consumers; idempotent producers; outbox/inbox pattern for exactly-once effects in write paths.
   - Dead Letter and Retry: Per-consumer retry with exponential backoff; DLQ topics for poisoning messages; operational playbooks for reprocessing.
   - Projections: Built with at-least-once consumption and idempotent upserts; can be dropped and replayed; snapshotting where rebuild time is long.
-  - Event Retention: Long-lived or tiered storage (e.g., Kafka tiered storage/S3 sinks) to enable history replay and audits.
+  - Event Retention: Long-lived or tiered storage (e.g., Kafka tiered storage/object storage sinks) to enable history replay and audits.
 
 - Consistency and Coordination
   - Within an aggregate: Strong consistency via command handlers enforcing invariants.
@@ -447,9 +482,12 @@ How
   - Caching: Redis for session/inbox locks and hot entity projections; cache invalidation via events.
 
 - Deployment and Quality
-  - CI: Build, test, security scan, SBOM generation; CD via GitOps (Argo/Flux) with canary analysis.
-  - Testing: Contract tests (consumer-driven), integration testbeds with ephemeral environments, performance and chaos tests.
-  - Versioning: Semantic versioning for services and event schemas; migration guides for breaking changes.
+  - Environments: Dev → Staging → Pre-prod → Prod; ephemeral preview environments per PR where feasible.
+  - CI/CD: Build, unit/integration tests, security scan (SAST/SCA), image signing/SBOM; CD via GitOps (Argo/Flux) with canary/blue-green and automated rollbacks.
+  - Testing: Consumer-driven contract tests, testcontainers for integration, k6/Gatling for load, chaos experiments (latency/partition), game days.
+  - Secrets and Config: Externalized via Vault/KMS; sealed secrets for K8s; runtime reload with config maps.
+  - Versioning: Semantic versioning for services and event schemas; backward compatibility policy; migration guides for breaking changes.
+  - Topology: Multi-AZ baseline; multi-region DR evaluated Phase 5; edge caching for static assets and large document downloads.
 
 ## 10. Capability-to-Service Mapping (Indicative)
 
@@ -510,9 +548,12 @@ Mappings (scope, APIs, data, events)
 
 Operational boundaries
 
-- Each service owns its schema and event types; backward-compatible schema evolution policy.
-- Rate limits and SLOs defined per service; circuit breakers between gateway and services.
-- Failure isolation: crash-only design; DLQs per consumer; graceful degradation for non-critical projections.
+- Ownership: Each service owns its schema and event types; clear data stewardship and on-call rotation.
+- SLOs: Per-service SLOs (availability, latency) published; error budgets tracked; golden paths defined for core workflows.
+- Rate limits: Global and per-tenant throttles; adaptive backpressure to protect shared resources.
+- Resilience: Circuit breakers between gateway and services; retries with jitter; bulkheads for critical components.
+- Failure isolation: Crash-only design; DLQs per consumer; replay procedures and dashboards; graceful degradation for non-critical projections.
+- Scaling: Stateless services autoscale; stateful components use partitioning/sharding and read replicas; hot shard detection and rebalancing.
 
 ## 11. Marketplace & Bidding Details
 
@@ -566,74 +607,425 @@ How
   - KPIs: Tender fill rate, average bidders per tender, time-to-award, price delta vs. baseline, on-platform retention post-award, dispute rate.
   - SLAs: Tender open window (configurable), evaluation target <7 days, credit refunds processed within 24h of cancellation, delivery confirmation within 24h of ETA.
 
+Disputes and governance
+
+- Dispute workflow: DisputeRaised → EvidenceAttached (photos, ASN, signatures) → Mediation → Resolution (credit note/partial payment) with auditable trail.
+- Privacy modes: Sealed-bid (default) with reveal on closure; optional two-stage (prequal → price) for services; anonymized bidder identities until award.
+- Supplier verification levels: Basic (KYC/KYB), Verified (references + performance history), Premium (audited capacity), impacting ranking and bid visibility.
+- Fee transparency: Rate card displayed per category; example—steel (tonnage-based low fee), finishes (higher %); commission shown at award and on confirmed delivery.
+
 ## 12. Security and Compliance
 
-- Authentication: OAuth2 + OIDC (Keycloak); PKCE for mobile/web.
-- Authorization: RBAC; optional ABAC for project/subproject constraints.
-- Tenant Isolation: App-layer checks + DB isolation (RLS or schema split) + storage partitioning.
-- Data Protection: At-rest encryption (DB, S3), TLS in transit, secret management (KMS).
-- Auditability: Event-sourced history for all state changes; immutable logs.
-- Compliance Roadmap: GDPR readiness (DSARs, data retention), SOC 2 controls (change mgmt, access, logging).
+What
+
+- A security-by-design and compliance-first approach covering identity, authorization, data protection, operations, and regulatory obligations across multi-tenant workloads.
+
+Why
+
+- Protects sensitive project, financial, and personal data; meets customer and regulatory requirements; reduces legal, operational, and reputational risk while enabling enterprise adoption.
+
+How
+
+- Identity and Authentication
+  - OAuth2/OIDC via Keycloak; SSO (SAML/OIDC) with enterprise IdPs; PKCE for public clients.
+  - MFA/2FA and step-up authentication for sensitive actions (e.g., PO approval, payment release, rate card changes).
+  - Short-lived access tokens, rotating refresh tokens; device binding optional for mobile apps.
+- Authorization
+  - RBAC as default with optional ABAC constraints (tenant, project, subproject, role, geography).
+  - Deny-by-default policies; policy enforcement at gateway and service layers; least-privilege service accounts.
+- Tenant Isolation
+  - App-layer checks + DB isolation (schema-per-tenant or RLS) + S3 partitioning (bucket/prefix) + Kafka ACLs by service.
+  - Optional per-tenant encryption contexts for documents; cross-tenant leakage tests embedded in CI.
+- Data Protection
+  - TLS 1.2+ in transit; encryption at rest for DB/Kafka/object storage; key management via Vault or HSM/KMS (cloud-neutral); periodic rotation.
+  - Envelope encryption for documents; content hashing and integrity checks for evidence files.
+  - PII classification and field tagging; log redaction/masking; DLP checks for exports.
+- Event and Log Security
+  - Tamper-evident, append-only audit logs with actor, tenant, correlation IDs, IP/agent.
+  - Restricted log access, time-bound retention, and secure archives; privacy-by-default logging.
+- Application Security (SSDLC)
+  - SAST/DAST/SCA, dependency pinning, SBOM generation; container/image signing (Sigstore/Cosign) and provenance.
+  - IaC scanning, secrets scanning, pre-commit hooks; threat modeling per epic; periodic pen tests.
+  - Vulnerability management with severity-based SLAs; emergency patch process.
+- Network and Runtime
+  - mTLS between services; network policies; WAF/IDS/IPS at ingress; rate limiting and bot detection.
+  - Isolation of build vs. runtime; hardened base images; least capabilities.
+- Compliance Program
+  - SOC 2 (Security, Availability, Confidentiality): change management, access reviews, backups/DR, incident response, vendor risk.
+  - GDPR/UK GDPR: lawful basis, consent where applicable, DSAR workflows, data minimization, retention/deletion; DPIAs for high-risk features.
+  - Data residency options by region; subprocessors transparency; contractual clauses (SCCs/DTAs) as required.
+- Incident Response
+  - On-call rotation, detection rules (DLQ spikes, anomaly auth), runbooks, forensics, and postmortems with customer comms SLAs.
+- Customer Controls
+  - Admin audit trails, configurable retention windows, IP allowlists, SSO enforcement, export controls, and API scopes.
+  - Evidence for audits: event logs, access reviews, change tickets, DR test reports, vulnerability scan results.
+  - Vendor Risk Management (VRM): documented subprocessors, security questionnaires support, SIG/CAIQ responses on request.
 
 ## 13. Data Model and Storage Notes
 
-- ERDs: Provided per bounded context (to be generated); naming conventions and key strategies defined.
-- Event Catalog: Canonical events per aggregate (created/updated/approved/received/etc.).
-- Projections: Tenant- and project-scoped read models; idempotent consumers; replayable.
+What
+
+- Principles, conventions, and artifacts for modeling write models, events, and projections safely in a multi-tenant, event-driven system.
+
+Why
+
+- Preserves data integrity and auditability, supports performance and evolution, and prevents coupling and cross-tenant leakage.
+
+How
+
+- Modeling and Naming
+  - ERDs per bounded context with normalized write models per aggregate; avoid cross-context foreign keys.
+  - Keys: ULIDs/UUIDv7 for time-sortable IDs; human-readable business codes (e.g., PO-YYYY-XXXX) for documents.
+  - Conventions: snake_case for storage, camelCase for APIs; consistent units and currency fields.
+- Event Catalog
+  - Envelope: id, type, version, occurredAt, tenantId, aggregateType, aggregateId, aggregateVersion, correlationId, causationId, actor.
+  - Schema governance via registry (Avro/JSON Schema); backward-compatible evolution; additive changes; deprecation policy.
+  - Topics: <context>.<aggregate>.<event>; partition by aggregateId for order; compaction where appropriate; retention/tiering to object storage.
+- Projections (Read Models)
+  - Idempotent consumers with deterministic upserts; track checkpoints per consumer group.
+  - Replay support for rebuilds and schema changes; blue/green projection deployment; backfill scripts for historical data.
+  - Per-tenant/project scoping; cache invalidation via events; SLA for projection lag P95 <30s.
+- Storage Design
+  - PostgreSQL for OLTP; RLS or schema-per-tenant; indexes by common filters (tenantId, projectId, status); table partitioning for hot entities.
+  - Object Storage (S3-compatible or native): path layout tenant/project/module/objectId; integrity via content hashes; lifecycle policies (archive/delete) per retention rules.
+  - Search (Elasticsearch optional): index pipelines from projections; PII redaction; index templates and versioning.
+- Data Quality and Governance
+  - Constraints and invariants at both command validation and storage (check constraints, unique indexes).
+  - Reference data domains with versioned code lists; deduplication jobs; anomaly detection on events (e.g., negative stock).
+  - Migrations managed via Flyway/Liquibase; online, backward-compatible patterns (expand/contract); dual writes and shadow reads during cutovers.
+- Lifecycle, Retention, and Residency
+  - Retention policies per artifact type; RetentionApplied and DataDeleted events; DSAR export/delete flows.
+  - Encrypted backups with PITR; periodic restore drills; regional sharding/residency to meet locality requirements.
+
+Data catalog and analytics
+
+- Catalog: Data dictionary per projection and write model; lineage tracked via OpenLineage/Marquez (Phase 4+).
+- Warehouse/BI: Optional ETL from projections to a tenant-scoped warehouse or lakehouse; dbt models for standard KPIs; export contracts documented.
+- PII inventory: Fields classified by sensitivity; minimization rules; tokenization where feasible for analytics.
 
 ## 14. Non-Functional Requirements (Targets)
 
-- Availability: ≥99.9% (Phase 2), target 99.95% (Phase 3+).
-- Performance: Reads P95 <300 ms; writes P95 <500 ms for typical commands.
-- Scalability: Horizontal scaling of stateless services; Kafka partitions sized per aggregate throughput.
-- Reliability: Exactly-once semantics in projections where feasible; at-least-once with idempotency otherwise.
-- RTO/RPO: RTO ≤ 2 hours, RPO ≤ 5 minutes (event/log-based restore).
+What
+
+- Service-level objectives and engineering constraints for performance, availability, reliability, security, usability, and cost. These define acceptance criteria for releases and guide capacity and incident management.
+
+Why
+
+- Ensures consistent user experience across office and field; meets enterprise procurement and compliance requirements; prevents uncontrolled cost growth; enables contractual SLAs.
+
+How
+
+- SLIs collected via APM, traces, logs, and synthetic checks; SLOs reviewed quarterly. Error budgets drive release cadence and hardening cycles. Auto-scaling and rate limits protect SLOs. Chaos and load testing validate resilience.
+
+Targets (initial)
+
+- Availability
+  - Service availability ≥99.9% Phase 2; target 99.95% Phase 3+ (per critical service and gateway).
+  - Mobile offline tolerance: core receipt and claim flows function offline with auto-sync; sync lag P95 <60s after connectivity returns.
+- Performance
+  - Reads P95 <300 ms; Writes P95 <500 ms for typical commands; cold start P95 <1.5s for web, <2.5s for mobile app relaunch.
+  - Projection lag P95 <30s; search queries P95 <800 ms when Elastic enabled.
+- Scalability
+  - Horizontal scale of stateless services; load-tested to 5x Phase 2 baseline. Kafka partitions provisioned to keep consumer lag <30s P95.
+  - Multi-tenant quotas and backpressure to isolate noisy neighbors.
+- Reliability and Consistency
+  - Exactly-once semantics for critical projections (financials, inventory) or compensating logic with at-least-once + idempotency.
+  - Data loss budget: 0 for committed writes; RTO ≤ 2 hours; RPO ≤ 5 minutes via event/log-based restore.
+- Security and Privacy
+  - Security incident SLO: P1 triage <15 min, containment <4h, customer notice per policy. Secrets rotation ≥90 days.
+  - Privacy: DSAR fulfillment <30 days; data deletion SLA <7 days after approval.
+- Usability and Accessibility
+  - WCAG 2.1 AA for web UI; mobile gesture and large touch targets for field users; localization for currency/units/timezones.
+- Interoperability
+  - API availability ≥99.9%; backward-compatible changes with ≥2 minor versions supported; deprecation notices ≥90 days.
+- Cost and Sustainability
+  - Cloud cost budget per tenant/project; scale tests include cost modeling; storage lifecycle policies to manage S3 footprint.
+
+Measurement and Enforcement
+
+- Golden signals and dashboards per service; synthetic journeys for procurement/delivery confirmation; monthly error budget reviews.
+- Load tests before major releases; disaster recovery drills semi-annually; chaos experiments quarterly.
+- Mobile/offline specifics: local queue for commands with conflict resolution on sync; user prompts on stale data; bandwidth-aware media uploads.
+- Internationalization: locale/units/currency per project and user; timezones normalized to UTC in storage with tz-aware display.
 
 ## 15. Technology Stack
 
-- Frontend: React, TypeScript.
-- Backend: Java, Spring Boot.
-- Messaging: Apache Kafka (+ schema registry).
-- Database: PostgreSQL.
-- Search/Cache: Elasticsearch (optional), Redis.
-- Storage: S3-compatible object storage.
-- AuthN/Z: Keycloak (OAuth2/OIDC, JWT).
-- Deployment: Docker, Kubernetes; GitOps pipelines.
-- Observability: OpenTelemetry, centralized logging, metrics.
+What
+
+- A pragmatic, enterprise-grade stack optimized for event-driven microservices, strong auth, and multi-tenant SaaS operations.
+
+Why
+
+- Maximizes developer productivity and ecosystem leverage; balances performance, reliability, and cost; aligns with industry-standard tooling to ease hiring and integrations.
+
+How (choices and rationale)
+
+- Frontend: React + TypeScript
+  - Rationale: Strong ecosystem, type safety, component reuse; supports responsive web for office and PWA patterns for field.
+  - Notes: State management with Redux/RTK Query or React Query; design system and accessibility built-in.
+- Backend: Java + Spring Boot
+  - Rationale: Mature DI, observability, security, and data libraries; wide enterprise adoption.
+  - Notes: Spring Cloud for config/feature-flags; WebFlux for async IO where needed.
+- Messaging: Apache Kafka + Schema Registry (Avro/JSON Schema)
+  - Rationale: High-throughput, ordered streams per aggregate; replayable history; decoupled services.
+  - Notes: Tiered storage or sinks to object storage for long-term retention; RBAC/ACLs on topics.
+- Database: PostgreSQL
+  - Rationale: Reliable OLTP, strong indexing and JSONB support, RLS for multi-tenancy.
+  - Notes: Partitioning for hot tables; read replicas for reporting; prefer cloud-neutral Postgres operators (CloudNativePG/Crunchy) or VM-based clusters; no dependency on AWS/Azure PaaS.
+- Search/Cache: Elasticsearch (optional) + Redis
+  - Rationale: Full-text and aggregations when needed; low-latency caching and coordination primitives.
+  - Notes: Build indices from projections; cache invalidation via events.
+- Storage: S3-compatible Object Storage
+  - Rationale: Durable, cost-effective document storage and evidence handling.
+  - Notes: Lifecycle and retention policies; encryption; presigned URLs for uploads; no dependency on AWS/Azure—supports MinIO, Ceph RGW, and other native object stores.
+- AuthN/Z: Keycloak (OAuth2/OIDC, JWT)
+  - Rationale: Standards-based identity, SSO, policy enforcement, and admin console.
+  - Notes: Multi-realm or tenant-aware config; MFA; group/role mappings; SCIM roadmap.
+- Deployment: Docker + Kubernetes with GitOps
+  - Rationale: Predictable deployments, autoscaling, isolation; declarative ops.
+  - Notes: Argo/Flux for GitOps; Helm/Kustomize; blue-green/canary; HPA/VPA.
+- Observability: OpenTelemetry + Prometheus/Grafana + Centralized Logging
+  - Rationale: End-to-end tracing, metrics, alerting; rapid incident triage.
+  - Notes: Trace context propagation in events; logs with correlation IDs; SLO dashboards.
+
+Extensibility and Integrations
+
+- API styles: REST for commands/queries; async events; webhooks for external consumers.
+- Integrations: ERP (SAP/Oracle), BIM, logistics; adapters via anti-corruption layer.
+- SDKs and Client Libraries: TypeScript and Java first; others based on demand.
+
+Versioning and Lifecycle
+
+- Semantic versioning for services/APIs/events; compatibility windows; deprecations with ≥90-day notice.
+- Security patches tracked via SBOM; image signing and provenance; automated dependency updates with review gates.
+
+Tooling and testing
+
+- Build: Gradle/Maven for backend; pnpm/yarn for frontend.
+- Testing: JUnit/Testcontainers, WireMock/PACT for contracts; Cypress/Playwright for E2E; k6 for load; OWASP ZAP for DAST.
+- Lint/format: ESLint/Prettier; Checkstyle/SpotBugs; conventional commits and commitlint.
+
+Local development and parity
+
+- Orchestration: Docker Compose for core stack (PostgreSQL, Kafka/ZooKeeper/Schema Registry, Keycloak, MinIO); make targets for up/down/seed.
+- Local Kubernetes: kind/k3d/minikube with Helm charts/Kustomize overlays; dev profiles and sample tenants/projects.
+- Secrets/config: Dev secrets stored in .env/.secrets (local-only); Vault dev server optional; seeded test data and fixtures.
+- Developer UX: one-command bootstrap script; hot reload for services; local mail catcher and mock ERP/logistics webhooks.
+- Parity: Same images as prod with dev config; feature flags to toggle integrations; migration/rollback tested locally first.
 
 ## 16. Roadmap (Phased)
 
-- Phase 1 (MVP): Identity & Access, Organizations, Projects, basic DMS, initial projections, core observability.
-- Phase 2: Vendors, Materials, Procurement, Inventory, mobile delivery receipt, marketplace foundations (credits, tenders).
-- Phase 3: Deliveries, Financials (budgets/commitments), Workflow & Approvals, commission logic, subcontractor progress.
-- Phase 4: Reporting & Analytics, AI Document Analysis (OCR), AI Material Estimator v1.
-- Phase 5: Advanced Marketplace (Golden Bids, reputation), AI Planning, mobile apps GA, external ERP integrations.
+What
+
+- A staged delivery plan that sequences capabilities to maximize early customer value, de-risk technical decisions, and build marketplace liquidity.
+
+Why
+
+- Phasing reduces complexity, accelerates learning, and ensures each release strengthens core workflows (procure→deliver→pay) before adding advanced features.
+
+How
+
+- Release trains every 6–8 weeks; alpha/beta programs with pilot tenants; exit criteria defined per phase with measurable outcomes from Section 3.
+
+Phases (goals, key deliverables, exit criteria)
+
+- Phase 1 (MVP)
+  - Goals: Establish tenant, project, and identity foundations; deliver first end-to-end read/write path; prove projections and observability.
+  - Deliverables: Identity & Access, Organizations, Projects, basic DMS, initial projections, core observability, API gateway, audit baseline.
+  - Exit Criteria: 3 pilot tenants live; P95 reads <400 ms; projection lag P95 <60s; first procurement request lifecycle demo end-to-end.
+- Phase 2
+  - Goals: Enable real procurement and inventory flows; seed early marketplace participation.
+  - Deliverables: Vendors, Materials, Procurement, Inventory; mobile delivery receipt; marketplace foundations (credits, tenders).
+  - Exit Criteria: -30% procurement cycle time in pilots; 50+ tenders created; 70% mobile receipt adoption on pilot sites.
+- Phase 3
+  - Goals: Close procure-deliver-pay loop; enforce governance; monetize marketplace transactions.
+  - Deliverables: Deliveries, Financials (budgets/commitments), Workflow & Approvals, commission logic, subcontractor progress.
+  - Exit Criteria: On-time delivery confirmations +25%; first commissions accrued; progress-to-invoice flow live; DAU/MAU >0.35.
+- Phase 4
+  - Goals: Insight and automation; reduce admin effort; unlock data exports.
+  - Deliverables: Reporting & Analytics, AI Document Analysis (OCR), AI Material Estimator v1; export APIs and warehouse sink (optional).
+  - Exit Criteria: Document handling time -40%; estimator adoption on ≥30% new projects; 5 standard dashboards used weekly.
+- Phase 5
+  - Goals: Scale marketplace and intelligence; deepen ecosystem integrations; mobile GA.
+  - Deliverables: Advanced Marketplace (Golden Bids, reputation), AI Planning, mobile apps GA, ERP integrations (SAP/Oracle connectors).
+  - Exit Criteria: On-platform retention ≥95%; ≥200 paying tenants; GMV and take-rate targets achieved; SOC 2 Type I readiness.
+
+Enablers
+
+- Platform: CI/CD, IaC, cost reporting, feature flags, canary releases; infra as code (Terraform/Pulumi), cluster baselines, cost dashboards.
+- Data: Schema registry, event catalog, governance council, data contracts; seeded sample datasets and replay tooling for demos.
+- Security: SSO, MFA, audit scopes, incident response playbooks; pen test cadence; secure coding training.
+
+Pilot selection and feedback loops
+
+- Criteria: Active projects, committed sponsor, at least 2 suppliers onboarded, baseline metrics collected.
+- Feedback: Weekly steering with pilots; in-product NPS/CSAT; structured discovery and roadmap reviews per phase.
+- Risks per phase: MVP scope creep (control via strict exit criteria); Phase 2 liquidity (supplier incentives); Phase 3 finance integration risk (sandbox first).
 
 ## 17. Business Model and Pricing
 
-- Primary Customers: Constructors/GCs; Secondary: Material suppliers and service subcontractors.
-- Revenue Streams:
-  - Transaction Commissions: Tiered, category-specific rates; project-specific commission cap per category—post-cap sales become commission-free within that project/category.
-  - Sale of Bidding Credits: Packages for increased participation.
-  - Premium Placement: Golden Bids and featured listings.
-  - SaaS Subscriptions: Tiered (Starter/Professional/Enterprise) with limits on projects, users, OCR/AI usage.
-- Anti-Disintermediation: Commission cap, logistics linkage, and in-app invoicing reduce off-platform leakage.
+What
+
+- A hybrid SaaS + marketplace monetization model aligned to delivered outcomes: recurring subscriptions for software value and variable fees for transacted value, with caps to encourage loyalty and reduce leakage.
+
+Why
+
+- Aligns incentives across constructors and suppliers; scales with usage and GMV; supports entry-level adoption while monetizing power users and high-volume categories.
+
+How
+
+- Customers and Segments
+  - Primary: Constructors/GCs (buyers/operators). Secondary: Suppliers and service subcontractors (sellers).
+  - Procurement-led land, marketplace-led expand; partner channel for integrations.
+
+- Revenue Streams
+  1. Transaction Commissions (Marketplace)
+     - Rates: Tiered, category-specific (e.g., steel tonnage-based low fee; finishes higher %). Regional variations supported.
+     - Accrual: Only after DeliveryConfirmed (materials) or MilestoneVerified (services). Pro-rated for partial acceptances.
+     - Project-Based Cap: Per project and category, once CapAmount reached for a supplier, subsequent sales in that project/category are commission-free. Events: CommissionAccrued, CommissionCapReached.
+     - Controls: On-platform invoicing; escrow/milestone options; anti-collusion monitoring.
+  2. Bidding Credits
+     - Model: Monthly free credits; paid packages (volume discounts). BidSubmitted debits credits. Refunds if constructor cancels after bids; no refunds for losing bids.
+     - Premium: Golden Bids for placement; limited per tender to preserve fairness.
+  3. Premium Listings/Promotions
+     - Featured suppliers/categories; seasonal campaigns; sponsored tenders in discovery feeds.
+  4. SaaS Subscriptions (Constructors)
+     - Tiers: Starter, Professional, Enterprise.
+       - Starter: Limited projects/users, base workflows, standard support.
+       - Professional: Multi-project/portfolio, advanced approvals, reporting, marketplace analytics.
+       - Enterprise: SSO/SCIM, data residency options, custom retention, premium support, ERP integrations, AI quotas.
+     - Metered Add-ons: OCR pages, AI estimator runs, API call bundles.
+
+- Pricing and Billing
+  - Billing cadence monthly/annual; usage-based meters for credits/OCR/AI; overage alerts; invoices with tax compliance per region.
+  - Payment methods: Cards, bank transfer; marketplace payouts to suppliers via supported rails; escrow fees if used.
+
+- KPIs and Unit Economics
+  - SaaS: ARPA/ARPU, churn, net revenue retention, LTV/CAC.
+  - Marketplace: GMV, take rate, active tenders, bidders/tender, win rate, on-platform retention post-award, dispute rate.
+  - Targets: Commission share of revenue ≥30% by Phase 4; SaaS gross margin ≥80%; blended gross margin ≥60%.
+
+- Governance and Policies
+  - Transparent rate cards; change notices; category councils for rate updates; regional compliance checks (tax, data).
+  - Anti-Disintermediation: Commission caps, logistics linkage, and in-app invoicing keep transactions on-platform without punitive fees.
+
+Commercial terms (indicative)
+
+- Examples: Starter $X/user/mo (min Y users), Professional $A/project/mo, Enterprise custom with annual commit; marketplace commission ranges 0.2–5% depending on category/region.
+- Discounts: Annual prepay, volume credits for suppliers, founder/pilot discounts Phase 1–2 with sunset dates.
+- SLAs and support: Tiered support SLAs by plan; uptime credits for breaches; onboarding packages and training add-ons.
+- Enterprise: MSAs, DPAs, security addenda, custom data residency and retention (surcharges may apply).
 
 ## 18. Risks and Mitigations
 
-- Adoption Risk: Provide fast time-to-value templates and integrations; strong onboarding.
-- Data Quality: Enforce structured inputs and validations; reconcile via events.
-- Marketplace Liquidity: Seed supply in key categories/regions; incentives and credit promos.
-- Technical Complexity (ES/CQRS): Gradual rollout; apply ES where high audit value; use outbox for simpler domains.
-- Security/Privacy: Least-privilege, regular audits, incident response runbooks.
+What
+
+- A living register of product, market, and technical risks with owners, early warning indicators, and mitigation plans. Reviewed at each phase gate and quarterly thereafter.
+
+Why
+
+- Proactively reduces the likelihood and impact of adverse events, protects timelines and budgets, and supports enterprise risk assessments (e.g., vendor due diligence, SOC 2).
+
+How
+
+- Process: Identify → Assess (likelihood/impact) → Mitigate → Monitor → Escalate. Map risks to Section 3 objectives and Section 16 phase exits. Track KRIs and playbooks.
+
+Key risks (examples with KRIs and mitigations)
+
+- Adoption and Change Management
+  - Risk: Low adoption due to workflow change and integration friction.
+  - KRIs: Low DAU/MAU (<0.2), stalled tenders, low mobile receipt usage (<50%).
+  - Mitigations: Role-based onboarding, templates, in-app guidance, pilot champions, integration connectors, success plans.
+  - Owner: Product + Customer Success.
+- Data Quality and Integrity
+  - Risk: Inaccurate catalogs/quantities causing stockouts/rework.
+  - KRIs: High discrepancy rate (>5%), frequent manual adjustments, negative stock events.
+  - Mitigations: Validation rules, required fields, guided forms, anomaly detection, periodic cycle counts, reconciliation tasks.
+  - Owner: Supply Chain PM + Eng.
+- Marketplace Liquidity
+  - Risk: Too few bidders or tenders reduce value and price discovery.
+  - KRIs: Bidders/tender <3, tender fill rate <70%.
+  - Mitigations: Supply seeding in key categories/regions, credit promos, featured listings, outreach; constructor incentives for open tenders.
+  - Owner: Marketplace Lead.
+- Technical Complexity (ES/CQRS)
+  - Risk: Overuse of ES increases delivery time and operational toil.
+  - KRIs: Projection lag >60s P95, frequent consumer DLQs, high incident count.
+  - Mitigations: Apply ES selectively; outbox for CRUD domains; reference architectures; platform tooling for projections; chaos and load tests.
+  - Owner: Architecture Guild.
+- Security and Privacy
+  - Risk: Breach or PII leakage; non-compliance with GDPR/SOC 2.
+  - KRIs: Unusual auth patterns, failed MFA spikes, data exfil alerts, overdue patches.
+  - Mitigations: SSDLC, least privilege, MFA, encryption, monitoring, incident runbooks, regular audits, pen tests.
+  - Owner: Security Lead.
+- Availability and Performance
+  - Risk: SLA/SLO breaches under load or due to hot partitions.
+  - KRIs: SLO error budget burn, Kafka lag >30s P95, API P95 >500 ms.
+  - Mitigations: Autoscaling, partition/shard planning, backpressure, caching, perf tests, feature flags for graceful degradation.
+  - Owner: SRE Lead.
+- Regulatory and Tax Complexity
+  - Risk: Incorrect tax handling or regional data rules.
+  - KRIs: Invoice rejections, audit findings, customer escalations.
+  - Mitigations: Tax engine integration, jurisdiction configs, legal review, data residency options.
+  - Owner: Finance/Compliance.
+- Vendor Lock-in and Cost Overruns
+  - Risk: Cloud/messaging costs spike; difficult to migrate.
+  - KRIs: COGS/tenant rising >20% QoQ, storage growth without retention controls.
+  - Mitigations: Cost dashboards, lifecycle policies, tiered storage, reserved capacity, abstraction layers where prudent.
+  - Owner: Eng Ops.
+
+Escalation and Communication
+
+- Severity matrix for incidents; stakeholder comms SLAs; customer advisory board for roadmap risks; postmortems with action tracking.
+
+Residual risk and reporting
+
+- Heatmap per risk with residual ratings after mitigations; quarterly risk reviews with leadership.
+- RACI for major risks (e.g., security, liquidity, data quality); backup owners assigned.
+- External reporting: SOC 2 readiness status, uptime reports, and privacy transparency updates shared with enterprise customers.
 
 ## 19. Diagrams and Artifacts (To Be Added)
 
-- UML: Use Case, Component, Sequence, Class.
-- ERDs: Per context (Identity, Supply Chain, Financials, etc.).
-- Event Catalog: Topic schemas and event versioning policy.
-- API Examples: REST/async patterns with auth scopes.
-- Glossary: Ubiquitous language across contexts.
+What
+
+- A curated, versioned set of engineering and product artifacts that codify the system’s design, behavior, and language. Stored in-repo, linked from the document, and updated via PRs.
+
+Why
+
+- Improves shared understanding, onboarding, and auditability; reduces miscommunication across teams; supports compliance and customer diligence.
+
+How
+
+- Tooling: PlantUML/Mermaid for diagrams in code; dbdocs/DBML for ERDs; AsyncAPI/OpenAPI for APIs; ADR templates for decisions.
+- Governance: Docs-as-code with CI linting; owners per context; review checklist includes diagram updates; version tags per phase.
+
+Artifacts
+
+- UML/Mermaid Diagrams
+  - Use Case: Key actor-goal interactions (procure→deliver→pay, bidding, progress→payment, document review).
+  - Component: Services, gateways, data stores, and external systems; trust boundaries and network flows.
+  - Sequence: Critical workflows (procurement approval, delivery confirmation with discrepancy, award→PO→commission accrual, progress claim→invoice).
+  - Class/Domain: Aggregates and relationships within contexts (read-only depiction to avoid cross-context coupling).
+- ERDs
+  - Per bounded context (Identity, Project, Supply Chain, Financials, Collaboration, Execution, Marketplace). Include keys, constraints, and RLS/schema notes.
+- Event Catalog
+  - Canonical event list with envelopes, schemas, sample payloads, and version history; topic naming and partitioning guidance; retention/compaction notes.
+- API Specifications
+  - OpenAPI for REST commands/queries; AsyncAPI for events; auth scopes and examples; error models and pagination.
+- Architecture Decision Records (ADRs)
+  - Decisions on ES scope, tenant isolation model, commission cap algorithm, search usage, and warehouse strategy; status (proposed/accepted/deprecated).
+- Security and Privacy Artifacts
+  - Threat models (STRIDE/LINDDUN), data flow diagrams, DPIAs, pen test reports (summaries), and incident response runbooks.
+- Operations Playbooks
+  - On-call runbooks, DLQ handling, replay procedures, backup/restore steps, capacity and cost management guides.
+- Glossary
+  - Ubiquitous language per context; cross-references; aliases and deprecated terms.
+
+Maintenance
+
+- Quarterly doc days; CI checks for stale diagrams vs. code; template PRs for context changes; changelog entries when artifacts evolve.
+- Storage/location: docs/architecture for diagrams, docs/api for OpenAPI/AsyncAPI, docs/adr for decisions, docs/glossary for language.
+- Review cadence: Architecture guild reviews monthly; context owners update artifacts with each significant change; DRI list maintained in repo.
+- Coverage targets: 100% of services with component diagrams, 100% of public APIs with OpenAPI, 100% of events with schema and samples by Phase 3.
 
 ## 20. Open Questions
 
@@ -641,3 +1033,192 @@ How
 - Degree of Event Sourcing vs CRUD per context.
 - Commission/rate card governance and regional variations.
 - ERP integrations priority (SAP, Oracle, others).
+
+## 21. Phase 1 Implementation – Separated Services
+
+Overview
+
+- Goal: Deliver Phase 1 (MVP) by standing up a small set of independently deployable services that establish multi-tenancy, identity/access, organizations and projects, a basic DMS, initial projections, API gateway, and audit baseline.
+- Principle: Each capability is its own service with clear contracts (REST commands/queries, domain events). Read models are built as separate projections consuming events over Kafka. Identity for auth is delegated to Keycloak; our Identity service owns tenant/user/membership domain data and emits canonical events.
+
+Phase 1 services (independently deployable)
+
+1. API Gateway/BFF (edge)
+
+- Scope (Phase 1): Single ingress for all clients; OIDC authentication via Keycloak; JWT validation; tenant scoping and header propagation; simple route mapping to backend services; basic rate limiting.
+- Interfaces:
+  - Routes: /identity/* → Identity Service; /orgs/* → Organization Service; /projects/* → Project Service; /documents/* → DMS; /reports/* → Projections; /audit/* → Audit.
+  - Security: OAuth2/OIDC; mTLS for service-to-service; correlation IDs injected (x-correlation-id).
+- Dependencies: Keycloak, backend services.
+- SLO (Phase 1): P95 latency < 150 ms passthrough; availability ≥ 99.9% (non-strict in MVP, monitor only).
+
+2. Identity & Access Service
+
+- Purpose/Scope: Tenant (organization) identity boundary, users and memberships registry, role assignments. Delegates authentication to Keycloak. Emits canonical identity events.
+- Commands/Queries (REST):
+  - POST /tenants {name, legalName, region, ...} → 201 TenantCreated
+  - POST /users {email, name, ...} → 201 UserCreated
+  - POST /memberships {tenantId, userId, roles[], scopes} → 201 RoleAssigned
+  - GET /tenants/:id, GET /users/:id, GET /memberships?tenantId=...
+- Domain Events (Kafka topics):
+  - identity.tenant.v1: TenantCreated, TenantUpdated
+  - identity.user.v1: UserCreated, UserUpdated, UserDeactivated
+  - identity.membership.v1: RoleAssigned, RoleRevoked
+- Write Model (PostgreSQL; RLS default):
+  - tenants(id, name, region, created_at, updated_at)
+  - users(id, email, name, status, created_at, updated_at)
+  - memberships(id, tenant_id, user_id, roles jsonb, scopes jsonb, created_at)
+  - RLS policy: tenant_id on memberships; tenant_id scoped queries enforced at service.
+- Projections (Phase 1):
+  - authz_projection: flattens memberships to per-tenant role claims for fast authorization checks.
+- Notes: Sync minimal user info with Keycloak on user creation (via admin API); keep Keycloak as source of authentication, service as SoR for memberships and tenant scoping.
+
+3. Organization Service
+
+- Purpose/Scope: Business organization profile (distinct from tenant auth construct) and org metadata required by downstream services; links to tenant id.
+- Commands/Queries (REST):
+  - POST /orgs {tenantId, displayName, taxIds[], addresses[], contacts[]} → OrganizationCreated
+  - PATCH /orgs/:id {...} → OrganizationUpdated
+  - GET /orgs/:id, GET /orgs?tenantId=...
+- Domain Events (Kafka topics):
+  - projectmgmt.organization.v1: OrganizationCreated, OrganizationUpdated
+- Write Model:
+  - organizations(id, tenant_id, display_name, tax_profile jsonb, meta jsonb, created_at, updated_at)
+- Projections:
+  - org_directory (by tenant): id, display_name, contact summaries.
+- Dependencies: Identity (tenant existence, membership for authorization).
+
+4. Project Service
+
+- Purpose/Scope: Projects and SubProjects lifecycle, team assignments (by user and role) and scoping information for downstream modules.
+- Commands/Queries (REST):
+  - POST /projects {tenantId, name, code, startDate, ...} → ProjectCreated
+  - POST /projects/:id/subprojects {name, code} → SubProjectCreated
+  - POST /projects/:id/assignments {userId, role, scope(subprojectId?)} → UserAssignedToProject
+  - GET /projects/:id, GET /projects?tenantId=..., GET /projects/:id/assignments
+- Domain Events (Kafka topics):
+  - projectmgmt.project.v1: ProjectCreated, ProjectUpdated, SubProjectCreated
+  - projectmgmt.assignment.v1: UserAssignedToProject, AssignmentRevoked
+- Write Model:
+  - projects(id, tenant_id, name, code, status, dates, meta)
+  - subprojects(id, project_id, name, code, status)
+  - project_assignments(id, project_id, user_id, role, subproject_id?, created_at)
+- Projections:
+  - project_roster: denormalized roster with user names and roles
+  - project_list: list with status/counters per tenant
+- Dependencies: Identity (user exists), Organization (optional link to legal entity).
+
+5. Document Management Service (DMS – Basic)
+
+- Purpose/Scope: Minimal document storage with versioning metadata; presigned URLs for upload/download; links to entities (org/project).
+- Commands/Queries (REST):
+  - POST /documents {tenantId, projectId?, entityRef?, filename, contentType, size} → returns {documentId, uploadUrl}
+  - POST /documents/:id/complete {hash, versionNote?} → DocumentUploaded
+  - GET /documents/:id (metadata), GET /documents?entityRef=...
+  - POST /documents/:id/link {entityRef} → DocumentLinked
+- Domain Events (Kafka topics):
+  - collaboration.document.v1: DocumentUploaded, DocumentVersioned, DocumentLinked
+- Write Model:
+  - documents(id, tenant_id, project_id?, entity_ref?, filename, content_type, size, hash, version, storage_uri, created_at)
+- Storage: S3-compatible (MinIO) with tenant/project prefixing and server-side encryption; presigned URLs.
+- Projections:
+  - document_index: queryable metadata by entityRef and project for UI lists.
+- Dependencies: API Gateway for auth; Identity for authorization context.
+
+6. Audit/Event Catalog Service
+
+- Purpose/Scope: Centralized append-only audit log for all domain events (envelope + payload), queriable by aggregate; governs event catalog and schemas; emits AuditRecorded for observability.
+- Commands/Queries (REST):
+  - GET /audit/:aggregateType/:aggregateId → event stream (paged)
+  - GET /audit/search?tenantId=...&type=... → search by envelope fields
+- Event Processing:
+  - Subscribes to all domain topics via Kafka consumer group; persists envelopes/payloads idempotently (outbox schema for internal write paths).
+- Write Model:
+  - audit_log(id, tenant_id, aggregate_type, aggregate_id, event_type, version, occurred_at, correlation_id, causation_id, actor, payload jsonb, topic, partition, offset)
+  - Indexes on (tenant_id, aggregate_type, aggregate_id, occurred_at), (event_type)
+- Notes: DLQ and replay procedures established; envelope schema stored in Schema Registry (JSON Schema).
+
+7. Projections/Reporting Service (Initial)
+
+- Purpose/Scope: Build and serve initial read models for dashboards (tenants, users, projects, assignments, documents). Exposes simple GET endpoints for UI.
+- Queries (REST):
+  - GET /reports/tenants/:tenantId/overview → {users, projects, documents, latestEvents}
+  - GET /reports/projects/:projectId/overview → {teamCount, docsCount, createdAt, status}
+- Consumption:
+  - Subscribes to `identity.*`, `projectmgmt.*`, `collaboration.document.v1` topics; idempotent upserts.
+- Read Models:
+  - tenant_overview(tenant_id, users_count, projects_count, documents_count, last_event_at)
+  - project_overview(project_id, team_count, documents_count, created_at, last_event_at)
+- SLA (Phase 1): Projection lag P95 < 60s.
+
+Cross-cutting: Observability and Platform (Phase 1)
+
+- Keycloak (Identity Provider): OIDC/OAuth2; realms configured per environment; short-lived access tokens; MFA optional in MVP.
+- Kafka + Schema Registry: Topics per context as listed; additive schema evolution; DLQ topics configured per consumer; partition by aggregateId.
+- PostgreSQL: Single cluster with RLS-based isolation in Phase 1 (schema-per-tenant option evaluated later). Row policies enforced on multi-tenant tables keyed by tenant_id.
+- Object Storage: MinIO for S3-compatible storage; per-tenant/project prefixes; lifecycle rules not enforced in MVP (documented).
+- Observability: OpenTelemetry SDK/auto-instrumentation on all services; OTel Collector; Prometheus metrics; Grafana dashboards; structured logs with correlationId/tenantId (PII safe).
+- Security Baseline: mTLS between services; network policies at cluster level; no PII in logs; secrets via dev-safe mechanisms (local .env) with rotation documented.
+
+Event Catalog (Phase 1 scope)
+
+- Envelope (v1): id, type, version, occurredAt, tenantId, aggregateType, aggregateId, aggregateVersion, correlationId, causationId, actor.
+- Canonical Events (initial):
+  - Identity: TenantCreated v1, UserCreated v1, RoleAssigned v1
+  - Project Mgmt: OrganizationCreated v1, ProjectCreated v1, SubProjectCreated v1, UserAssignedToProject v1
+  - DMS: DocumentUploaded v1, DocumentLinked v1
+- Topic naming: <context>.<aggregate>.v1 (e.g., identity.user.v1).
+
+Service Contracts Summary (Phase 1)
+
+- Identity & Access:
+  - Commands: createTenant, createUser, assignRole
+  - Queries: getTenant, getUser, listMemberships
+  - Events: TenantCreated, UserCreated, RoleAssigned
+- Organization:
+  - Commands: createOrganization, updateOrganization
+  - Queries: getOrganization
+  - Events: OrganizationCreated, OrganizationUpdated
+- Project:
+  - Commands: createProject, createSubProject, assignUser
+  - Queries: getProject, listAssignments
+  - Events: ProjectCreated, SubProjectCreated, UserAssignedToProject
+- DMS:
+  - Commands: createDocument (issue upload URL), completeUpload, linkDocument
+  - Queries: getDocument, listDocuments
+  - Events: DocumentUploaded, DocumentLinked
+- Projections/Reporting:
+  - Queries: tenantOverview, projectOverview
+  - Events consumed: `identity.*`, `projectmgmt.*`, `collaboration.document.v1`
+- Audit:
+  - Queries: listAuditEventsByAggregate
+  - Events consumed: all domain topics
+
+Data Isolation (Phase 1)
+
+- Default: RLS on multi-tenant tables with tenant_id scoping and policies bound to JWT claims; service-level guardrails (tenant in request context).
+- Storage partitioning: Object storage by tenant/project prefix; Kafka topics not partitioned by tenant (partition by aggregateId); consumer enforces tenant scoping at projection time.
+
+Exit Criteria Validation (mapped to Phase 1)
+
+- 3 pilot tenants live: createTenant flow plus organization profile created; users and memberships assigned; JWT tokens validated end-to-end.
+- First end-to-end lifecycle demo: create tenant → create project → assign users → upload/link document → projections reflect counts within 60s; audit log retrievable for all actions.
+- Performance: P95 reads < 400 ms on projections and simple GETs; gateway P95 passthrough < 150 ms baseline.
+- Projection lag P95 < 60s for initial read models; DLQ empty after smoke tests.
+
+Operational Notes
+
+- CI/CD: Independent pipelines per service; semantic versioning; image signing and SBOM included; dev/staging/prod environments with GitOps manifests (Helm/Kustomize).
+- Testing: Unit + contract tests for REST; consumer-driven contracts for topics; testcontainers for Postgres/Kafka; basic E2E smoke for end-to-end flow.
+- Runbooks (Phase 1): Topic replay for projections; DLQ drain; rotating keys in Keycloak; onboarding new tenant checklist.
+- Backward Compatibility: Event schemas additive; services tolerate unknown fields; APIs versioned under /v1.
+
+Service Ownership (Phase 1)
+
+- Platform Team: API Gateway, Identity & Access, Audit/Event Catalog, Observability.
+- Core PM Team: Organization Service, Project Service, Projections (initial).
+- Collaboration Team: DMS (basic).
+
+Roadmap Linkage
+
+- Sets foundation for Phase 2 additions (Vendors, Materials, Procurement, Inventory, Marketplace primitives) without changing Phase 1 contracts. New services will subscribe to identity/project events and emit their own domains without retrofitting Phase 1 boundaries.

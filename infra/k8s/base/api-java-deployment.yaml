@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-java
+  labels:
+    app: cerp-api-java
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cerp-api-java
+  template:
+    metadata:
+      labels:
+        app: cerp-api-java
+    spec:
+      containers:
+        - name: api-java
+          image: cerp/core-api-java:local
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: '8080'
+            - name: DB_URL
+              value: jdbc:postgresql://postgres:5432/cerp
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: POSTGRES_USER
+                  optional: true
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: POSTGRES_PASSWORD
+                  optional: true
+            - name: SPRING_FLYWAY_ENABLED
+              value: 'false'
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false

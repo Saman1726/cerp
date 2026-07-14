@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: core-api-java
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cerp}
+    username: ${DB_USERNAME:cerp}
+    password: ${DB_PASSWORD:cerp}
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: false
+
+  flyway:
+    enabled: true
+    # For platform-wide objects; tenant schema migrations will be handled programmatically later
+    locations: classpath:db/migration/platform
+    default-schema: platform
+    create-schemas: true
+    baseline-on-migrate: true
+
+server:
+  port: ${PORT:8080}
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger
+
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+    org.hibernate.SQL: INFO

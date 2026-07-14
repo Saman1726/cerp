@@ -4,6 +4,8 @@ resources:
   - namespace.yaml
   - api-deployment.yaml
   - api-service.yaml
+  - api-java-deployment.yaml
+  - api-java-service.yaml
   - web-deployment.yaml
   - web-service.yaml
   - ingress.yaml

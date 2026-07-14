@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:16-alpine
     container_name: cerp-postgres
     restart: unless-stopped
     environment:
@@ -132,6 +132,20 @@ services:
       - /app/node_modules
       - /app/examples/demo-overlay/web/node_modules
     command: pnpm --filter demo-overlay-web run dev
+
+  api-java:
+    image: cerp/core-api-java:local
+    container_name: cerp-api-java
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_USERNAME: ${POSTGRES_USER:-cerp}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+    ports:
+      - '8080:8080'
 
 volumes:
   cerp_postgres_data:
