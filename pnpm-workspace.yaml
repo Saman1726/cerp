@@ -1,8 +1,7 @@
 packages:
-  - "apps/*"
-  - "packages/*"
-  - "examples/demo-overlay/*"
-  - "services/*"
+  - 'apps/*'
+  - 'packages/*'
+  - 'services/*'
 allowBuilds:
   argon2: true
   sharp: true

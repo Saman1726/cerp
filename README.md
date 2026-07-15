@@ -13,8 +13,8 @@ The project is split into two parts:
   - Frontend libraries and app:
     - packages/core-web — Next.js building blocks (auth/session, API client, UI components)
     - apps/web — Reference Next.js app built from core-web
-- Customer overlay
-  - examples/demo-overlay/web — Customization example for the web app (branding, extra fields, etc.)
+- Overlay example (optional; not included in workspace builds)
+  - examples/demo-overlay/web — Demonstration only; excluded from pnpm workspace and CI by default.
 
 This is still an early scaffold. Additional ERP domains (contracts, budgets, construction projects, accounting, …) will be added iteratively.
 
@@ -58,12 +58,6 @@ Service endpoints:
 pnpm --filter web run dev   # http://localhost:3001
 ```
 
-Optional: run the demo overlay web app (uses same backend):
-
-```bash
-pnpm --filter demo-overlay-web run dev   # http://localhost:3011
-```
-
 Notes:
 
 - api-java uses DB_* env vars; defaults are set in docker-compose.yml. PARTNER_SYSTEM_URL defaults to http://partner-system-java:3020.
@@ -96,8 +90,8 @@ Core API health endpoint: http://localhost:8080/actuator/health
 ```
 apps/
   web/                         Reference Next.js app built from @cerp/core-web
-examples/demo-overlay/
-  web/                         Worked example: extra form field, custom branding
+examples/demo-overlay/         Optional example; excluded from workspace builds
+  web/                         Worked example only; not built/deployed by default
 packages/
   core-web/                    Next.js building blocks: session, api-client, components
   shared-types/                DTOs/types shared with the frontend

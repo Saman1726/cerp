@@ -70,28 +70,6 @@ services:
     profiles:
       - legacy
 
-  demo-web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-      target: deps
-    container_name: cerp-demo-web
-    working_dir: /app
-    depends_on:
-      - api-java
-    environment:
-      NODE_ENV: development
-      API_URL: http://api-java:8080
-    ports:
-      - '3011:3011'
-    volumes:
-      - ./examples/demo-overlay/web:/app/examples/demo-overlay/web
-      - ./packages:/app/packages
-      - /app/node_modules
-      - /app/examples/demo-overlay/web/node_modules
-    command: pnpm --filter demo-overlay-web run dev
-    profiles:
-      - legacy
 
   # Local platform baseline (enable with: docker compose --profile platform up -d)
   keycloak:
