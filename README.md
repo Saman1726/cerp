@@ -69,6 +69,28 @@ Notes:
 - api-java uses DB_* env vars; defaults are set in docker-compose.yml. PARTNER_SYSTEM_URL defaults to http://partner-system-java:3020.
 - The web app talks to api-java via API_URL (see apps/web and packages/core-web/src/lib/env.ts).
 
+## Local test data and login
+
+Quick local test with seeded data:
+
+```bash
+corepack enable
+pnpm install
+docker compose up -d postgres partner-system-java api-java
+# Create apps/web/.env.local so the web app points to the local API
+printf "API_URL=http://localhost:8080\n" > apps/web/.env.local
+pnpm --filter web run dev
+# Open http://localhost:3001/login
+```
+
+Seeded login accounts (Partner code, Username, Password):
+
+- ACME, john, secret (role: admin)
+- ACME, jane, secret (role: user)
+- MEGA, mario, secret (role: user)
+
+Core API health endpoint: http://localhost:8080/actuator/health
+
 ## Repository structure
 
 ```
