@@ -7,7 +7,6 @@ import { UserMenu } from './UserMenu';
 export interface AppShellProps {
   branding: BrandingConfig;
   navItems: NavItem[];
-  tenantSlug: string;
   logoutAction: () => Promise<void>;
   children: ReactNode;
 }
@@ -18,7 +17,7 @@ export interface AppShellProps {
 // --ring are redeclared here (not just --brand-*) so the override is
 // resolved directly on this element's own style, rather than relying on a
 // var() fallback chain that would only ever see the :root default.
-export function AppShell({ branding, navItems, tenantSlug, logoutAction, children }: AppShellProps) {
+export function AppShell({ branding, navItems, logoutAction, children }: AppShellProps) {
   const themeStyle = {
     '--brand-background': branding.colors.background ?? '#fff',
     '--primary': branding.colors.primary,
@@ -56,7 +55,7 @@ export function AppShell({ branding, navItems, tenantSlug, logoutAction, childre
       </aside>
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-14 shrink-0 items-center justify-end border-b border-border px-6">
-          <UserMenu tenantSlug={tenantSlug} logoutAction={logoutAction} />
+          <UserMenu logoutAction={logoutAction} />
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>

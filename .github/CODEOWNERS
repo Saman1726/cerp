@@ -1,0 +1,36 @@
+# CODEOWNERS
+
+# Source: plan.md (Repository Strategy: Ownership and access)
+
+# Update these team handles to match your GitHub org teams (e.g., @your-org/team-web)
+
+# Apps
+
+/apps/web/ @team-web
+
+# Services
+
+/services/core-api-java/ @team-java
+/services/partner-system-java/ @team-partner
+
+# Shared packages (platform-owned)
+
+/packages/shared-types/ @team-platform
+/packages/core-*/ @team-platform
+/packages/eslint-config/ @team-platform
+/packages/typescript-config/ @team-platform
+
+# Infrastructure
+
+/infra/ @team-infra
+
+# Examples and overlays
+
+/examples/demo-overlay/ @team-platform
+
+# Default fallbacks
+
+/.github/ @team-platform
+
+/* @team-platform
+/*/** @team-platform

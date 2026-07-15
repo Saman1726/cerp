@@ -1,7 +1,6 @@
-# Two distinct hosts, not a wildcard: v1 resolves tenants via header/JWT claim,
-# not subdomain (see apps/api/src/tenancy). A wildcard host for per-tenant
-# subdomains is the natural v2 upgrade once that resolution source changes -
-# nothing else here would need to.
+# Two distinct hosts, not a wildcard: v1 resolves tenants via header/JWT claim.
+# A wildcard host for per-tenant subdomains is a natural v2 upgrade once resolution changes.
+# Nothing else in this ingress would need to change for that.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -18,9 +17,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: api
+                name: api-java
                 port:
-                  number: 80
+                  number: 8080
     - host: app.cerp.example.com
       http:
         paths:

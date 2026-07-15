@@ -1,0 +1,47 @@
+name: Partner System (Java) CI
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/partner-system-java/**'
+      - 'infra/k8s/**'
+      - '.github/workflows/partner-system-java-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/partner-system-java/**'
+      - 'infra/k8s/**'
+      - '.github/workflows/partner-system-java-ci.yml'
+
+concurrency:
+  group: partner-system-java-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (partner-system-java)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Maven package (skip tests)
+        working-directory: services/partner-system-java
+        run: mvn -B -ntp -DskipTests package
+
+      - name: Maven test (if any)
+        working-directory: services/partner-system-java
+        run: mvn -B -ntp test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker build (validate Dockerfile)
+        working-directory: services/partner-system-java
+        run: docker build -t partner-system-java:ci -f Dockerfile .

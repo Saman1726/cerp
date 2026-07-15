@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: cerp-postgres
     restart: unless-stopped
     environment:
@@ -17,79 +17,35 @@ services:
       timeout: 5s
       retries: 10
 
-  partner-system-db:
-    image: postgres:17-alpine
-    container_name: cerp-partner-system-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${PARTNER_SYSTEM_DB_USER:-partner_system}
-      POSTGRES_PASSWORD: ${PARTNER_SYSTEM_DB_PASSWORD:-partner_system_dev_password}
-      POSTGRES_DB: ${PARTNER_SYSTEM_DB_NAME:-partner_system}
-    ports:
-      - '5433:5432'
-    volumes:
-      - cerp_partner_system_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'pg_isready -U ${PARTNER_SYSTEM_DB_USER:-partner_system} -d ${PARTNER_SYSTEM_DB_NAME:-partner_system}',
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  partner-system:
+  partner-system-java:
     build:
-      context: .
-      dockerfile: services/partner-system/Dockerfile
-      target: deps
-    container_name: cerp-partner-system
-    working_dir: /app
-    depends_on:
-      partner-system-db:
-        condition: service_healthy
+      context: services/partner-system-java
+      dockerfile: Dockerfile
+    container_name: cerp-partner-system-java
     environment:
-      NODE_ENV: development
       PORT: 3020
-      DATABASE_URL: postgresql://${PARTNER_SYSTEM_DB_USER:-partner_system}:${PARTNER_SYSTEM_DB_PASSWORD:-partner_system_dev_password}@partner-system-db:5432/${PARTNER_SYSTEM_DB_NAME:-partner_system}
-    ports:
-      - '3020:3020'
-    volumes:
-      - ./services/partner-system:/app/services/partner-system
-      - ./packages:/app/packages
-      - /app/node_modules
-      - /app/services/partner-system/node_modules
-    command: pnpm --filter partner-system run dev
+    # No host port published to avoid conflict with Node partner-system (3020).
+    # Reached by other containers via http://partner-system-java:3020
 
-  api:
+  api-java:
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-      target: deps
-    container_name: cerp-api
-    working_dir: /app
+      context: services/core-api-java
+      dockerfile: Dockerfile
+    container_name: cerp-api-java
     depends_on:
       postgres:
         condition: service_healthy
-      partner-system:
+      partner-system-java:
         condition: service_started
     environment:
-      NODE_ENV: development
-      PORT: 3000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cerp}:${POSTGRES_PASSWORD:-cerp_dev_password}@postgres:5432/${POSTGRES_DB:-cerp}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_only_change_me_access}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_only_change_me_refresh}
-      JWT_ACCESS_TTL: 15m
-      PARTNER_SYSTEM_URL: http://partner-system:3020
+      PORT: 8080
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_USERNAME: ${POSTGRES_USER:-cerp}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      PARTNER_SYSTEM_URL: http://partner-system-java:3020
+      SPRING_FLYWAY_ENABLED: "false"
     ports:
-      - '3000:3000'
-    volumes:
-      - ./apps/api:/app/apps/api
-      - ./packages:/app/packages
-      - /app/node_modules
-      - /app/apps/api/node_modules
-    command: pnpm --filter api run dev
+      - '8080:8080'
 
   web:
     build:
@@ -99,10 +55,10 @@ services:
     container_name: cerp-web
     working_dir: /app
     depends_on:
-      - api
+      - api-java
     environment:
       NODE_ENV: development
-      API_URL: http://api:3000
+      API_URL: http://api-java:8080
     ports:
       - '3001:3001'
     volumes:
@@ -111,6 +67,8 @@ services:
       - /app/node_modules
       - /app/apps/web/node_modules
     command: pnpm --filter web run dev
+    profiles:
+      - legacy
 
   demo-web:
     build:
@@ -120,10 +78,10 @@ services:
     container_name: cerp-demo-web
     working_dir: /app
     depends_on:
-      - api
+      - api-java
     environment:
       NODE_ENV: development
-      API_URL: http://api:3000
+      API_URL: http://api-java:8080
     ports:
       - '3011:3011'
     volumes:
@@ -132,21 +90,108 @@ services:
       - /app/node_modules
       - /app/examples/demo-overlay/web/node_modules
     command: pnpm --filter demo-overlay-web run dev
+    profiles:
+      - legacy
 
-  api-java:
-    image: cerp/core-api-java:local
-    container_name: cerp-api-java
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # Local platform baseline (enable with: docker compose --profile platform up -d)
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    container_name: cerp-keycloak
+    command: start-dev --http-port 8081
     environment:
-      PORT: 8080
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
-      DB_USERNAME: ${POSTGRES_USER:-cerp}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     ports:
-      - '8080:8080'
+      - '8081:8081'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8081/realms/master']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - platform
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: cerp-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - '2181:2181'
+    healthcheck:
+      test: ['CMD', 'bash', '-lc', "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - platform
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: cerp-kafka
+    depends_on:
+      zookeeper:
+        condition: service_started
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports:
+      - '9092:9092'
+    healthcheck:
+      test: ['CMD', 'bash', '-lc', 'kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - platform
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.1
+    container_name: cerp-schema-registry
+    depends_on:
+      kafka:
+        condition: service_started
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8082
+    ports:
+      - '8082:8082'
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8082/subjects']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - platform
+
+  minio:
+    image: minio/minio:latest
+    container_name: cerp-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ':9001'
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - cerp_minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    profiles:
+      - platform
 
 volumes:
   cerp_postgres_data:
-  cerp_partner_system_db_data:
+  cerp_minio_data:

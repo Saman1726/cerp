@@ -13,11 +13,12 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "migrate:platform": "pnpm --filter api run migrate:platform",
-    "migrate:tenants": "pnpm --filter api run migrate:tenants",
-    "tenant:provision": "pnpm --filter api run tenant:provision --"
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.27.9",
     "prettier": "^3.9.5",
     "turbo": "^2.10.4",
     "typescript": "^5.9.3"

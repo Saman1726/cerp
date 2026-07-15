@@ -18,8 +18,7 @@ export async function performLogin(
   options: PerformLoginOptions = {},
 ): Promise<LoginActionState> {
   const parsed = loginRequestSchema.safeParse({
-    tenantSlug: formData.get('tenantSlug'),
-    email: formData.get('email'),
+    username: formData.get('username'),
     password: formData.get('password'),
   });
 
@@ -38,14 +37,13 @@ export async function performLogin(
 
   if (!res.ok) {
     const body = await res.json().catch(() => undefined);
-    return { error: body?.message ?? 'Invalid organization, email or password' };
+    return { error: body?.message ?? 'Invalid username or password' };
   }
 
   const data: LoginResponse = await res.json();
   await setSession({
     accessToken: data.accessToken,
     refreshToken: data.refreshToken,
-    tenantSlug: data.tenant.slug,
   });
 
   redirect(options.redirectTo ?? '/properties');

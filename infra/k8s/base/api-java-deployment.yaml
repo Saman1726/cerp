@@ -36,6 +36,8 @@ spec:
                   name: api-secrets
                   key: POSTGRES_PASSWORD
                   optional: true
+            - name: PARTNER_SYSTEM_URL
+              value: http://partner-system-java:3020
             - name: SPRING_FLYWAY_ENABLED
               value: 'false'
           readinessProbe:

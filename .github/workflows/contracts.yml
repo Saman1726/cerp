@@ -1,0 +1,40 @@
+name: Contracts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/core-api-java/**'
+      - 'packages/shared-types/**'
+      - 'docs/contracts/**'
+      - '.github/workflows/contracts.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/core-api-java/**'
+      - 'packages/shared-types/**'
+      - 'docs/contracts/**'
+      - '.github/workflows/contracts.yml'
+
+concurrency:
+  group: contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: generate (OpenAPI/AsyncAPI placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate API spec (placeholder)
+        run: |
+          mkdir -p contracts
+          echo '{}' > contracts/openapi.json
+          echo 'Placeholder - wire up Springdoc OpenAPI to emit to file in CI' > contracts/README.md
+
+      - name: Upload contract artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: contracts
+          path: contracts

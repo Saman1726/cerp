@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: partner-system-java
+  labels:
+    app: cerp-partner-system-java
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cerp-partner-system-java
+  template:
+    metadata:
+      labels:
+        app: cerp-partner-system-java
+    spec:
+      containers:
+        - name: partner-system-java
+          image: cerp/partner-system-java:local
+          ports:
+            - containerPort: 3020
+          env:
+            - name: PORT
+              value: '3020'
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 3020
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 3020
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false

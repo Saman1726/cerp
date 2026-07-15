@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: partner-system-java
+
+server:
+  port: ${PORT:3020}
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger
+
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO

@@ -15,11 +15,23 @@ permissions:
 
 jobs:
   build-push:
-    name: build-push (${{ matrix.app }})
+    name: build-push (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        app: [api, web]
+        include:
+          - name: web
+            context: .
+            file: apps/web/Dockerfile
+            image: ghcr.io/saman1726/cerp-web
+          - name: api-java
+            context: services/core-api-java
+            file: Dockerfile
+            image: ghcr.io/saman1726/cerp-api-java
+          - name: partner-system-java
+            context: services/partner-system-java
+            file: Dockerfile
+            image: ghcr.io/saman1726/cerp-partner-system-java
     steps:
       - uses: actions/checkout@v4
 
@@ -34,11 +46,11 @@ jobs:
       # Registry paths must be lowercase, unlike the GitHub repo path itself.
       - uses: docker/build-push-action@v6
         with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           push: true
           tags: |
-            ghcr.io/saman1726/cerp-${{ matrix.app }}:latest
-            ghcr.io/saman1726/cerp-${{ matrix.app }}:${{ github.sha }}
+            ${{ matrix.image }}:latest
+            ${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

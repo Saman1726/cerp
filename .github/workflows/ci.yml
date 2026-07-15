@@ -44,12 +44,3 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm turbo run lint typecheck build
-
-      - name: Run platform migration
-        run: pnpm --filter api run migrate:platform
-
-      - name: Run reference app e2e test (tenancy isolation)
-        run: pnpm --filter api run test:e2e
-
-      - name: Run demo overlay e2e test (tenancy isolation + all extension points)
-        run: pnpm --filter demo-overlay-api run test:e2e

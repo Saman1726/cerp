@@ -52,3 +52,6 @@ logging:
     root: INFO
     org.springframework: INFO
     org.hibernate.SQL: INFO
+
+partner-system:
+  base-url: ${PARTNER_SYSTEM_URL:http://localhost:3020}

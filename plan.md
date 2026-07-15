@@ -2,6 +2,76 @@
 
 Note: Extracted from docs/ConstructHub_Concept_vNext.md Section 21 and augmented with an initial execution plan.
 
+## Repository Strategy: Monorepo-first with clear split criteria
+
+Current state
+
+- Monorepo with pnpm workspaces (apps/_, packages/_, services/_, examples/_) and Turborepo; shared packages such as packages/shared-types and core-*; infra/k8s lives in-repo and is deployable via GitOps tools later.
+
+Principles
+
+- Monorepo now for speed and coherence; design for independent deployability of each app/service.
+- Keep shared code only in packages/*; enforce boundaries so teams don’t couple across deployables.
+
+Immediate actions (make the monorepo team-ready)
+
+- Ownership and access
+  - Add CODEOWNERS per path:
+    - apps/web/ → @team-web
+    - apps/api/ → @team-api
+    - services/core-api-java/ → @team-java
+    - services/partner-system/ → @team-partner
+    - packages/shared-types/ → @team-platform
+    - packages/core-*/ → @team-platform
+    - infra/ → @team-infra
+  - Use labels and required reviews per path; branch protections on main/default.
+- Module boundaries
+  - Shared code may only be imported from packages/* public barrels. Disallow cross-app/service imports.
+  - ESLint: add no-restricted-imports and import path aliases to force public barrels; lint failure on deep relative imports across packages.
+- CI/CD per deployable
+  - One pipeline per deployable (web, api, each service). Trigger with path filters and use Turborepo filters:
+    - Examples: pnpm turbo run lint,test,build --filter=apps/api... and similarly for apps/web, services/*.
+  - Build/test only what changed; publish artifacts per deployable; independent release cadence.
+  - Enable Turborepo remote cache (Vercel/S3/self-hosted) to speed builds/CI.
+- Versioning and publishing of shared packages
+  - Introduce Changesets; version packages/* independently and publish to an internal registry (e.g., GitHub Packages).
+  - Consumers depend via semver ranges; keep workspace linking for local dev until split is needed.
+- Contract-first interfaces
+  - Maintain OpenAPI/AsyncAPI specs; generate SDKs for TypeScript/Java; keep DTOs minimal and stable to reduce churn.
+
+Split triggers (when to move to multiple repos)
+
+- 3+ independent teams that need truly independent release cadence with minimal cross-repo coordination.
+- Security/compliance or vendor constraints requiring strict repo-level access isolation or open-sourcing a subset.
+- Tooling divergence (e.g., heavy Java/Gradle flows vs Node) that makes shared CI/pipelines unwieldy.
+- CI friction that remains high even with affected-only builds and remote caching.
+- Distribution needs: public packages or external consumption that benefits from standalone repos.
+
+Suggested repo boundaries (if/when splitting)
+
+- cerp-web: apps/web + packages/core-web
+- cerp-api: apps/api + packages/core-api
+- cerp-services-core-api-java: services/core-api-java
+- cerp-services-partner-system: services/partner-system
+- cerp-infra: infra/k8s (dedicated GitOps repo for Argo/Flux)
+- cerp-platform (optional): packages/shared-types, packages/eslint-config, packages/typescript-config
+- cerp-examples: examples/demo-overlay
+
+Incremental migration plan (to execute when triggers are met)
+
+1. Prepare shared artifacts
+   - Add Changesets; start publishing packages/* to the registry.
+   - Replace workspace:* with ^x.y.z semver ranges in apps/services for packages/shared-types and core-*.
+2. Isolate infra
+   - Move infra/k8s to a cerp-infra GitOps repo watched by Argo/Flux; deploy via image tags/automation.
+3. Carve out services/apps
+   - Use git filter-repo (or subtree) to split with history per path; set up per-repo CI (lint/typecheck/test/build, container build, SBOM, scan, deploy).
+   - Repoint imports to semver packages; ensure each repo builds from clean clone.
+4. Harden CI/CD and releases
+   - Require status checks; sign images, add provenance; tag releases; keep independent versioning.
+5. Decommission workspace links
+   - Validate contract tests across repos; ensure compatible API/SDK versions and events.
+
 ## 21. Phase 1 Implementation – Separated Services
 
 Overview
@@ -192,6 +262,18 @@ Roadmap Linkage
 - Sets foundation for Phase 2 additions (Vendors, Materials, Procurement, Inventory, Marketplace primitives) without changing Phase 1 contracts. New services will subscribe to identity/project events and emit their own domains without retrofitting Phase 1 boundaries.
 
 ---
+
+## Repository and Governance Tasks (Phase 0)
+
+- [ ] Add CODEOWNERS with path ownership for apps/, services/, packages/, infra/ and configure labels + required reviews.
+- [ ] Add ESLint rules to enforce import boundaries and public API barrels for packages/*; prohibit cross-app/service imports.
+- [ ] Introduce Changesets; configure publishing of packages/* to an internal registry (GitHub Packages or alternative).
+- [ ] Configure Turborepo remote cache (Vercel/S3/self-hosted) and enable affected-only pipelines in CI using --filter.
+- [ ] Create per-deployable CI pipelines (web, api, each service) with path-based triggers; artifacts and releases per deployable.
+- [ ] Establish OpenAPI/AsyncAPI generation in CI; publish versioned SDKs; add consumer-driven contract tests between services and clients.
+- [ ] Prepare infra for GitOps split (cerp-infra repo plan, image automation, environment overlays).
+- [ ] Plan transition from workspace:* to semver ranges for packages/shared-types and core-* once publishing is enabled.
+- [ ] Add CONTRIBUTING.md covering boundaries, release/versioning, and ownership runbooks.
 
 ## Initial Execution Checklist (to start planning)
 
