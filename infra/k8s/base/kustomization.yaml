@@ -6,6 +6,8 @@ resources:
   - api-java-service.yaml
   - partner-system-java-deployment.yaml
   - partner-system-java-service.yaml
+  - identity-service-java-deployment.yaml
+  - identity-service-java-service.yaml
   - web-deployment.yaml
   - web-service.yaml
   - ingress.yaml

@@ -47,6 +47,27 @@ services:
     ports:
       - '8080:8080'
 
+  identity-service-java:
+    build:
+      context: services/identity-service-java
+      dockerfile: Dockerfile
+    container_name: cerp-identity-service-java
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8090
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_USERNAME: ${POSTGRES_USER:-cerp}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      OIDC_ISSUER_URI: http://keycloak:8081/realms/master
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_EVENTS_ENABLED: "false"
+    ports:
+      - '8090:8090'
+    profiles:
+      - platform
+
   web:
     build:
       context: .

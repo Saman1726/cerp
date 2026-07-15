@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service-java
+  labels:
+    app: cerp-identity-service-java
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cerp-identity-service-java
+  template:
+    metadata:
+      labels:
+        app: cerp-identity-service-java
+    spec:
+      containers:
+        - name: identity-service-java
+          image: cerp/identity-service-java:local
+          ports:
+            - containerPort: 8090
+          env:
+            - name: PORT
+              value: '8090'
+            - name: DB_URL
+              value: jdbc:postgresql://postgres:5432/cerp
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: POSTGRES_USER
+                  optional: true
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: POSTGRES_PASSWORD
+                  optional: true
+            - name: OIDC_ISSUER_URI
+              value: http://keycloak:8081/realms/master
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: APP_EVENTS_ENABLED
+              value: 'false'
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8090
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
