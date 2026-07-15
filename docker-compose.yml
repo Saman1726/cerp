@@ -62,7 +62,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       OIDC_ISSUER_URI: http://keycloak:8081/realms/master
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      APP_EVENTS_ENABLED: "false"
+      APP_EVENTS_ENABLED: "true"
     ports:
       - '8090:8090'
     profiles:

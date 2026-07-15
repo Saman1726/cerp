@@ -7,13 +7,15 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import io.cerp.identity.security.TenantRequestFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, TenantRequestFilter tenantRequestFilter) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
@@ -27,6 +29,7 @@ public class SecurityConfig {
                 .anyRequest().authenticated())
             // Validate JWTs issued by Keycloak via issuer-uri configured in application.yml
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+        http.addFilterAfter(tenantRequestFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
