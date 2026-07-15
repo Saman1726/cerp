@@ -23,6 +23,8 @@ public class SecurityConfig {
                 // public endpoints for core-api used by web/other services
                 .requestMatchers(HttpMethod.GET, "/partners/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/partner-login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/refresh").permitAll()
+                .requestMatchers(HttpMethod.GET, "/properties/**", "/work-orders/**", "/purchase-orders/**").permitAll()
                 // everything else requires auth (keeps a sane default)
                 .anyRequest().authenticated())
             .httpBasic(Customizer.withDefaults());

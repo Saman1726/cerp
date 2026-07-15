@@ -1,4 +1,6 @@
 /Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/CoreApiApplication.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/auth/AuthController.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/config/SecurityConfig.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/construction/ConstructionEngineeringController.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/partyregistry/PartnerAuthController.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/partyregistry/PartnerLoginRequest.java
