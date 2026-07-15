@@ -24,6 +24,13 @@
     "build": "tsc --noEmit",
     "test": "echo \"no tests yet\""
   },
+  "turbo": {
+    "tasks": {
+      "build": {
+        "outputs": []
+      }
+    }
+  },
   "peerDependencies": {
     "next": "^16",
     "react": "^19",

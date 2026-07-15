@@ -10,6 +10,13 @@
     "build": "tsc --noEmit",
     "test": "echo \"no tests yet\""
   },
+  "turbo": {
+    "tasks": {
+      "build": {
+        "outputs": []
+      }
+    }
+  },
   "devDependencies": {
     "@cerp/eslint-config": "workspace:*",
     "@cerp/typescript-config": "workspace:*",

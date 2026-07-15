@@ -1,8 +1,0 @@
-{
-  "extends": "@cerp/typescript-config/nestjs.json",
-  "compilerOptions": {
-    "baseUrl": "./"
-  },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist"]
-}

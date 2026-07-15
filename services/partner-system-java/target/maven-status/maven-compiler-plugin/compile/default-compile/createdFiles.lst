@@ -1,0 +1,11 @@
+io/cerp/partner/PartnerSystemApplication.class
+io/cerp/partner/partners/PartnersController.class
+io/cerp/partner/partners/PartyRegistryEntry.class
+io/cerp/partner/HealthController.class
+io/cerp/partner/partners/PartnersService.class
+io/cerp/partner/auth/PartnerUser.class
+io/cerp/partner/auth/PartnerLoginRequest.class
+io/cerp/partner/auth/AuthService.class
+io/cerp/partner/auth/AuthController.class
+io/cerp/partner/auth/Partner.class
+io/cerp/partner/auth/PartnerLoginResult.class

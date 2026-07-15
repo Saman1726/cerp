@@ -1,0 +1,50 @@
+name: Release (Changesets)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  version_or_publish:
+    name: Version or Publish Packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # This action will:
+      # - Create or update a "Version Packages" PR when there are pending changesets
+      # - On push to main with a merged version commit, it will run the publish command
+      - name: Create Release PR or Publish
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm -w changeset publish
+          title: Version Packages
+          commit: 'ci(changesets): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: set NPM_TOKEN to publish to npmjs. If omitted and all packages are private,
+          # publish step will effectively be a no-op.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

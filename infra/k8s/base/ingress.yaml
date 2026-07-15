@@ -18,9 +18,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: api
+                name: api-java
                 port:
-                  number: 80
+                  number: 8080
     - host: app.cerp.example.com
       http:
         paths:

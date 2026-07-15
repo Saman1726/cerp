@@ -2,6 +2,8 @@
 
 ERP SaaS for the Properties & Construction industry. Multi-tenant, built to run in Kubernetes.
 
+Migration note: Backend services now default to Java (Spring Boot). The previous Node.js backends are available under a "legacy" profile for optional local use and manual CI. See docs/java-backend-migration.md for details.
+
 The project is split into two parts:
 
 - **Core** (`packages/core-api`, `packages/core-web`) — the reusable ERP engine: tenancy, auth,
@@ -26,12 +28,12 @@ core modules following the same pattern.
 - **ORM:** TypeORM, chosen specifically for its support for per-request dynamic `search_path` binding (see `TenancyService`), which Prisma/Drizzle don't support well for this shape of multi-tenancy.
 - **Extension points** (how a customer overlay customizes core without forking it): DI-token overrides for business rules (`CorePropertiesModule.forRoot({ validatorClass })`), `@nestjs/event-emitter` hooks for side effects (`property.created`), satellite tables (FK back to a core entity's `id`) for extra fields, a render-prop `extraFields` slot on core's form components, and a `BrandingConfig` passed into core's `<AppShell>`. Full detail in `docs/creating-a-new-overlay.md`.
 
-| Layer | Tech |
-|---|---|
-| Backend | NestJS + TypeScript, TypeORM, PostgreSQL |
-| Frontend | Next.js (App Router) + React |
-| Infra | Docker, Kubernetes (Kustomize) |
-| CI | GitHub Actions |
+| Layer    | Tech                                                                  |
+| -------- | --------------------------------------------------------------------- |
+| Backend  | Java (Spring Boot), PostgreSQL • legacy: NestJS + TypeScript, TypeORM |
+| Frontend | Next.js (App Router) + React                                          |
+| Infra    | Docker, Kubernetes (Kustomize)                                        |
+| CI       | GitHub Actions                                                        |
 
 ## Local development
 
@@ -55,6 +57,17 @@ Or run the whole stack (postgres + api + web, hot-reloading) via:
 ```bash
 docker compose up --build
 ```
+
+Optional: platform baseline services (Keycloak, Kafka, Schema Registry, MinIO) for integration testing:
+
+```bash
+docker compose --profile platform up -d
+```
+
+- Keycloak: http://localhost:8081
+- Kafka: localhost:9092 (broker), Zookeeper: 2181
+- Schema Registry: http://localhost:8082
+- MinIO: http://localhost:9001 (console), http://localhost:9000 (S3)
 
 Log in at `/login` with the tenant slug, email and password from the `tenant:provision` step above.
 
@@ -99,7 +112,15 @@ pnpm --filter api run test:e2e              # tenancy isolation - two tenants, a
 pnpm --filter demo-overlay-api run test:e2e # isolation again (with the custom validator active) + all 3 extension points
 ```
 
-`.github/workflows/ci.yml` runs the same lint/typecheck/build plus both e2e suites against a real Postgres service container on every push/PR to `main`. `.github/workflows/docker-build.yml` builds and pushes the reference apps' images to GHCR on merge to `main`.
+CI is split by deployable unit and contracts:
+
+- .github/workflows/api-ci.yml — lint/typecheck/build for API, spins up Postgres, runs platform migration and e2e tests
+- .github/workflows/web-ci.yml — lint/typecheck/build for Web
+- .github/workflows/partner-system-ci.yml — lint/typecheck/build for Partner System, spins up Postgres, runs migrations and tests
+- .github/workflows/contracts.yml — placeholder for OpenAPI/AsyncAPI generation and artifact upload
+- .github/workflows/docker-build.yml — builds and pushes API and Web images to GHCR on merge to main
+
+Remote caching for Turborepo in CI can be enabled by setting TURBO_TOKEN (secret) and TURBO_TEAM (org/team slug).
 
 ## Deployment
 

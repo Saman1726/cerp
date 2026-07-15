@@ -12,6 +12,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
-    "declaration": false
+    "declaration": false,
+    "ignoreDeprecations": "5.0"
   }
 }
