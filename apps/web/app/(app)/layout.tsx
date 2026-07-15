@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppShell branding={branding} navItems={navItems} tenantSlug={session.tenantSlug} logoutAction={logout}>
+    <AppShell branding={branding} navItems={navItems} logoutAction={logout}>
       {children}
     </AppShell>
   );

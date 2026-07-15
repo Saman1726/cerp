@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { LoginResponse } from '@cerp/shared-types';
 import { API_URL } from '../lib/env';
-import { SESSION_COOKIE, REFRESH_COOKIE, TENANT_COOKIE, sessionCookieOptions } from '../lib/session-cookies';
+import { SESSION_COOKIE, REFRESH_COOKIE, sessionCookieOptions } from '../lib/session-cookies';
 
 export interface CreateAuthProxyOptions {
   authenticatedPrefixes: string[];
@@ -30,11 +30,11 @@ function decodeJwtExpiryMs(token: string): number | null {
   }
 }
 
-async function tryRefresh(tenantSlug: string, refreshToken: string): Promise<LoginResponse | null> {
+async function tryRefresh(refreshToken: string): Promise<LoginResponse | null> {
   try {
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Tenant-Id': tenantSlug },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
       cache: 'no-store',
     });
@@ -49,7 +49,6 @@ function redirectToLogin(request: NextRequest, loginPath: string): NextResponse 
   const response = NextResponse.redirect(new URL(loginPath, request.url));
   response.cookies.delete(SESSION_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
-  response.cookies.delete(TENANT_COOKIE);
   return response;
 }
 
@@ -73,8 +72,7 @@ export function createAuthProxy(options: CreateAuthProxyOptions) {
     const { pathname } = request.nextUrl;
     const accessToken = request.cookies.get(SESSION_COOKIE)?.value;
     const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
-    const tenantSlug = request.cookies.get(TENANT_COOKIE)?.value;
-    const hasSession = Boolean(accessToken && refreshToken && tenantSlug);
+    const hasSession = Boolean(accessToken && refreshToken);
 
     const isAuthenticatedRoute = options.authenticatedPrefixes.some((prefix) => pathname.startsWith(prefix));
 
@@ -86,12 +84,12 @@ export function createAuthProxy(options: CreateAuthProxyOptions) {
       return NextResponse.redirect(new URL(postLoginRedirect, request.url));
     }
 
-    if (isAuthenticatedRoute && accessToken && refreshToken && tenantSlug) {
+    if (isAuthenticatedRoute && accessToken && refreshToken) {
       const expiresAtMs = decodeJwtExpiryMs(accessToken);
       const isExpiring = expiresAtMs === null || expiresAtMs - Date.now() < REFRESH_SKEW_MS;
 
       if (isExpiring) {
-        const refreshed = await tryRefresh(tenantSlug, refreshToken);
+        const refreshed = await tryRefresh(refreshToken);
         if (!refreshed) {
           return redirectToLogin(request, loginPath);
         }
@@ -99,7 +97,6 @@ export function createAuthProxy(options: CreateAuthProxyOptions) {
         const response = NextResponse.next();
         response.cookies.set(SESSION_COOKIE, refreshed.accessToken, sessionCookieOptions);
         response.cookies.set(REFRESH_COOKIE, refreshed.refreshToken, sessionCookieOptions);
-        response.cookies.set(TENANT_COOKIE, refreshed.tenant.slug, sessionCookieOptions);
         return response;
       }
     }

@@ -8,7 +8,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">cerp</CardTitle>
-          <CardDescription>Sign in to your organization</CardDescription>
+          <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
           <LoginForm action={loginAction} />
