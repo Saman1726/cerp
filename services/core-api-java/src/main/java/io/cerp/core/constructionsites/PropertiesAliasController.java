@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.annotation.Profile;
 
 import java.util.List;
 
@@ -12,6 +13,7 @@ import java.util.List;
  * Temporary compatibility alias to support existing frontend that calls /properties. Delegates to ConstructionSitesService and maps to a minimal Property shape: id,
  * name, address, createdAt, updatedAt. This should be removed after the frontend migrates to /construction-sites and richer domain types.
  */
+@Profile("dev")
 @RestController
 @RequestMapping("/properties")
 class PropertiesAliasController {

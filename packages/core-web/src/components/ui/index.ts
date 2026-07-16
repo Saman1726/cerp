@@ -7,3 +7,4 @@ export * from './avatar';
 export * from './dropdown-menu';
 export * from './separator';
 export * from './badge';
+export * from './modal';
