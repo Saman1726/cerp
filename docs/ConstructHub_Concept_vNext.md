@@ -1294,3 +1294,584 @@ Migration plan (incremental)
    - Require status checks; sign images and add provenance; tag releases; maintain independent versioning.
 5. Decommission workspace links
    - Validate contract tests across repos; ensure compatible API/SDK versions and event schemas.
+
+## 23. Construction Workflows
+
+Design goal
+
+- Make construction workflows a first-class, database-backed “main information” under the Collaboration → Workflow & Approvals bounded context.
+- Store configurable Workflow Templates per construction phase (e.g., Foundation, Superstructure, MEP Rough-In).
+- Instantiate per-SubProject Workflows from templates. Each Project corresponds to one Construction Site; each SubProject corresponds to one Building within that site and has its own independent set of workflows derived from templates.
+
+Key concepts
+
+- WorkflowTemplate
+  - Purpose: Canonical definition for a construction phase workflow used to instantiate Workflows.
+  - Fields: id (UUIDv7), tenantId, code (e.g., FOUNDATION), name, description, version, phaseType, parameters schema (JSON Schema), defaultSLA (optional), defaultSteps (ordered array of StepTemplate), requiredDocuments (codes), createdAt, updatedAt, status (Draft, Active, Deprecated).
+- StepTemplate
+  - Fields: id, templateId, order, code, name, type (task|inspection|approval|milestone), assigneeRole(s), requiresEvidence (bool), requiresApproval (bool), dueOffsetDays (relative to previous step or workflow start), slaHours (optional), checklists (array), gatingCondition (optional expr).
+- Workflow (Instance)
+  - Purpose: Runtime workflow for a specific SubProject (building).
+  - Fields: id (UUIDv7), tenantId, projectId, subProjectId, templateId, templateVersion, code (derived, e.g., SUBP-001-FOUNDATION), name, description, attributes below, createdAt, createdBy, updatedAt.
+  - Core attributes (as requested):
+    - creationDate, startDate, endDate, dueDate, deliveryDate
+    - progressPercent (0–100)
+    - status (Planned, InProgress, Blocked, OnHold, Completed, Approved, Rejected, Canceled)
+    - relatedNotes (free-text log entries linked separately)
+    - description
+    - nextStep (computed; reference to current pending step)
+    - whoHasDone (actor for latest completion; userId)
+    - whoHasApproved (actor for latest approval; userId)
+- WorkflowStep (Instance)
+  - Fields: id, workflowId, templateStepId, order, code, name, status (NotStarted, InProgress, Blocked, Completed, Approved, Rejected), assigneeUserId?, assigneeRole?, dueAt, startedAt, completedAt, approvedAt, approvedBy?, evidence (array of document links), notes (text).
+- WorkflowNote
+  - Fields: id, workflowId, stepId?, authorId, note, createdAt, type (general|risk|issue|decision).
+
+Relationships and scoping
+
+- Templates are tenant-scoped and reusable across Projects.
+- Workflows are scoped to SubProjects (one building); they may optionally reference Project for reporting.
+- Evidence links use DMS (Document Management Service) entityRef model.
+
+Status model and transitions
+
+- WorkflowTemplate: Draft → Active → Deprecated; cloning increments version.
+- Workflow instance: Planned → InProgress → (Blocked|OnHold)? → Completed → Approved/Rejected. Canceled allowed from Planned/InProgress with justification.
+- Step instance: NotStarted → InProgress → Completed → (Approved|Rejected if requiresApproval). Blocked allowed from InProgress.
+
+Progress calculation
+
+- Default: progressPercent = (completedWeightedSteps / totalWeightedSteps) * 100. Weight defaults to 1 per step; templates may override weights.
+- Manual override: allowed for special workflows; changes emit WorkflowProgressUpdated event with actor and rationale.
+
+APIs (Workflow Service)
+
+- Templates
+  - POST /workflow-templates
+  - GET /workflow-templates?status=Active
+  - GET /workflow-templates/:id
+  - PATCH /workflow-templates/:id (Draft only)
+  - POST /workflow-templates/:id/activate, POST /workflow-templates/:id/deprecate
+- Instances
+  - POST /workflows { tenantId, projectId, subProjectId, templateId, params } → instantiate steps with dueAt computed via dueOffsetDays
+  - GET /workflows?projectId=&subProjectId=&status=
+  - GET /workflows/:id
+  - PATCH /workflows/:id { startDate|dueDate|description|assignee changes|manual progress }
+  - POST /workflows/:id/steps/:stepId/start
+  - POST /workflows/:id/steps/:stepId/complete { evidence[], note? }
+  - POST /workflows/:id/steps/:stepId/approve { note? }
+  - POST /workflows/:id/block { reason }, POST /workflows/:id/unblock
+  - POST /workflows/:id/cancel { reason }
+  - POST /workflows/:id/notes { note, type }
+- Query/Reporting (Projections)
+  - GET /reports/subprojects/:subProjectId/workflows-overview → counts by status, next deadlines, risks.
+  - GET /reports/workflows/:id/timeline → steps with timestamps and approvals.
+
+Domain events (Kafka, collaboration.workflow.v1)
+
+- WorkflowTemplateCreated, WorkflowTemplateActivated, WorkflowTemplateDeprecated
+- WorkflowInstantiated, WorkflowStarted, WorkflowBlocked, WorkflowUnblocked, WorkflowCanceled
+- WorkflowStepStarted, WorkflowStepCompleted, WorkflowStepApproved, WorkflowStepRejected
+- WorkflowProgressUpdated, WorkflowStatusChanged, WorkflowNoteAdded
+
+PostgreSQL schema (indicative)
+
+```sql
+-- Templates
+create table workflow_templates (
+  id uuid primary key,
+  tenant_id uuid not null,
+  code text not null,
+  name text not null,
+  description text,
+  phase_type text not null,
+  version int not null default 1,
+  parameters_schema jsonb,
+  default_sla jsonb,
+  required_documents text[] default '{}',
+  status text not null check (status in ('Draft','Active','Deprecated')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (tenant_id, code, version)
+);
+
+create table workflow_template_steps (
+  id uuid primary key,
+  template_id uuid not null references workflow_templates(id) on delete cascade,
+  step_order int not null,
+  code text not null,
+  name text not null,
+  type text not null check (type in ('task','inspection','approval','milestone')),
+  assignee_roles text[] default '{}',
+  requires_evidence boolean not null default false,
+  requires_approval boolean not null default false,
+  due_offset_days int,
+  sla_hours int,
+  weight numeric(5,2) default 1.0,
+  checklists jsonb,
+  gating_condition jsonb
+);
+
+-- Instances
+create table workflows (
+  id uuid primary key,
+  tenant_id uuid not null,
+  project_id uuid not null,
+  subproject_id uuid not null,
+  template_id uuid not null references workflow_templates(id),
+  template_version int not null,
+  code text not null,
+  name text not null,
+  description text,
+  creation_date date not null default current_date,
+  start_date date,
+  end_date date,
+  due_date date,
+  delivery_date date,
+  progress_percent numeric(5,2) not null default 0,
+  status text not null check (status in ('Planned','InProgress','Blocked','OnHold','Completed','Approved','Rejected','Canceled')),
+  next_step uuid,
+  who_has_done uuid,
+  who_has_approved uuid,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_workflows_scope on workflows(tenant_id, project_id, subproject_id);
+create index idx_workflows_status on workflows(tenant_id, status);
+
+create table workflow_steps (
+  id uuid primary key,
+  workflow_id uuid not null references workflows(id) on delete cascade,
+  template_step_id uuid,
+  step_order int not null,
+  code text not null,
+  name text not null,
+  status text not null check (status in ('NotStarted','InProgress','Blocked','Completed','Approved','Rejected')),
+  assignee_user_id uuid,
+  assignee_role text,
+  due_at timestamptz,
+  started_at timestamptz,
+  completed_at timestamptz,
+  approved_at timestamptz,
+  approved_by uuid,
+  evidence jsonb,
+  notes text
+);
+
+create index idx_wf_steps_workflow on workflow_steps(workflow_id, step_order);
+
+create table workflow_notes (
+  id uuid primary key,
+  workflow_id uuid not null references workflows(id) on delete cascade,
+  step_id uuid references workflow_steps(id) on delete set null,
+  author_id uuid not null,
+  note text not null,
+  type text not null check (type in ('general','risk','issue','decision')),
+  created_at timestamptz not null default now()
+);
+```
+
+Seeding plan (templates as “main information”)
+
+- Seed a standard catalog of templates with codes for discoverability and evolution by version. Admins may copy-and-edit per tenant if needed.
+- Template codes (suggested):
+  - PRE_CONSTRUCTION, SITE_PREP, FOUNDATION, BASEMENT, SUPERSTRUCTURE, ROOF, BUILDING_ENVELOPE,
+    INTERIOR_PARTITIONS, MEP_ROUGHIN, INTERIOR_FINISH, EXTERIOR_WORKS, TESTING_COMMISSIONING,
+    QUALITY_ASSURANCE, SAFETY_MANAGEMENT, PROCUREMENT, EQUIPMENT_MANAGEMENT, WORKFORCE_MANAGEMENT,
+    SUBCONTRACTOR_MANAGEMENT, PROGRESS_MONITORING, COST_CONTROL, SNAGGING, HANDOVER, FACILITY_MANAGEMENT
+- Parameterization examples:
+  - SUPERSTRUCTURE: floors (int), repeatedFloorSteps: true → engine expands floor-scoped steps (columns, beams, slab, conduits, plumbing rough-in, pour, curing, formwork removal, inspection) per floor.
+  - PROCUREMENT: continuous workflow flag (true) with cyclical steps permitted.
+  - QA/Safety: “runsAcrossPhases”: true; can be instantiated once per SubProject and linked to other workflows’ steps via references.
+
+Example JSON template (Foundation)
+
+```json
+{
+  "code": "FOUNDATION",
+  "name": "Foundation Workflow",
+  "phaseType": "FOUNDATION",
+  "version": 1,
+  "description": "Excavation to structural approval for foundation works.",
+  "parametersSchema": {
+    "type": "object",
+    "properties": {
+      "waterproofingRequired": { "type": "boolean", "default": true }
+    }
+  },
+  "defaultSteps": [
+    {
+      "order": 1,
+      "code": "EXCAVATION_VERIFY",
+      "name": "Excavation verification",
+      "type": "inspection",
+      "assigneeRoles": ["Site Engineer"],
+      "requiresEvidence": true
+    },
+    {
+      "order": 2,
+      "code": "REBAR_INSTALL",
+      "name": "Rebar installation",
+      "type": "task",
+      "assigneeRoles": ["Steel Crew Lead"],
+      "requiresEvidence": true
+    },
+    {
+      "order": 3,
+      "code": "FORMWORK",
+      "name": "Formwork",
+      "type": "task",
+      "assigneeRoles": ["Formwork Lead"]
+    },
+    {
+      "order": 4,
+      "code": "UG_UTILS",
+      "name": "Underground utilities",
+      "type": "task",
+      "assigneeRoles": ["MEP Lead"]
+    },
+    {
+      "order": 5,
+      "code": "CONCRETE_POUR",
+      "name": "Foundation concrete pour",
+      "type": "milestone",
+      "assigneeRoles": ["Concrete Lead"],
+      "requiresEvidence": true
+    },
+    {
+      "order": 6,
+      "code": "CURING",
+      "name": "Curing",
+      "type": "task",
+      "assigneeRoles": ["Site Engineer"]
+    },
+    {
+      "order": 7,
+      "code": "WATERPROOF",
+      "name": "Waterproofing",
+      "type": "task",
+      "assigneeRoles": ["Waterproofing Lead"]
+    },
+    {
+      "order": 8,
+      "code": "FOUNDATION_INSPECTION",
+      "name": "Foundation inspection",
+      "type": "inspection",
+      "assigneeRoles": ["QA Inspector"],
+      "requiresEvidence": true,
+      "requiresApproval": true
+    },
+    {
+      "order": 9,
+      "code": "STRUCT_APPROVAL",
+      "name": "Structural approval",
+      "type": "approval",
+      "assigneeRoles": ["Structural Engineer"],
+      "requiresApproval": true
+    }
+  ],
+  "requiredDocuments": ["METHOD_STATEMENT", "MIX_DESIGN", "INSPECTION_REPORT"]
+}
+```
+
+Integration with Projects/SubProjects
+
+- Project Service: Use existing Project and SubProject constructs (Section 21). Workflow instances require projectId and subProjectId; authorization is scoped accordingly.
+- DMS: Step evidence is stored via presigned uploads, linked by entityRef to workflowStep.
+- Notifications: SLADeadlineBreached and step assignments emit NotificationSent with assignees from roles/users.
+- Reporting: Projections compute per-SubProject progress rollups, upcoming due items, blocked steps, and SLA breaches.
+
+KPI hooks and SLAs
+
+- Per template default SLAs populate step due dates; breaches emit SLADeadlineBreached (collaboration.workflow.v1) consumed by notification engine.
+- Progress contributes to Section 3 KPIs (e.g., schedule variance); projections expose progress_percent over time for analytics.
+
+Security and multi-tenancy
+
+- RLS by tenant_id; role-based access (PM, Site Engineer, QA, etc.) at workflow/step level.
+- Auditability: All commands emit events; Audit service captures envelopes/payloads for traceability.
+
+Next: Projects and SubProjects
+
+- Already defined in Section 21. For implementation, wire POST /workflows to resolve subProject existence and enforce membership via Identity & Access.
+- Seed initial templates during environment bootstrap (Dev: Docker Compose seed; Prod: migration scripts + admin UI).
+
+Instead of one huge workflow, each major construction phase should have its own workflow because every phase involves different teams, documents, inspections, and approvals.
+
+1. Pre-Construction Workflow:
+
+Land acquisition
+Site survey
+Geotechnical investigation
+Feasibility study
+Budget estimation
+Design preparation
+Structural calculations
+MEP design
+Permit applications
+Contractor selection
+Procurement planning
+Construction schedule approval
+
+2. Site Preparation Workflow:
+
+Site fencing
+Temporary utilities
+Site office setup
+Safety signage
+Demolition (if required)
+Clearing vegetation
+Earthwork
+Excavation
+Soil compaction
+Site inspection
+Approval to start foundation
+
+3. Foundation Workflow:
+
+Excavation verification
+Rebar installation
+Formwork
+Underground utilities
+Foundation concrete pour
+Curing
+Waterproofing
+Foundation inspection
+Structural approval
+
+4. Basement Workflow:
+
+Basement walls
+Columns
+Waterproofing
+Drainage
+Slab construction
+Mechanical room construction
+Inspection
+
+5. Superstructure (Frame) Workflow:
+   For every floor:
+
+Columns
+Beams
+Slab reinforcement
+Electrical conduits
+Plumbing rough-in
+Concrete pour
+Curing
+Formwork removal
+Structural inspection
+
+Repeat until last floor.
+
+6. Roof Workflow:
+
+Roof structure
+Waterproof membrane
+Insulation
+Drain installation
+Roof concrete
+Roof equipment bases
+Inspection
+
+7. Building Envelope Workflow:
+
+Exterior walls
+Brickwork
+Blockwork
+Curtain walls
+Windows
+Exterior doors
+Facade insulation
+Exterior painting
+Facade inspection
+
+8. Interior Partitions Workflow:
+
+Wall framing
+Drywall
+Masonry partitions
+Door frames
+Ceiling framing
+Inspection
+
+9. MEP Rough-In Workflow:
+   Electrical
+   Main panel
+   Cable trays
+   Wiring
+   Switch boxes
+   Grounding
+   Plumbing
+   Water supply
+   Drainage
+   Vent pipes
+   Pressure testing
+   HVAC
+   Duct installation
+   Chillers
+   AHU installation
+   Pipe insulation
+   Ventilation
+   Fire Fighting
+   Sprinklers
+   Fire pumps
+   Fire cabinets
+   Fire alarm wiring
+
+Inspection after each.
+
+10. Interior Finishing Workflow:
+
+Plaster
+Putty
+Painting
+Flooring
+Tiles
+Ceiling installation
+Interior doors
+Kitchen installation
+Bathroom fixtures
+Stair finishing
+Elevator installation
+
+11. Exterior Works Workflow:
+
+Roads
+Sidewalks
+Parking
+Landscaping
+Irrigation
+Outdoor lighting
+Boundary wall
+Gates
+Drainage
+
+12. Testing & Commissioning Workflow:
+
+Electrical testing
+Plumbing testing
+HVAC balancing
+Fire system testing
+Elevator certification
+Generator testing
+UPS testing
+Building automation testing
+Network testing
+Final inspections
+
+13. Quality Assurance Workflow:
+    (Runs throughout construction)
+
+Material approval
+Material inspection
+Site inspection
+NCR management
+Corrective actions
+Quality approval
+
+14. Safety Management Workflow:
+    (Runs throughout construction.)
+
+Daily toolbox meeting
+Safety inspection
+PPE verification
+Incident reporting
+Hazard correction
+Safety audit
+
+15. Procurement Workflow:
+    (Runs continuously.)
+
+Material request
+RFQ
+Vendor quotation
+Technical approval
+Purchase order
+Delivery
+Warehouse receiving
+Material inspection
+Inventory update
+
+16. Equipment Management Workflow:
+
+Equipment request
+Allocation
+Delivery
+Inspection
+Usage
+Maintenance
+Return
+
+17. Workforce Management Workflow:
+
+Worker assignment
+Attendance
+Daily report
+Timesheet
+Productivity
+Payroll approval
+
+18. Subcontractor Management Workflow:
+
+Contract award
+Work order
+Mobilization
+Progress reporting
+Inspection
+Payment application
+Retention
+Completion
+
+19. Progress Monitoring Workflow:
+    (Runs weekly/monthly.)
+
+Daily progress
+Weekly progress
+Schedule comparison
+Delay analysis
+Recovery plan
+Owner approval
+
+20. Cost Control Workflow:
+
+Budget allocation
+Cost recording
+Change orders
+Variation orders
+Invoice approval
+Payment certificate
+Cost report
+
+21. Snagging / Punch List Workflow:
+
+Walkthrough
+Issue identification
+Assign contractor
+Fix issue
+Re-inspection
+Close issue
+
+22. Handover Workflow:
+
+Final cleaning
+As-built drawings
+O&M manuals
+Warranty documents
+Final inspection
+Occupancy permit
+Client training
+Client acceptance
+Building handover
+
+23. Facility Management (Post-Handover) Workflow:
+
+Warranty tracking
+Preventive maintenance
+Corrective maintenance
+Asset management
+Service requests
+Building inspections
+Renovation projects

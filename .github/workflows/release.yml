@@ -1,50 +1,50 @@
-name: Release (Changesets)
+name: Changesets Versioning
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: write
-  pull-requests: write
-  packages: write
+  cancel-in-progress: false
 
 jobs:
-  version_or_publish:
-    name: Version or Publish Packages
+  version:
+    name: Create/Update Release PR (Changesets)
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
         with:
-          node-version-file: '.nvmrc'
+          version: 11.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
           cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      # This action will:
-      # - Create or update a "Version Packages" PR when there are pending changesets
-      # - On push to main with a merged version commit, it will run the publish command
-      - name: Create Release PR or Publish
+      # Run Changesets in "version only" mode:
+      # - If there are pending changesets, this creates/updates a Release PR with bumped versions and changelogs.
+      # - When merged, this will not attempt to publish (no registry configured yet).
+      - name: Changesets - Create/Update Release PR
         uses: changesets/action@v1
         with:
-          version: pnpm changeset version
-          publish: pnpm -w changeset publish
-          title: Version Packages
-          commit: 'ci(changesets): version packages'
+          version: pnpm version-packages
+          # Note: no "publish" command provided intentionally to avoid publishing until registry is configured.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: set NPM_TOKEN to publish to npmjs. If omitted and all packages are private,
-          # publish step will effectively be a no-op.
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

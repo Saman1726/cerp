@@ -1,0 +1,187 @@
+name: Java Services CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - '.github/workflows/ci-java.yml'
+  pull_request:
+    paths:
+      - 'services/**'
+      - '.github/workflows/ci-java.yml'
+
+concurrency:
+  group: java-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      core_api: ${{ steps.filter.outputs.core_api }}
+      partner: ${{ steps.filter.outputs.partner }}
+      procurement: ${{ steps.filter.outputs.procurement }}
+      vendor: ${{ steps.filter.outputs.vendor }}
+      catalog: ${{ steps.filter.outputs.catalog }}
+      identity: ${{ steps.filter.outputs.identity }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Paths filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            core_api:
+              - 'services/core-api-java/**'
+            partner:
+              - 'services/partner-system-java/**'
+            procurement:
+              - 'services/procurement-service-java/**'
+            vendor:
+              - 'services/vendor-service-java/**'
+            catalog:
+              - 'services/catalog-service-java/**'
+            identity:
+              - 'services/identity-service-java/**'
+            gateway:
+              - 'services/api-gateway-java/**'
+
+  build-core-api:
+    name: Build services/core-api-java
+    needs: changes
+    if: needs.changes.outputs.core_api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/core-api-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-partner-system:
+    name: Build services/partner-system-java
+    needs: changes
+    if: needs.changes.outputs.partner == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/partner-system-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-procurement:
+    name: Build services/procurement-service-java
+    needs: changes
+    if: needs.changes.outputs.procurement == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/procurement-service-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-vendor:
+    name: Build services/vendor-service-java
+    needs: changes
+    if: needs.changes.outputs.vendor == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/vendor-service-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-catalog:
+    name: Build services/catalog-service-java
+    needs: changes
+    if: needs.changes.outputs.catalog == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/catalog-service-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-identity:
+    name: Build services/identity-service-java
+    needs: changes
+    if: needs.changes.outputs.identity == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/identity-service-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-gateway:
+    name: Build services/api-gateway-java
+    needs: changes
+    if: needs.changes.outputs.gateway == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/api-gateway-java
+        run: mvn -B -ntp -DskipTests=false verify

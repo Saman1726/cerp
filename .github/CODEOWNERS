@@ -1,36 +1,49 @@
 # CODEOWNERS
 
-# Source: plan.md (Repository Strategy: Ownership and access)
+# Path-based ownership as per Section 22: Repository Strategy and Engineering Governance.
 
-# Update these team handles to match your GitHub org teams (e.g., @your-org/team-web)
+# Replace the single user below with your actual GitHub org teams when ready (e.g., @your-org/web, @your-org/java).
 
-# Apps
+# For now, default all paths to the repo owner to enable required reviews once branch protection is configured.
 
-/apps/web/ @team-web
+# Default owner for everything
 
-# Services
+- @Saman1726
 
-/services/core-api-java/ @team-java
-/services/partner-system-java/ @team-partner
+# Web app
 
-# Shared packages (platform-owned)
+apps/web/ @Saman1726
 
-/packages/shared-types/ @team-platform
-/packages/core-*/ @team-platform
-/packages/eslint-config/ @team-platform
-/packages/typescript-config/ @team-platform
+# API app (reserved; add when present)
 
-# Infrastructure
+apps/api/ @Saman1726
 
-/infra/ @team-infra
+# Java services
 
-# Examples and overlays
+services/core-api-java/ @Saman1726
+services/partner-system-java/ @Saman1726
+services/procurement-service-java/ @Saman1726
+services/vendor-service-java/ @Saman1726
+services/catalog-service-java/ @Saman1726
+services/identity-service-java/ @Saman1726
+services/api-gateway-java/ @Saman1726
 
-/examples/demo-overlay/ @team-platform
+# Shared packages and platform code
 
-# Default fallbacks
+packages/shared-types/ @Saman1726
+packages/core-* @Saman1726
+packages/eslint-config/ @Saman1726
+packages/typescript-config/ @Saman1726
 
-/.github/ @team-platform
+# Infrastructure and GitOps
 
-/* @team-platform
-/*/** @team-platform
+infra/ @Saman1726
+
+# Documentation
+
+docs/ @Saman1726
+
+# CI and Architecture docs owners
+
+.github/workflows/ @Saman1726
+docs/architecture/ @Saman1726

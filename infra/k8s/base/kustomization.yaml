@@ -8,6 +8,7 @@ resources:
   - partner-system-java-service.yaml
   - identity-service-java-deployment.yaml
   - identity-service-java-service.yaml
+  - api-gateway-java-deployment.yaml
   - catalog-service-java-deployment.yaml
   - catalog-service-java-service.yaml
   - vendor-service-java-deployment.yaml

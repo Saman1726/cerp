@@ -44,6 +44,12 @@ export default tseslint.config(
           ],
         },
       ],
+      'import/no-internal-modules': [
+        'error',
+        {
+          forbid: ['@cerp/*/src/**', '@cerp/*/dist/**'],
+        },
+      ],
     },
   },
   {

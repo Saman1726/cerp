@@ -11,6 +11,7 @@ This document defines how to work in this monorepo: ownership, boundaries, versi
 - services/
   - core-api-java/ (Spring Boot backend)
   - partner-system-java/ (example external system)
+  - api-gateway-java/ (Spring Cloud Gateway – API Gateway / BFF)
 - examples/
   - demo-overlay/{web} (customer overlay example)
 - infra/k8s/ — Kustomize base + overlays
@@ -94,7 +95,7 @@ Baseline (Postgres + Java API + Web):
 2. Startup
 
 - corepack enable
-- docker compose up -d postgres partner-system-java api-java
+- docker compose up -d postgres partner-system-java api-java api-gateway-java
 - pnpm install
 - pnpm --filter web run dev # http://localhost:3001
 

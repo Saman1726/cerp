@@ -1,0 +1,33 @@
+# Path-based PR labels aligning with Section 22 governance
+apps:
+  - 'apps/**'
+
+services:
+  - 'services/**'
+  - 'services/core-api-java/**'
+  - 'services/partner-system-java/**'
+  - 'services/procurement-service-java/**'
+  - 'services/vendor-service-java/**'
+  - 'services/catalog-service-java/**'
+  - 'services/identity-service-java/**'
+
+packages:
+  - 'packages/**'
+  - 'packages/shared-types/**'
+  - 'packages/core-web/**'
+  - 'packages/eslint-config/**'
+  - 'packages/typescript-config/**'
+
+infra:
+  - 'infra/**'
+
+docs:
+  - 'docs/**'
+
+config:
+  - '.github/**'
+  - 'turbo.json'
+  - 'pnpm-workspace.yaml'
+  - 'package.json'
+  - 'pnpm-lock.yaml'
+  - '.changeset/**'
