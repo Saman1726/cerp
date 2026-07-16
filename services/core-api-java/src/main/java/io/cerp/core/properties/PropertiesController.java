@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.stereotype.Service;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -14,6 +15,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+@Profile("!dev")
 @RestController
 @RequestMapping("/properties")
 public class PropertiesController {
@@ -56,6 +58,7 @@ public class PropertiesController {
  * Package-private service and DTOs to keep everything in a single file for the initial migration step. We use an in-memory store to enable endpoints quickly. Persistence
  * can be swapped to JPA later.
  */
+@Profile("!dev")
 @Service
 class PropertiesService {
     private final Map<String, PropertyEntity> store = new ConcurrentHashMap<>();

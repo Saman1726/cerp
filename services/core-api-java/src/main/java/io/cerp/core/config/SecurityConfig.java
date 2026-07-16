@@ -24,7 +24,10 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/partners/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/partner-login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/refresh").permitAll()
-                .requestMatchers(HttpMethod.GET, "/properties/**", "/work-orders/**", "/purchase-orders/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/properties/**", "/work-orders/**", "/purchase-orders/**", "/construction-sites/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/properties/**", "/construction-sites/**").permitAll()
+                .requestMatchers(HttpMethod.PATCH, "/properties/**", "/construction-sites/**").permitAll()
+                .requestMatchers(HttpMethod.DELETE, "/properties/**", "/construction-sites/**").permitAll()
                 // everything else requires auth (keeps a sane default)
                 .anyRequest().authenticated())
             .httpBasic(Customizer.withDefaults());
