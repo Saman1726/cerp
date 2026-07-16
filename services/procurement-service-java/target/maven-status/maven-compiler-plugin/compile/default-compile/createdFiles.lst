@@ -1,0 +1,15 @@
+io/cerp/procurement/dto/CreateProcurementRequest.class
+io/cerp/procurement/security/RlsTenantAspect.class
+io/cerp/procurement/dto/ProcurementRequestResponse.class
+io/cerp/procurement/model/ProcurementRequest.class
+io/cerp/procurement/security/TenantRequestFilter.class
+io/cerp/procurement/dto/UpdateProcurementRequest.class
+io/cerp/procurement/repo/ProcurementRequestRepository.class
+io/cerp/procurement/service/ProcurementService.class
+io/cerp/procurement/security/TenantContext.class
+io/cerp/procurement/ProcurementServiceApplication.class
+io/cerp/procurement/config/SecurityConfig.class
+io/cerp/procurement/events/ProcurementEventsPublisher.class
+io/cerp/procurement/api/ApiExceptionHandler.class
+io/cerp/procurement/api/ProcurementController.class
+io/cerp/procurement/service/ProcurementServiceImpl.class
