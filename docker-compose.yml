@@ -122,16 +122,16 @@ services:
       kafka:
         condition: service_started
     environment:
-      PORT: 8088
+      PORT: 8085
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
       DB_USER: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
     ports:
-      - '8088:8088'
+      - '8095:8085'
 
   workflow-service-java:
     build:
@@ -186,9 +186,11 @@ services:
     working_dir: /app
     depends_on:
       - api-java
+      - project-service-java
     environment:
       NODE_ENV: development
       API_URL: http://api-java:8080
+      PROJECT_SERVICE_URL: http://project-service-java:8085
     ports:
       - '3001:3001'
     volumes:

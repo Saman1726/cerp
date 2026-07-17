@@ -9,10 +9,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -188,6 +190,12 @@ public class Project {
 
     @Column(name = "updated_by", length = 128)
     private String updatedBy;
+
+    /**
+     * SubProjects (buildings) belonging to this Project.
+     */
+    @OneToMany(mappedBy = "project", fetch = FetchType.EAGER)
+    private java.util.List<SubProject> subProjects = new java.util.ArrayList<>();
 
     // ── Constructors ──
 
@@ -450,6 +458,14 @@ public class Project {
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
+    }
+
+    public java.util.List<SubProject> getSubProjects() {
+        return subProjects;
+    }
+
+    public void setSubProjects(java.util.List<SubProject> subProjects) {
+        this.subProjects = subProjects;
     }
 
     /**

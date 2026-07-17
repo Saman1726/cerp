@@ -17,6 +17,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -107,14 +109,14 @@ public class SubProject {
     /**
      * Floor identifiers that this SubProject workflow applies to. Used when buildingLevel = FLOOR.
      */
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection(fetch = FetchType.EAGER)
     @Column(name = "floor_ids")
     private List<String> floorIds = new ArrayList<>();
 
     /**
      * Building part identifiers (e.g., "facade", "basement", "roof", "elevator_shaft"). Used when buildingLevel = PART.
      */
-    @ElementCollection(fetch = FetchType.LAZY)
+    @ElementCollection(fetch = FetchType.EAGER)
     @Column(name = "part_ids")
     private List<String> partIds = new ArrayList<>();
 
@@ -197,6 +199,13 @@ public class SubProject {
 
     @Column(name = "updated_by", length = 128)
     private String updatedBy;
+
+    /**
+     * Reference to the parent Project entity.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "project_id", nullable = false, insertable = false, updatable = false)
+    private Project project;
 
     // ── Constructors ──
 
@@ -534,6 +543,14 @@ public class SubProject {
         this.updatedBy = updatedBy;
     }
 
+    public Project getProject() {
+        return project;
+    }
+
+    public void setProject(Project project) {
+        this.project = project;
+    }
+
     /**
      * SubProject lifecycle status.
      */
@@ -545,7 +562,7 @@ public class SubProject {
      * Building type/classification.
      */
     public enum BuildingType {
-        RESIDENTIAL, COMMERCIAL, INDUSTRIAL, MIXED_USE, PUBLIC, PARKING, UTILITY
+        RESIDENTIAL, COMMERCIAL, INDUSTRIAL, MIXED_USE, PUBLIC, PARKING, UTILITY, INFRASTRUCTURE, OTHER
     }
 
     /**

@@ -13,7 +13,11 @@ export default async function ConstructionPage() {
 
   let projects: Project[] = [];
   try {
-    projects = await apiClient.get<Project[]>('/api/v1/projects');
+    const rawProjects = await apiClient.get<Project[]>('/api/projects/v1/projects');
+    projects = (rawProjects || []).map((p: Project & { subProjects?: unknown[] }) => ({
+      ...p,
+      subProjects: (p.subProjects as any) || [],
+    })) as Project[];
   } catch {
     console.warn('Failed to fetch projects, returning empty array');
   }

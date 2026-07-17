@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { API_URL } from './env';
+import { API_URL, PROJECT_SERVICE_URL } from './env';
 import { SESSION_COOKIE } from './session-cookies';
 
 const HTTP_NO_CONTENT = 204;
@@ -14,6 +14,19 @@ export class ApiClientError extends Error {
   }
 }
 
+// Detect whether a path belongs to the project service so we can route
+// to the correct internal backend (the API gateway currently does not
+// proxy project endpoints).
+function isProjectServicePath(path: string): boolean {
+  return path.includes('/api/projects/') || path.includes('/api/v1/projects');
+}
+
+function baseUrlFor(path: string): string {
+  return isProjectServicePath(path)
+    ? PROJECT_SERVICE_URL
+    : API_URL;
+}
+
 // Server-only: relies on next/headers, so this can only be called from
 // Server Components, Route Handlers, or Server Actions - by design, all
 // authenticated data-fetching for this scaffold stays server-side.
@@ -25,7 +38,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = store.get(SESSION_COOKIE)?.value;
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers, cache: 'no-store' });
+  // Project service requires X-Tenant-Id header
+  if (isProjectServicePath(path)) {
+    const tenantId = store.get('x-tenant-id')?.value;
+    headers.set('X-Tenant-Id', tenantId || 'default');
+  }
+
+  const base = baseUrlFor(path);
+  const res = await fetch(`${base}${path}`, { ...init, headers, cache: 'no-store' });
 
   if (!res.ok) {
     const body = await res.json().catch(() => undefined);

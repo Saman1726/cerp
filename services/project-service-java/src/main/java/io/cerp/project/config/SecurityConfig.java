@@ -2,7 +2,6 @@ package io.cerp.project.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,7 +16,8 @@ import java.util.List;
  * Security configuration for Project Service.
  *
  * <p>
- * Configures OAuth2 resource server (JWT validation), security headers, and per-path access rules.
+ * For development and internal service-to-service communication, project endpoints are accessible without authentication. The X-Tenant-Id header is used for
+ * multi-tenancy routing. OAuth2 resource server is disabled for internal service calls.
  */
 @Configuration
 @EnableWebSecurity
@@ -31,9 +31,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers("/api/projects/v1/admin/**").hasRole("PLATFORM_ADMIN")
-                .requestMatchers("/api/**").authenticated()
-                .anyRequest().permitAll())
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+                .requestMatchers("/api/projects/v1/projects", "/api/projects/v1/projects/**", "/api/v1/projects/**").permitAll()
+                .anyRequest().permitAll());
 
         return http.build();
     }

@@ -34,5 +34,9 @@ COPY --chown=node:node --from=build /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=node:node --from=build /app/apps/web/public ./apps/web/public
 
+# Rename .env.local to .env.local.disabled so Next.js uses Docker env vars
+# instead of host-local values (e.g. localhost URLs that don't work in Docker).
+RUN if [ -f apps/web/.env.local ]; then mv apps/web/.env.local apps/web/.env.local.disabled; fi
+
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]

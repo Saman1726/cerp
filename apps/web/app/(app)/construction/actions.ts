@@ -17,37 +17,50 @@ export async function createProjectActionWrapper(formData: FormData): Promise<vo
   const result = await createProjectActionCore(formData);
   if (result.error) {
     console.error('Failed to create project:', result.error);
+    throw new Error(result.error);
   }
 }
 
+// Default organization ID for development/testing when no specific org is provided.
+// This matches the seeded organization in V2__seed_default_organization.sql
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 async function createProjectActionCore(formData: FormData): Promise<{ error?: string }> {
   try {
+    const code = formData.get('code')?.toString()?.trim() ?? '';
+    const name = formData.get('name')?.toString()?.trim() ?? '';
+    // Use provided orgId or fall back to the default seeded organization
+    const orgId = formData.get('orgId')?.toString()?.trim() || DEFAULT_ORG_ID;
+
+    if (!code || !name) {
+      return { error: 'Project code and name are required' };
+    }
+
     const request: ProjectCreateRequest = {
-      code: formData.get('code')?.toString()?.trim() ?? '',
-      name: formData.get('name')?.toString()?.trim() ?? '',
+      code,
+      name,
+      orgId: orgId || DEFAULT_ORG_ID,
       description: formData.get('description')?.toString()?.trim() || undefined,
-      type: (formData.get('type')?.toString()?.trim() || 'OTHER') as ProjectCreateRequest['type'],
-      status: (formData.get('status')?.toString()?.trim() || 'PLANNED') as ProjectCreateRequest['status'],
-      constructionSiteId: formData.get('constructionSiteId')?.toString() || undefined,
-      address: formData.get('address')?.toString()?.trim() || undefined,
+      addressLine1: formData.get('addressLine1')?.toString()?.trim() || undefined,
+      addressLine2: formData.get('addressLine2')?.toString()?.trim() || undefined,
+      postalCode: formData.get('postalCode')?.toString()?.trim() || undefined,
       city: formData.get('city')?.toString()?.trim() || undefined,
-      country: formData.get('country')?.toString()?.trim() || undefined,
+      countryCode: formData.get('countryCode')?.toString()?.trim() || undefined,
+      projectType: (formData.get('type')?.toString()?.trim() || undefined) as ProjectCreateRequest['projectType'],
+      status: (formData.get('status')?.toString()?.trim() || undefined) as ProjectCreateRequest['status'],
       startDate: formData.get('startDate')?.toString()?.trim() || undefined,
       endDate: formData.get('endDate')?.toString()?.trim() || undefined,
       budget: formData.get('budget') ? Number(formData.get('budget')) : undefined,
       currencyCode: formData.get('currencyCode')?.toString()?.trim() || 'EUR',
     };
 
-    if (!request.code || !request.name) {
-      return { error: 'Project code and name are required' };
-    }
-
-    await apiClient.post<ProjectCreateRequest, ProjectResponse>('/api/v1/projects', request);
+    await apiClient.post<ProjectCreateRequest, ProjectResponse>('/api/projects/v1/projects', request);
     revalidatePath('/construction');
     return {};
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error && error.message ? error.message : 'Failed to create project';
     console.error('Failed to create project:', error);
-    return { error: 'Failed to create project' };
+    return { error: errorMessage };
   }
 }
 
@@ -64,7 +77,7 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
       return { error: 'Missing project ID' };
     }
 
-    await apiClient.delete(`/api/v1/projects/${projectId}`);
+    await apiClient.delete(`/api/projects/v1/projects/${projectId}`);
     revalidatePath('/construction');
     return {};
   } catch (error) {
@@ -73,10 +86,10 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
   }
 }
 
-export async function fetchProjects(): Promise<ProjectResponse[]> {
-  try {
-    return await apiClient.get<ProjectResponse[]>('/api/v1/projects');
-  } catch {
+  export async function fetchProjects(): Promise<ProjectResponse[]> {
+    try {
+      return await apiClient.get<ProjectResponse[]>('/api/projects/v1/projects');
+    } catch {
     return [];
   }
 }
@@ -87,6 +100,7 @@ export async function createSubProjectActionWrapper(formData: FormData): Promise
   const result = await createSubProjectActionCore(formData);
   if (result.error) {
     console.error('Failed to create subProject:', result.error);
+    throw new Error(result.error);
   }
 }
 

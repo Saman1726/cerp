@@ -134,13 +134,17 @@ export interface Project {
 export interface ProjectCreateRequest {
   code: string;
   name: string;
+  orgId?: string;
   description?: string;
-  type?: ProjectType;
+  /** Backend field name is projectType (not type). Use ProjectType for enum values. */
+  projectType?: ProjectType;
   status?: ProjectStatus;
   constructionSiteId?: string;
-  address?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
   city?: string;
-  country?: string;
+  countryCode?: string;
   startDate?: string;
   endDate?: string;
   budget?: number;
@@ -158,9 +162,11 @@ export interface ProjectUpdateRequest {
   type?: ProjectType;
   status?: ProjectStatus;
   constructionSiteId?: string;
-  address?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
   city?: string;
-  country?: string;
+  countryCode?: string;
   startDate?: string;
   endDate?: string;
   progress?: number;

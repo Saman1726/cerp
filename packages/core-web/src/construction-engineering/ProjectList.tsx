@@ -107,9 +107,9 @@ export function ProjectList({ projects, constructionSites, createProjectAction, 
                             {subProject.startDate && <span>{new Date(subProject.startDate).toLocaleDateString()}</span>}
                             {subProject.budget && <span>{subProject.budget} {subProject.currencyCode}</span>}
                           </div>
-                          {subProject.floors.length > 0 && (
+                          {subProject.floors?.length > 0 && (
                             <span className="text-xs text-muted-foreground">
-                              {subProject.floors.length} floor(s)
+                              {subProject.floors?.length} floor(s)
                             </span>
                           )}
                         </div>
@@ -151,8 +151,9 @@ export function ProjectList({ projects, constructionSites, createProjectAction, 
             setCreateProjectOpen(false);
             window.location.reload();
           }}
-          className="flex flex-col gap-4"
+          className="flex min-w-0 max-h-[65vh] flex-col gap-4"
         >
+          <div className="min-w-0 flex-1 overflow-y-auto">
           <div className="grid gap-2">
             <Label htmlFor="project-code">Code</Label>
             <Input id="project-code" name="code" placeholder="PRJ-001" required />
@@ -229,8 +230,27 @@ export function ProjectList({ projects, constructionSites, createProjectAction, 
               <Input id="project-currencyCode" name="currencyCode" defaultValue="EUR" />
             </div>
           </div>
-          <div className="flex items-center justify-end gap-2">
-            <Button type="submit">Create Project</Button>
+          <div className="grid gap-2">
+            <Label htmlFor="project-addressLine1">Address Line 1</Label>
+            <Input id="project-addressLine1" name="addressLine1" placeholder="123 Main Street" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="project-city">City</Label>
+              <Input id="project-city" name="city" placeholder="Berlin" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="project-postalCode">Postal Code</Label>
+              <Input id="project-postalCode" name="postalCode" placeholder="10115" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="project-countryCode">Country Code</Label>
+              <Input id="project-countryCode" name="countryCode" placeholder="DE" />
+            </div>
+          </div>
+          </div>
+          <div className="shrink-0 pt-2">
+            <Button type="submit" className="w-full">Create Project</Button>
           </div>
         </form>
       </Modal>
@@ -250,9 +270,10 @@ export function ProjectList({ projects, constructionSites, createProjectAction, 
               setSelectedBuildingId('');
               window.location.reload();
             }}
-            className="flex flex-col gap-4"
+            className="flex min-w-0 max-h-[65vh] flex-col gap-4"
           >
             <input type="hidden" name="buildingId" value={selectedBuildingId} />
+            <div className="min-w-0 flex-1 overflow-y-auto">
             <div className="grid gap-2">
               <Label htmlFor="subproject-code">Code</Label>
               <Input id="subproject-code" name="code" placeholder="BLD-A" required />
@@ -331,8 +352,9 @@ export function ProjectList({ projects, constructionSites, createProjectAction, 
                 </select>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button type="submit">Create SubProject</Button>
+            </div>
+            <div className="shrink-0 pt-2">
+              <Button type="submit" className="w-full">Create SubProject</Button>
             </div>
           </form>
         ) : null}

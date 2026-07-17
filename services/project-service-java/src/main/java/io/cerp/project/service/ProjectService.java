@@ -86,7 +86,7 @@ public class ProjectService {
         if (request.countryCode() != null)
             project.setCountryCode(request.countryCode());
         if (request.projectType() != null)
-            project.setProjectType(Project.ProjectType.valueOf(request.projectType()));
+            project.setProjectType(safeParseProjectType(request.projectType()));
         if (request.startDate() != null)
             project.setStartDate(request.startDate());
         if (request.endDate() != null)
@@ -185,9 +185,9 @@ public class ProjectService {
         if (request.countryCode() != null)
             project.setCountryCode(request.countryCode());
         if (request.projectType() != null)
-            project.setProjectType(Project.ProjectType.valueOf(request.projectType()));
+            project.setProjectType(safeParseProjectType(request.projectType()));
         if (request.status() != null)
-            project.setStatus(Project.ProjectStatus.valueOf(request.status()));
+            project.setStatus(safeParseProjectStatus(request.status()));
         if (request.startDate() != null)
             project.setStartDate(request.startDate());
         if (request.endDate() != null)
@@ -219,6 +219,48 @@ public class ProjectService {
     public static class ProjectCodeAlreadyExistsException extends RuntimeException {
         public ProjectCodeAlreadyExistsException(String tenantId, String code) {
             super(String.format("Project code '%s' already exists for tenant %s", code, tenantId));
+        }
+    }
+
+    /**
+     * Safely parse project type from string, handling both frontend and backend enum names. Frontend uses: RESIDENTIAL, COMMERCIAL, INDUSTRIAL, INFRASTRUCTURE,
+     * MIXED_USE, OTHER Backend uses: NEW_CONSTRUCTION, RENOVATION, MAINTENANCE, INFRASTRUCTURE, COMMERCIAL, RESIDENTIAL, INDUSTRIAL
+     */
+    private static Project.ProjectType safeParseProjectType(String value) {
+        try {
+            return Project.ProjectType.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            // Map frontend enum values to backend equivalents
+            return switch (value.toUpperCase()) {
+                case "MIXED_USE" -> Project.ProjectType.COMMERCIAL;
+                case "OTHER" -> Project.ProjectType.NEW_CONSTRUCTION;
+                default -> {
+                    log.warn("Unknown project type: {}, defaulting to NEW_CONSTRUCTION", value);
+                    yield Project.ProjectType.NEW_CONSTRUCTION;
+                }
+            };
+        }
+    }
+
+    /**
+     * Safely parse project status from string, handling both frontend and backend enum names. Frontend uses: PLANNED, ACTIVE, ON_HOLD, COMPLETED, CANCELLED Backend uses:
+     * PLANNING, ACTIVE, ON_HOLD, COMPLETED, CANCELLED, SUSPENDED
+     */
+    private static Project.ProjectStatus safeParseProjectStatus(String value) {
+        try {
+            return Project.ProjectStatus.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            // Map frontend enum values to backend equivalents
+            return switch (value.toUpperCase()) {
+                case "PLANNED" -> Project.ProjectStatus.PLANNING;
+                case "ON_HOLD" -> Project.ProjectStatus.ON_HOLD;
+                case "COMPLETED" -> Project.ProjectStatus.COMPLETED;
+                case "CANCELLED" -> Project.ProjectStatus.CANCELLED;
+                default -> {
+                    log.warn("Unknown project status: {}, defaulting to PLANNING", value);
+                    yield Project.ProjectStatus.PLANNING;
+                }
+            };
         }
     }
 }

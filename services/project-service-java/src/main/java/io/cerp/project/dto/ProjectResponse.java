@@ -3,6 +3,7 @@ package io.cerp.project.dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import io.cerp.project.domain.Project;
@@ -38,7 +39,8 @@ public record ProjectResponse(
         String clientPhone,
         String syncStatus,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        List<SubProjectResponse> subProjects) {
     public static ProjectResponse from(Project p) {
         return new ProjectResponse(
             p.getId(),
@@ -68,6 +70,9 @@ public record ProjectResponse(
             p.getClientPhone(),
             p.getSyncStatus() != null ? p.getSyncStatus().name() : null,
             p.getCreatedAt(),
-            p.getUpdatedAt());
+            p.getUpdatedAt(),
+            p.getSubProjects() != null ? p.getSubProjects().stream()
+                .map(SubProjectResponse::fromEntity)
+                .toList() : List.of());
     }
 }

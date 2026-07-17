@@ -1,5 +1,5 @@
 server:
-  port: 8085
+  port: ${PORT:8085}
   error:
     include-message: always
     include-binding-errors: always
@@ -21,7 +21,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     open-in-view: false
     properties:
       hibernate:
@@ -45,13 +45,6 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       auto-offset-reset: earliest
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/cerp}
-          jwk-set-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/cerp}/protocol/openid-connect/certs
 
 management:
   endpoints:

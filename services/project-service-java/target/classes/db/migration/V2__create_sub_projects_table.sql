@@ -3,10 +3,10 @@
 -- Each SubProject corresponds to a Building on a Construction Site
 
 CREATE TABLE sub_projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
     tenant_id VARCHAR(255) NOT NULL,
     org_id UUID NOT NULL,
-    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    project_id UUID NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
     external_id VARCHAR(128),
     code VARCHAR(64) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -14,8 +14,6 @@ CREATE TABLE sub_projects (
     building_type VARCHAR(64),
     construction_phase VARCHAR(64),
     building_level VARCHAR(32) NOT NULL DEFAULT 'WHOLE',
-    floor_ids TEXT[],
-    part_ids TEXT[],
     usable_area NUMERIC(12, 2),
     total_area NUMERIC(12, 2),
     floor_count INTEGER,
@@ -70,3 +68,17 @@ COMMENT ON COLUMN sub_projects.building_level IS 'WHOLE, FLOOR, PART - determine
 COMMENT ON COLUMN sub_projects.status IS 'PLANNING, IN_CONSTRUCTION, ON_HOLD, COMPLETED, CANCELLED';
 
 COMMENT ON COLUMN sub_projects.sync_status IS 'LOCAL, REMOTE, CONFLICT, PENDING_SYNC';
+
+-- Hibernate @ElementCollection tables for floor_ids and part_ids
+-- These are created by the migration to match the @ElementCollection mappings in SubProject.java
+CREATE TABLE sub_project_floor_ids (
+    sub_project_id UUID NOT NULL REFERENCES sub_projects (id) ON DELETE CASCADE,
+    floor_ids VARCHAR(255),
+    PRIMARY KEY (sub_project_id, floor_ids)
+);
+
+CREATE TABLE sub_project_part_ids (
+    sub_project_id UUID NOT NULL REFERENCES sub_projects (id) ON DELETE CASCADE,
+    part_ids VARCHAR(255),
+    PRIMARY KEY (sub_project_id, part_ids)
+);
