@@ -70,7 +70,44 @@ public class ProjectService {
 
         Project project = new Project(tenantId, orgId, request.code(), request.name());
 
-        applyUpdateFields(project, request);
+        // Apply create-specific fields
+        if (request.description() != null)
+            project.setDescription(request.description());
+        if (request.propertyId() != null)
+            project.setPropertyId(request.propertyId());
+        if (request.addressLine1() != null)
+            project.setAddressLine1(request.addressLine1());
+        if (request.addressLine2() != null)
+            project.setAddressLine2(request.addressLine2());
+        if (request.postalCode() != null)
+            project.setPostalCode(request.postalCode());
+        if (request.city() != null)
+            project.setCity(request.city());
+        if (request.countryCode() != null)
+            project.setCountryCode(request.countryCode());
+        if (request.projectType() != null)
+            project.setProjectType(Project.ProjectType.valueOf(request.projectType()));
+        if (request.startDate() != null)
+            project.setStartDate(request.startDate());
+        if (request.endDate() != null)
+            project.setEndDate(request.endDate());
+        if (request.actualStartDate() != null)
+            project.setActualStartDate(request.actualStartDate());
+        if (request.actualEndDate() != null)
+            project.setActualEndDate(request.actualEndDate());
+        if (request.progress() != null)
+            project.setProgress(request.progress());
+        if (request.budget() != null)
+            project.setBudget(request.budget());
+        if (request.currencyCode() != null)
+            project.setCurrencyCode(request.currencyCode());
+        if (request.clientName() != null)
+            project.setClientName(request.clientName());
+        if (request.clientEmail() != null)
+            project.setClientEmail(request.clientEmail());
+        if (request.clientPhone() != null)
+            project.setClientPhone(request.clientPhone());
+
         project.setCreatedBy(userId);
         project.setUpdatedBy(userId);
 

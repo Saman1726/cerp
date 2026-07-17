@@ -146,3 +146,173 @@ export async function deleteUnit(formData: FormData): Promise<SimpleActionState>
     return { error: 'Failed to delete unit' };
   }
 }
+
+// ── Update Actions ──
+
+export async function updateSite(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const name = (formData.get('name') || '').toString().trim();
+  const address = (formData.get('address') || '').toString().trim();
+  if (!siteId || !name || !address) return { error: 'Name and address are required' };
+
+  try {
+    await apiClient.put(`/construction-sites/${siteId}`, { name, address });
+    return {};
+  } catch {
+    return { error: 'Failed to update site' };
+  }
+}
+
+export async function duplicateSite(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  if (!siteId) return { error: 'Missing siteId' };
+
+  try {
+    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
+    const name = (formData.get('name') || `${site.name} (Copy)`).toString().trim();
+    await apiClient.post('/construction-sites', { name, address: site.address });
+    return {};
+  } catch {
+    return { error: 'Failed to duplicate site' };
+  }
+}
+
+export async function updateBuilding(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  const name = (formData.get('name') || '').toString().trim();
+  if (!siteId || !buildingId || !name) return { error: 'Missing siteId, buildingId or name' };
+
+  try {
+    await apiClient.put(`/construction-sites/${siteId}/buildings/${buildingId}`, { name });
+    return {};
+  } catch {
+    return { error: 'Failed to update building' };
+  }
+}
+
+export async function duplicateBuilding(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  if (!siteId || !buildingId) return { error: 'Missing siteId or buildingId' };
+
+  try {
+    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: any) => b.id === buildingId);
+    if (!building) return { error: 'Building not found' };
+    const name = (formData.get('name') || `${building.name} (Copy)`).toString().trim();
+    await apiClient.post(`/construction-sites/${siteId}/buildings`, { name });
+    return {};
+  } catch {
+    return { error: 'Failed to duplicate building' };
+  }
+}
+
+export async function updateFloor(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  const floorId = formData.get('floorId')?.toString();
+  const type = (formData.get('type') || '').toString().trim();
+  const usableArea = Number.parseFloat((formData.get('usableArea') || '').toString());
+  const totalArea = Number.parseFloat((formData.get('totalArea') || '').toString());
+
+  if (!siteId || !buildingId || !floorId || !type || Number.isNaN(usableArea) || Number.isNaN(totalArea)) {
+    return { error: 'Missing required fields' };
+  }
+
+  try {
+    await apiClient.put(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}`, {
+      type,
+      usableArea,
+      totalArea,
+    });
+    return {};
+  } catch {
+    return { error: 'Failed to update floor' };
+  }
+}
+
+export async function duplicateFloor(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  const floorId = formData.get('floorId')?.toString();
+  if (!siteId || !buildingId || !floorId) return { error: 'Missing ids' };
+
+  try {
+    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: any) => b.id === buildingId);
+    const floor = building?.floors?.find((f: any) => f.id === floorId);
+    if (!floor) return { error: 'Floor not found' };
+    const name = (formData.get('name') || `${floor.type} (Copy)`).toString().trim();
+    await apiClient.post(`/construction-sites/${siteId}/buildings/${buildingId}/floors`, {
+      type: name,
+      usableArea: floor.usableArea,
+      totalArea: floor.totalArea,
+    });
+    return {};
+  } catch {
+    return { error: 'Failed to duplicate floor' };
+  }
+}
+
+export async function updateUnit(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  const floorId = formData.get('floorId')?.toString();
+  const unitId = formData.get('unitId')?.toString();
+
+  const label = (formData.get('label') || '').toString().trim();
+  const usableArea = Number.parseFloat((formData.get('usableArea') || '').toString());
+  const bedrooms = Number.parseInt((formData.get('bedrooms') || '').toString(), 10);
+  const bathrooms = Number.parseInt((formData.get('bathrooms') || '').toString(), 10);
+  const balconies = Number.parseInt((formData.get('balconies') || '').toString(), 10);
+  const toilets = Number.parseInt((formData.get('toilets') || '').toString(), 10);
+
+  if (!siteId || !buildingId || !floorId || !unitId || !label
+    || Number.isNaN(usableArea) || Number.isNaN(bedrooms) || Number.isNaN(bathrooms)
+    || Number.isNaN(balconies) || Number.isNaN(toilets)) {
+    return { error: 'Missing required fields' };
+  }
+
+  try {
+    await apiClient.put(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}/units/${unitId}`, {
+      label,
+      usableArea,
+      bedrooms,
+      bathrooms,
+      balconies,
+      toilets,
+    });
+    return {};
+  } catch {
+    return { error: 'Failed to update unit' };
+  }
+}
+
+export async function duplicateUnit(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const buildingId = formData.get('buildingId')?.toString();
+  const floorId = formData.get('floorId')?.toString();
+  const unitId = formData.get('unitId')?.toString();
+  if (!siteId || !buildingId || !floorId || !unitId) return { error: 'Missing ids' };
+
+  try {
+    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: any) => b.id === buildingId);
+    const floor = building?.floors?.find((f: any) => f.id === floorId);
+    const unit = floor?.units?.find((u: any) => u.id === unitId);
+    if (!unit) return { error: 'Unit not found' };
+    const name = (formData.get('name') || `${unit.label} (Copy)`).toString().trim();
+    await apiClient.post(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}/units`, {
+      label: name,
+      usableArea: unit.usableArea,
+      bedrooms: unit.bedrooms,
+      bathrooms: unit.bathrooms,
+      balconies: unit.balconies,
+      toilets: unit.toilets,
+    });
+    return {};
+  } catch {
+    return { error: 'Failed to duplicate unit' };
+  }
+}

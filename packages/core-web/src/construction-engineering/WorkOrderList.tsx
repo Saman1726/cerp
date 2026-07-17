@@ -1,3 +1,5 @@
+'use client';
+
 import type { WorkOrder } from '@cerp/shared-types';
 import { Badge } from '../components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';

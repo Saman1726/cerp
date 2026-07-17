@@ -10,6 +10,14 @@ import {
   deleteFloor,
   addUnit,
   deleteUnit,
+  updateSite,
+  duplicateSite,
+  updateBuilding,
+  duplicateBuilding,
+  updateFloor,
+  duplicateFloor,
+  updateUnit,
+  duplicateUnit,
 } from '@cerp/core-web/construction-sites';
 
 export async function createSiteAction(formData: FormData): Promise<void> {
@@ -21,6 +29,20 @@ export async function createSiteAction(formData: FormData): Promise<void> {
 
 export async function deleteSiteAction(formData: FormData): Promise<void> {
   const result = await deleteSite(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function updateSiteAction(formData: FormData): Promise<void> {
+  const result = await updateSite(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function duplicateSiteAction(formData: FormData): Promise<void> {
+  const result = await duplicateSite(formData);
   if (!result.error) {
     revalidatePath('/construction-sites');
   }
@@ -40,6 +62,20 @@ export async function deleteBuildingAction(formData: FormData): Promise<void> {
   }
 }
 
+export async function updateBuildingAction(formData: FormData): Promise<void> {
+  const result = await updateBuilding(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function duplicateBuildingAction(formData: FormData): Promise<void> {
+  const result = await duplicateBuilding(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
 export async function addFloorAction(formData: FormData): Promise<void> {
   const result = await addFloor(formData);
   if (!result.error) {
@@ -54,6 +90,20 @@ export async function deleteFloorAction(formData: FormData): Promise<void> {
   }
 }
 
+export async function updateFloorAction(formData: FormData): Promise<void> {
+  const result = await updateFloor(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function duplicateFloorAction(formData: FormData): Promise<void> {
+  const result = await duplicateFloor(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
 export async function addUnitAction(formData: FormData): Promise<void> {
   const result = await addUnit(formData);
   if (!result.error) {
@@ -63,6 +113,20 @@ export async function addUnitAction(formData: FormData): Promise<void> {
 
 export async function deleteUnitAction(formData: FormData): Promise<void> {
   const result = await deleteUnit(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function updateUnitAction(formData: FormData): Promise<void> {
+  const result = await updateUnit(formData);
+  if (!result.error) {
+    revalidatePath('/construction-sites');
+  }
+}
+
+export async function duplicateUnitAction(formData: FormData): Promise<void> {
+  const result = await duplicateUnit(formData);
   if (!result.error) {
     revalidatePath('/construction-sites');
   }

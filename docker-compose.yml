@@ -111,6 +111,50 @@ services:
     ports:
       - '8085:8085'
 
+  project-service-java:
+    build:
+      context: services/project-service-java
+      dockerfile: Dockerfile
+    container_name: cerp-project-service-java
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      PORT: 8088
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_USER: ${POSTGRES_USER:-cerp}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - '8088:8088'
+
+  workflow-service-java:
+    build:
+      context: services/workflow-service-java
+      dockerfile: Dockerfile
+    container_name: cerp-workflow-service-java
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      PORT: 8089
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_USER: ${POSTGRES_USER:-cerp}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    ports:
+      - '8089:8089'
+
   procurement-service-java:
     build:
       context: services/procurement-service-java

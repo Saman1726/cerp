@@ -38,6 +38,8 @@ export const apiClient = {
   get: <T>(path: string) => apiFetch<T>(path, { method: 'GET' }),
   post: <TBody, T>(path: string, body: TBody) =>
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  put: <TBody, T>(path: string, body: TBody) =>
+    apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <TBody, T>(path: string, body: TBody) =>
     apiFetch<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (path: string) => apiFetch<void>(path, { method: 'DELETE' }),

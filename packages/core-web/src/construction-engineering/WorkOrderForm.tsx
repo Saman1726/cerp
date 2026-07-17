@@ -24,6 +24,8 @@ export interface WorkOrderFormProps {
   action: (state: IssueWorkOrderActionState, formData: FormData) => Promise<IssueWorkOrderActionState>;
   projects: WorkOrderFormProjectOption[];
   contractors: WorkOrderFormContractorOption[];
+  selectedProjectId?: string;
+  selectedSubProjectId?: string;
 }
 
 const fieldClassName = cn(
@@ -32,7 +34,7 @@ const fieldClassName = cn(
   'disabled:cursor-not-allowed disabled:opacity-50',
 );
 
-export function WorkOrderForm({ action, projects, contractors }: WorkOrderFormProps) {
+export function WorkOrderForm({ action, projects, contractors, selectedProjectId, selectedSubProjectId }: WorkOrderFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
   return (
@@ -40,7 +42,7 @@ export function WorkOrderForm({ action, projects, contractors }: WorkOrderFormPr
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
           <Label htmlFor="projectId">Project</Label>
-          <select id="projectId" name="projectId" required defaultValue="" className={fieldClassName}>
+          <select id="projectId" name="projectId" required defaultValue={selectedProjectId} className={fieldClassName}>
             <option value="" disabled>
               Select a project
             </option>
@@ -51,6 +53,12 @@ export function WorkOrderForm({ action, projects, contractors }: WorkOrderFormPr
             ))}
           </select>
         </div>
+        {selectedSubProjectId && (
+          <div className="grid gap-2">
+            <Label htmlFor="subProjectId">SubProject</Label>
+            <Input id="subProjectId" name="subProjectId" value={selectedSubProjectId} readOnly className={fieldClassName} />
+          </div>
+        )}
         <div className="grid gap-2">
           <Label htmlFor="contractorPartnerId">Contractor</Label>
           <select

@@ -1,85 +1,398 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { issueWorkOrder } from '@cerp/core-web/construction-engineering';
-import type { IssueWorkOrderActionState } from '@cerp/core-web/construction-engineering';
+import { apiClient } from '@cerp/core-web/lib/api-client';
+import type {
+  ProjectCreateRequest,
+  ProjectResponse,
+  SubProjectResponse,
+  WorkflowTemplate,
+  Workflow,
+  WorkOrder,
+} from '@cerp/shared-types';
 
-import {
-  createSite,
-  deleteSite,
-  addBuilding,
-  deleteBuilding,
-  addFloor,
-  deleteFloor,
-  addUnit,
-  deleteUnit,
-} from '@cerp/core-web/construction-sites';
+// ── Project Actions ──
 
-// Existing action (kept as-is)
+export async function createProjectActionWrapper(formData: FormData): Promise<void> {
+  const result = await createProjectActionCore(formData);
+  if (result.error) {
+    console.error('Failed to create project:', result.error);
+  }
+}
+
+async function createProjectActionCore(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const request: ProjectCreateRequest = {
+      code: formData.get('code')?.toString()?.trim() ?? '',
+      name: formData.get('name')?.toString()?.trim() ?? '',
+      description: formData.get('description')?.toString()?.trim() || undefined,
+      type: (formData.get('type')?.toString()?.trim() || 'OTHER') as ProjectCreateRequest['type'],
+      status: (formData.get('status')?.toString()?.trim() || 'PLANNED') as ProjectCreateRequest['status'],
+      constructionSiteId: formData.get('constructionSiteId')?.toString() || undefined,
+      address: formData.get('address')?.toString()?.trim() || undefined,
+      city: formData.get('city')?.toString()?.trim() || undefined,
+      country: formData.get('country')?.toString()?.trim() || undefined,
+      startDate: formData.get('startDate')?.toString()?.trim() || undefined,
+      endDate: formData.get('endDate')?.toString()?.trim() || undefined,
+      budget: formData.get('budget') ? Number(formData.get('budget')) : undefined,
+      currencyCode: formData.get('currencyCode')?.toString()?.trim() || 'EUR',
+    };
+
+    if (!request.code || !request.name) {
+      return { error: 'Project code and name are required' };
+    }
+
+    await apiClient.post<ProjectCreateRequest, ProjectResponse>('/api/v1/projects', request);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to create project:', error);
+    return { error: 'Failed to create project' };
+  }
+}
+
+export async function deleteProjectActionWrapper(projectId: string): Promise<void> {
+  const result = await deleteProjectActionCore(projectId);
+  if (result.error) {
+    console.error('Failed to delete project:', result.error);
+  }
+}
+
+async function deleteProjectActionCore(projectId: string): Promise<{ error?: string }> {
+  try {
+    if (!projectId) {
+      return { error: 'Missing project ID' };
+    }
+
+    await apiClient.delete(`/api/v1/projects/${projectId}`);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to delete project:', error);
+    return { error: 'Failed to delete project' };
+  }
+}
+
+export async function fetchProjects(): Promise<ProjectResponse[]> {
+  try {
+    return await apiClient.get<ProjectResponse[]>('/api/v1/projects');
+  } catch {
+    return [];
+  }
+}
+
+// ── SubProject Actions ──
+
+export async function createSubProjectActionWrapper(formData: FormData): Promise<void> {
+  const result = await createSubProjectActionCore(formData);
+  if (result.error) {
+    console.error('Failed to create subProject:', result.error);
+  }
+}
+
+async function createSubProjectActionCore(formData: FormData): Promise<{ error?: string; subProjectId?: string }> {
+  try {
+    const projectId = formData.get('projectId')?.toString();
+    if (!projectId) {
+      return { error: 'Missing project ID' };
+    }
+
+    const requestBody: Record<string, unknown> = {
+      code: formData.get('code')?.toString()?.trim() ?? '',
+      name: formData.get('name')?.toString()?.trim() ?? '',
+      description: formData.get('description')?.toString()?.trim() || undefined,
+      buildingType: formData.get('buildingType')?.toString()?.trim() || 'OTHER',
+      constructionPhase: formData.get('constructionPhase')?.toString()?.trim() || 'PRE_CONSTRUCTION',
+      buildingId: formData.get('buildingId')?.toString() || undefined,
+      floors: formData.get('floors') ? JSON.parse(formData.get('floors')?.toString() ?? '[]') : [],
+      buildingParts: formData.get('buildingParts') ? JSON.parse(formData.get('buildingParts')?.toString() ?? '[]') : [],
+      startDate: formData.get('startDate')?.toString()?.trim() || undefined,
+      endDate: formData.get('endDate')?.toString()?.trim() || undefined,
+      progress: formData.get('progress') ? Number(formData.get('progress')) : undefined,
+      budget: formData.get('budget') ? Number(formData.get('budget')) : undefined,
+      currencyCode: formData.get('currencyCode')?.toString()?.trim() || 'EUR',
+    };
+
+    if (!requestBody.code || !requestBody.name) {
+      return { error: 'SubProject code and name are required' };
+    }
+
+    const created = await apiClient.post<typeof requestBody, SubProjectResponse>(
+      `/api/v1/projects/${projectId}/subprojects`,
+      requestBody
+    );
+
+    // Initialize default workflows if workflow initialization is enabled
+    const initWorkflows = formData.get('initWorkflows')?.toString();
+    if (initWorkflows === 'true') {
+      await initializeSubProjectWorkflows(created.id, projectId);
+    }
+
+    revalidatePath('/construction');
+    return { error: undefined, subProjectId: created.id };
+  } catch (error) {
+    console.error('Failed to create subProject:', error);
+    return { error: 'Failed to create subProject' };
+  }
+}
+
+export async function deleteSubProjectActionWrapper(formData: FormData): Promise<void> {
+  const result = await deleteSubProjectActionCore(formData);
+  if (result.error) {
+    console.error('Failed to delete subProject:', result.error);
+  }
+}
+
+async function deleteSubProjectActionCore(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const projectId = formData.get('projectId')?.toString();
+    const subProjectId = formData.get('subProjectId')?.toString();
+    if (!projectId || !subProjectId) {
+      return { error: 'Missing project or subProject ID' };
+    }
+
+    await apiClient.delete(`/api/v1/projects/${projectId}/subprojects/${subProjectId}`);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to delete subProject:', error);
+    return { error: 'Failed to delete subProject' };
+  }
+}
+
+// ── Workflow Template Actions ──
+
+export async function fetchWorkflowTemplates(): Promise<WorkflowTemplate[]> {
+  try {
+    return await apiClient.get<WorkflowTemplate[]>('/api/v1/workflow-templates?all=true');
+  } catch {
+    return [];
+  }
+}
+
+export async function createWorkflowTemplateAction(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const request: Record<string, unknown> = {
+      code: formData.get('code')?.toString()?.trim() ?? '',
+      name: formData.get('name')?.toString()?.trim() ?? '',
+      description: formData.get('description')?.toString()?.trim() || undefined,
+      category: formData.get('category')?.toString()?.trim() || 'CONSTRUCTION_PHASE',
+      scopeLevel: formData.get('scopeLevel')?.toString()?.trim() || 'WHOLE',
+      steps: formData.get('steps') ? JSON.parse(formData.get('steps')?.toString() ?? '[]') : [],
+    };
+
+    if (!request.code || !request.name) {
+      return { error: 'Template code and name are required' };
+    }
+
+    await apiClient.post<Record<string, unknown>, unknown>('/api/v1/workflow-templates', request);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to create workflow template:', error);
+    return { error: 'Failed to create workflow template' };
+  }
+}
+
+export async function activateWorkflowTemplateAction(templateCode: string): Promise<{ error?: string }> {
+  try {
+    const code = templateCode?.trim();
+    if (!code) {
+      return { error: 'Template code is required' };
+    }
+
+    await apiClient.post<Record<string, never>, unknown>(`/api/v1/workflow-templates/${code}/activate`, {});
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to activate workflow template:', error);
+    return { error: 'Failed to activate workflow template' };
+  }
+}
+
+export async function deprecateWorkflowTemplateAction(templateCode: string): Promise<{ error?: string }> {
+  try {
+    const code = templateCode?.trim();
+    if (!code) {
+      return { error: 'Template code is required' };
+    }
+
+    await apiClient.post<Record<string, never>, unknown>(`/api/v1/workflow-templates/${code}/deprecate`, {});
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to deprecate workflow template:', error);
+    return { error: 'Failed to deprecate workflow template' };
+  }
+}
+
+// ── Workflow Instance Actions ──
+
+export async function createWorkflowAction(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const request: Record<string, unknown> = {
+      templateId: formData.get('templateId')?.toString()?.trim() ?? '',
+      projectId: formData.get('projectId')?.toString()?.trim() ?? '',
+      subProjectId: formData.get('subProjectId')?.toString()?.trim() || undefined,
+      scopeLevel: formData.get('scopeLevel')?.toString()?.trim() || 'WHOLE',
+      floorIds: formData.get('floorIds') ? JSON.parse(formData.get('floorIds')?.toString() ?? '[]') : [],
+      partIds: formData.get('partIds') ? JSON.parse(formData.get('partIds')?.toString() ?? '[]') : [],
+      startDate: formData.get('startDate')?.toString()?.trim() || undefined,
+      endDate: formData.get('endDate')?.toString()?.trim() || undefined,
+      dueDate: formData.get('dueDate')?.toString()?.trim() || undefined,
+      description: formData.get('description')?.toString()?.trim() || undefined,
+    };
+
+    if (!request.templateId || !request.projectId) {
+      return { error: 'Template and project are required' };
+    }
+
+    await apiClient.post<Record<string, unknown>, unknown>('/api/v1/workflows/instantiate', request);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to create workflow:', error);
+    return { error: 'Failed to create workflow' };
+  }
+}
+
+export async function startWorkflowAction(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const workflowId = formData.get('workflowId')?.toString()?.trim();
+    if (!workflowId) {
+      return { error: 'Workflow ID is required' };
+    }
+
+    await apiClient.post<Record<string, never>, unknown>(`/api/v1/workflows/${workflowId}/start`, {});
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to start workflow:', error);
+    return { error: 'Failed to start workflow' };
+  }
+}
+
+export async function cancelWorkflowAction(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const workflowId = formData.get('workflowId')?.toString()?.trim();
+    if (!workflowId) {
+      return { error: 'Workflow ID is required' };
+    }
+
+    await apiClient.post<Record<string, never>, unknown>(`/api/v1/workflows/${workflowId}/cancel`, {});
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to cancel workflow:', error);
+    return { error: 'Failed to cancel workflow' };
+  }
+}
+
+export async function completeWorkflowAction(formData: FormData): Promise<{ error?: string }> {
+  try {
+    const workflowId = formData.get('workflowId')?.toString()?.trim();
+    if (!workflowId) {
+      return { error: 'Workflow ID is required' };
+    }
+
+    await apiClient.post<Record<string, never>, unknown>(`/api/v1/workflows/${workflowId}/complete`, {});
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to complete workflow:', error);
+    return { error: 'Failed to complete workflow' };
+  }
+}
+
+export async function fetchWorkflows(projectId?: string): Promise<Workflow[]> {
+  try {
+    if (projectId) {
+      return await apiClient.get<Workflow[]>(`/api/v1/workflows?projectId=${projectId}`);
+    }
+    return await apiClient.get<Workflow[]>('/api/v1/workflows');
+  } catch {
+    return [];
+  }
+}
+
+// ── Work Order Actions ──
+
 export async function issueWorkOrderAction(
-  _prevState: IssueWorkOrderActionState,
-  formData: FormData,
-): Promise<IssueWorkOrderActionState> {
-  const result = await issueWorkOrder(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-  return result;
-}
+  _state: { error?: string },
+  formData: FormData
+): Promise<{ error?: string }> {
+  try {
+    const projectId = formData.get('projectId')?.toString()?.trim();
+    const contractorPartnerId = formData.get('contractorPartnerId')?.toString()?.trim();
+    const title = formData.get('title')?.toString()?.trim();
+    const description = formData.get('description')?.toString()?.trim() || undefined;
 
-// Construction Sites actions (formData-only, suitable for <form action={...}>)
-export async function createSiteAction(formData: FormData): Promise<void> {
-  const result = await createSite(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
+    if (!projectId || !contractorPartnerId || !title) {
+      return { error: 'Project, contractor, and title are required' };
+    }
 
-export async function deleteSiteAction(formData: FormData): Promise<void> {
-  const result = await deleteSite(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
+    await apiClient.post<Record<string, unknown>, WorkOrder>('/api/v1/work-orders', {
+      projectId,
+      contractorPartnerId,
+      title,
+      description,
+    });
 
-export async function addBuildingAction(formData: FormData): Promise<void> {
-  const result = await addBuilding(formData);
-  if (!result.error) {
     revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to issue work order:', error);
+    return { error: 'Failed to issue work order' };
   }
 }
 
-export async function deleteBuildingAction(formData: FormData): Promise<void> {
-  const result = await deleteBuilding(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
+// ── Workflow Initialization Helper ──
 
-export async function addFloorAction(formData: FormData): Promise<void> {
-  const result = await addFloor(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
+async function initializeSubProjectWorkflows(subProjectId: string, projectId: string): Promise<void> {
+  try {
+    // Standard construction phases that should be initialized for every SubProject
+    const standardPhases = [
+      'PRE_CONSTRUCTION',
+      'SITE_PREP',
+      'FOUNDATION',
+      'BASEMENT',
+      'SUPERSTRUCTURE',
+      'ROOF',
+      'BUILDING_ENVELOPE',
+      'INTERIOR_PARTITIONS',
+      'MEP_ROUGHIN',
+      'INTERIOR_FINISH',
+      'EXTERIOR_WORKS',
+      'TESTING_COMMISSIONING',
+      'SNAGGING',
+      'HANDOVER',
+    ];
 
-export async function deleteFloorAction(formData: FormData): Promise<void> {
-  const result = await deleteFloor(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
+    // Fetch templates and initialize standard phase workflows
+    const templates: WorkflowTemplate[] = await apiClient.get('/api/v1/workflow-templates?all=true');
 
-export async function addUnitAction(formData: FormData): Promise<void> {
-  const result = await addUnit(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
-  }
-}
-
-export async function deleteUnitAction(formData: FormData): Promise<void> {
-  const result = await deleteUnit(formData);
-  if (!result.error) {
-    revalidatePath('/construction');
+    for (const phase of standardPhases) {
+      const template = templates.find((t) => t.code === phase && t.status === 'ACTIVE');
+      if (template) {
+        try {
+          const workflowInitBody: Record<string, unknown> = {
+            tenantId: '',
+            projectId,
+            subprojectId: subProjectId,
+            templateId: template.id,
+            userId: null,
+          };
+          await apiClient.post<Record<string, unknown>, unknown>(
+            '/api/v1/workflows/instantiate',
+            workflowInitBody
+          );
+        } catch {
+          // Silently fail for individual workflow creation
+          console.warn(`Failed to initialize workflow for phase: ${phase}`);
+        }
+      }
+    }
+  } catch {
+    console.warn('Failed to initialize default workflows for subProject');
   }
 }
