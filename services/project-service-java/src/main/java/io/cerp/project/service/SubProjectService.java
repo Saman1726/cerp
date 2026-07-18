@@ -160,6 +160,7 @@ public class SubProjectService {
         subProject.setBuildingType(request.getBuildingType());
         subProject.setConstructionPhase(request.getConstructionPhase());
         subProject.setBuildingLevel(request.getBuildingLevel());
+        subProject.setBuildingId(request.getBuildingId());
         subProject.setUsableArea(request.getUsableArea());
         subProject.setTotalArea(request.getTotalArea());
         subProject.setFloorCount(request.getFloorCount());

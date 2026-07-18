@@ -182,6 +182,12 @@ public class SubProject {
     private String currencyCode;
 
     /**
+     * Reference to the Building on a Construction Site.
+     */
+    @Column(name = "building_id")
+    private UUID buildingId;
+
+    /**
      * External system sync status.
      */
     @Enumerated(EnumType.STRING)
@@ -206,6 +212,13 @@ public class SubProject {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false, insertable = false, updatable = false)
     private Project project;
+
+    /**
+     * Reference to the Building entity.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "building_id", insertable = false, updatable = false)
+    private Building building;
 
     // ── Constructors ──
 
@@ -541,6 +554,22 @@ public class SubProject {
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
+    }
+
+    public UUID getBuildingId() {
+        return buildingId;
+    }
+
+    public void setBuildingId(UUID buildingId) {
+        this.buildingId = buildingId;
+    }
+
+    public Building getBuilding() {
+        return building;
+    }
+
+    public void setBuilding(Building building) {
+        this.building = building;
     }
 
     public Project getProject() {

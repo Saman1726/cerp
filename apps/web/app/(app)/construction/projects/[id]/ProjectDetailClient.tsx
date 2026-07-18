@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Project, ConstructionSite } from '@cerp/shared-types';
 import { Badge } from '@cerp/core-web/components/ui/badge';
@@ -41,11 +42,17 @@ export default function ProjectDetailClient({
   projectId: string;
   constructionSites: ConstructionSite[];
 }) {
+  const router = useRouter();
   const [createSubProjectOpen, setCreateSubProjectOpen] = useState(false);
   const [expandedSubProjectId, setExpandedSubProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
 
   const site = constructionSites.find((s) => s.id === project.constructionSiteId);
+
+  const handleSubProjectClick = (subProjectId: string) => {
+    router.push(`/construction/projects/${projectId}/subprojects/${subProjectId}`);
+  };
 
   const handleDeleteProject = async (pId: string) => {
     try {
@@ -81,6 +88,12 @@ export default function ProjectDetailClient({
 
   const handleCreateSubProject = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!selectedBuildingId) {
+      alert('Please select a building');
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
 
     try {
@@ -91,6 +104,7 @@ export default function ProjectDetailClient({
         body: JSON.stringify({
           code: formData.get('code'),
           name: formData.get('name'),
+          buildingId: selectedBuildingId,
           description: formData.get('description')?.toString() || undefined,
           buildingType: formData.get('buildingType') || 'OTHER',
           constructionPhase: formData.get('constructionPhase') || 'PRE_CONSTRUCTION',
@@ -98,6 +112,7 @@ export default function ProjectDetailClient({
       });
       if (!response.ok) throw new Error('Failed to create subproject');
       setCreateSubProjectOpen(false);
+      setSelectedBuildingId('');
       window.location.reload();
     } catch {
       alert('Failed to create subproject');
@@ -215,11 +230,13 @@ export default function ProjectDetailClient({
                     key={subProject.id}
                     subProject={subProject}
                     projectId={project.id}
+                    projectIdPath={projectId}
                     isExpanded={expandedSubProjectId === subProject.id}
                     onToggle={() =>
                       setExpandedSubProjectId(expandedSubProjectId === subProject.id ? null : subProject.id)
                     }
                     onDelete={handleDeleteSubProject}
+                    onClick={handleSubProjectClick}
                   />
                 ))}
               </TableBody>
@@ -231,7 +248,10 @@ export default function ProjectDetailClient({
       {/* Create SubProject Modal */}
       <Modal
         open={createSubProjectOpen}
-        onClose={() => setCreateSubProjectOpen(false)}
+        onClose={() => {
+          setCreateSubProjectOpen(false);
+          setSelectedBuildingId('');
+        }}
         title="Create subproject"
       >
         <form onSubmit={handleCreateSubProject} className="flex min-w-0 max-h-[65vh] flex-col gap-4">
@@ -245,13 +265,56 @@ export default function ProjectDetailClient({
               <Input id="subproject-name" name="name" placeholder="Building A" required />
             </div>
             <div className="grid gap-2">
+              <Label htmlFor="subproject-building">Building (required - 1 Building = 1 SubProject)</Label>
+              {(() => {
+                const constructionSiteId = project.constructionSiteId;
+                const selectedSite = constructionSites.find((site) => site.id === constructionSiteId);
+                const buildings = selectedSite?.buildings ?? [];
+                return (
+                  <>
+                    <select
+                      id="subproject-building"
+                      name="buildingId"
+                      value={selectedBuildingId}
+                      onChange={(e) => setSelectedBuildingId(e.target.value)}
+                      className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      disabled={!constructionSiteId}
+                    >
+                      {!constructionSiteId && <option value="">No construction site assigned</option>}
+                      {constructionSiteId && buildings.length === 0 && <option value="">No buildings available</option>}
+                      {constructionSiteId && buildings.length > 0 && (
+                        <>
+                          <option value="">Select a building</option>
+                          {buildings.map((building) => (
+                            <option key={building.id} value={building.id}>
+                              {building.name}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                    {!constructionSiteId && (
+                      <p className="text-xs text-muted-foreground">
+                        This project has no construction site assigned. Please assign a construction site to the project first.
+                      </p>
+                    )}
+                    {constructionSiteId && buildings.length === 0 && (
+                      <p className="text-xs text-destructive">
+                        ⚠️ No buildings exist for this construction site. You must create at least one building before creating a subProject.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="subproject-description">Description</Label>
               <textarea
                 id="subproject-description"
                 name="description"
                 rows={2}
                 placeholder="Optional description..."
-                className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -295,7 +358,7 @@ export default function ProjectDetailClient({
             </div>
           </div>
           <div className="shrink-0 pt-2">
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full" disabled={loading || !selectedBuildingId || !project.constructionSiteId}>
               {loading ? 'Creating...' : 'Create SubProject'}
             </Button>
           </div>
@@ -308,28 +371,37 @@ export default function ProjectDetailClient({
 function SubProjectRow({
   subProject,
   projectId,
+  projectIdPath,
   isExpanded,
   onToggle,
   onDelete,
+  onClick,
 }: {
   subProject: Project['subProjects'][number];
   projectId: string;
+  projectIdPath: string;
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: (projectId: string, subProjectId: string) => Promise<void>;
+  onClick: (subProjectId: string) => void;
 }) {
   return (
     <>
-      <TableRow className="cursor-pointer hover:bg-muted/30">
-        <TableCell>
+      <TableRow
+        className="cursor-pointer hover:bg-muted/30"
+        onClick={() => onClick(subProject.id)}
+      >
+        <TableCell
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+        >
           <Button
             variant="ghost"
             size="sm"
             className="p-0 h-6 w-6 hover:bg-transparent"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
+            type="button"
           >
             {isExpanded ? (
               <ChevronDown className="h-4 w-4" />

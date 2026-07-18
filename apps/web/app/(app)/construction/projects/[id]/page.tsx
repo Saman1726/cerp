@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { apiClient } from '@cerp/core-web/lib/api-client';
-import type { Project, ConstructionSite } from '@cerp/shared-types';
+import type { Project, ConstructionSite, ProjectResponse } from '@cerp/shared-types';
 import ProjectDetailClient from './ProjectDetailClient';
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -10,7 +10,8 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   let constructionSites: ConstructionSite[] = [];
 
   try {
-    project = await apiClient.get<Project>(`/api/v1/projects/${projectId}`);
+    const rawProject = await apiClient.get<ProjectResponse>(`/api/v1/projects/${projectId}`);
+    project = rawProject as unknown as Project;
   } catch {
     // Project not found
   }

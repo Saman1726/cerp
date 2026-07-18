@@ -112,15 +112,17 @@ async function createSubProjectActionCore(formData: FormData): Promise<{ error?:
       return { error: 'Missing project ID' };
     }
 
+    const buildingId = formData.get('buildingId')?.toString()?.trim();
     const requestBody: Record<string, unknown> = {
       code: formData.get('code')?.toString()?.trim() ?? '',
       name: formData.get('name')?.toString()?.trim() ?? '',
       description: formData.get('description')?.toString()?.trim() || undefined,
       buildingType: formData.get('buildingType')?.toString()?.trim() || 'OTHER',
       constructionPhase: formData.get('constructionPhase')?.toString()?.trim() || 'PRE_CONSTRUCTION',
-      buildingId: formData.get('buildingId')?.toString() || undefined,
-      floors: formData.get('floors') ? JSON.parse(formData.get('floors')?.toString() ?? '[]') : [],
-      buildingParts: formData.get('buildingParts') ? JSON.parse(formData.get('buildingParts')?.toString() ?? '[]') : [],
+      buildingLevel: formData.get('buildingLevel')?.toString()?.trim() || 'WHOLE',
+      buildingId: buildingId || undefined,
+      floorIds: formData.get('floors') ? JSON.parse(formData.get('floors')?.toString() ?? '[]') : [],
+      partIds: formData.get('buildingParts') ? JSON.parse(formData.get('buildingParts')?.toString() ?? '[]') : [],
       startDate: formData.get('startDate')?.toString()?.trim() || undefined,
       endDate: formData.get('endDate')?.toString()?.trim() || undefined,
       progress: formData.get('progress') ? Number(formData.get('progress')) : undefined,
@@ -128,8 +130,14 @@ async function createSubProjectActionCore(formData: FormData): Promise<{ error?:
       currencyCode: formData.get('currencyCode')?.toString()?.trim() || 'EUR',
     };
 
+    console.log('[SubProject] requestBody:', JSON.stringify(requestBody, null, 2));
+    
     if (!requestBody.code || !requestBody.name) {
       return { error: 'SubProject code and name are required' };
+    }
+    
+    if (!requestBody.buildingId) {
+      return { error: 'Building ID is required' };
     }
 
     const created = await apiClient.post<typeof requestBody, SubProjectResponse>(

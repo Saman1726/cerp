@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { Project, ConstructionSite } from '@cerp/shared-types';
 import { Badge } from '../components/ui/badge';
@@ -62,7 +63,12 @@ function ProjectRow({
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteSubProject: (formData: FormData) => Promise<void>;
 }) {
+  const router = useRouter();
   const site = constructionSites.find((s) => s.id === project.constructionSiteId);
+
+  const handleSubProjectClick = (subProjectId: string) => {
+    router.push(`/construction/projects/${project.id}/subprojects/${subProjectId}`);
+  };
 
   return (
     <>
@@ -163,25 +169,30 @@ function ProjectRow({
                 </TableHeader>
                 <TableBody>
                   {project.subProjects.map((subProject) => (
-                    <TableRow key={subProject.id}>
-                      <TableCell className="font-medium">
+                    <TableRow
+                      key={subProject.id}
+                      className="cursor-pointer hover:bg-muted/30"
+                      onClick={() => handleSubProjectClick(subProject.id)}
+                    >
+                      <TableCell className="font-medium" onClick={(e) => e.stopPropagation()}>
                         <Badge variant="secondary">{subProject.code}</Badge>
                       </TableCell>
-                      <TableCell>{subProject.name}</TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>{subProject.name}</TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Badge variant={statusVariant[subProject.status] ?? 'secondary'}>
                           {subProject.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground" onClick={(e) => e.stopPropagation()}>
                         {subProject.constructionPhase ? subProject.constructionPhase.replace(/_/g, ' ') : '—'}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 text-xs"
+                            type="button"
                             onClick={() => onCreateWorkOrder(project, subProject)}
                           >
                             Work Order
@@ -226,6 +237,7 @@ export function ProjectList({
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [selectedConSiteId, setSelectedConSiteId] = useState<string>('');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
+  const [subProjectProjectId, setSubProjectProjectId] = useState<string>('');
 
   return (
     <div className="flex flex-col gap-4">
@@ -262,7 +274,10 @@ export function ProjectList({
                     setExpandedProjectId(expandedProjectId === project.id ? null : project.id)
                   }
                   onCreateWorkOrder={onCreateWorkOrder}
-                  onCreateSubProject={(projectId) => setCreateSubProjectOpen(projectId)}
+                  onCreateSubProject={(projectId) => {
+                    setSubProjectProjectId(projectId);
+                    setCreateSubProjectOpen(projectId);
+                  }}
                   onDeleteProject={deleteProjectAction}
                   onDeleteSubProject={deleteSubProjectAction}
                 />
@@ -425,16 +440,19 @@ export function ProjectList({
               e.preventDefault();
               const form = e.currentTarget;
               const formData = new FormData(form);
-              formData.set('projectId', createSubProjectOpen);
-              formData.set('buildingId', selectedBuildingId);
+              formData.set('projectId', subProjectProjectId);
+              if (!selectedBuildingId) {
+                alert('Please select a building');
+                return;
+              }
               await createSubProjectAction(formData);
               setCreateSubProjectOpen(null);
               setSelectedBuildingId('');
+              setSubProjectProjectId('');
               window.location.reload();
             }}
             className="flex min-w-0 max-h-[65vh] flex-col gap-4"
           >
-            <input type="hidden" name="buildingId" value={selectedBuildingId} />
             <div className="min-w-0 flex-1 overflow-y-auto">
               <div className="grid gap-2">
                 <Label htmlFor="subproject-code">Code</Label>
@@ -445,10 +463,12 @@ export function ProjectList({
                 <Input id="subproject-name" name="name" placeholder="Building A" required />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="subproject-building">Building (from Construction Site)</Label>
+                <Label htmlFor="subproject-building">Building (required - 1 Building = 1 SubProject)</Label>
                 {(() => {
+                  const project = projects.find((p) => p.id === subProjectProjectId);
+                  const constructionSiteId = project?.constructionSiteId || '';
                   const selectedSite = constructionSites.find(
-                    (site) => site.id === selectedConSiteId,
+                    (site) => site.id === constructionSiteId,
                   );
                   const buildings = selectedSite?.buildings ?? [];
                   return (
@@ -459,25 +479,29 @@ export function ProjectList({
                         value={selectedBuildingId}
                         onChange={(e) => setSelectedBuildingId(e.target.value)}
                         className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                        disabled={buildings.length === 0}
+                        disabled={!constructionSiteId}
                       >
-                        <option value="">Select a building (optional)</option>
-                        {buildings.map((building) => (
-                          <option key={building.id} value={building.id}>
-                            {building.name}
-                          </option>
-                        ))}
+                        {!constructionSiteId && <option value="">No construction site assigned</option>}
+                        {constructionSiteId && buildings.length === 0 && <option value="">No buildings available</option>}
+                        {constructionSiteId && buildings.length > 0 && (
+                          <>
+                            <option value="">Select a building</option>
+                            {buildings.map((building) => (
+                              <option key={building.id} value={building.id}>
+                                {building.name}
+                              </option>
+                            ))}
+                          </>
+                        )}
                       </select>
-                      {selectedConSiteId && buildings.length === 0 && (
+                      {!constructionSiteId && (
                         <p className="text-xs text-muted-foreground">
-                          The selected construction site has no buildings. Add buildings to the
-                          construction site first.
+                          This project has no construction site assigned. Please assign a construction site to the project first.
                         </p>
                       )}
-                      {!selectedConSiteId && (
-                        <p className="text-xs text-muted-foreground">
-                          Select a construction site in the project form, then close and reopen this
-                          modal.
+                      {constructionSiteId && buildings.length === 0 && (
+                        <p className="text-xs text-destructive">
+                          ⚠️ No buildings exist for this construction site. You must create at least one building before creating a subProject.
                         </p>
                       )}
                     </>
@@ -535,7 +559,15 @@ export function ProjectList({
               </div>
             </div>
             <div className="shrink-0 pt-2">
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={!(() => {
+                const project = projects.find((p) => p.id === subProjectProjectId);
+                const constructionSiteId = project?.constructionSiteId || '';
+                const selectedSite = constructionSites.find(
+                  (site) => site.id === constructionSiteId,
+                );
+                const buildings = selectedSite?.buildings ?? [];
+                return buildings.length > 0 && selectedBuildingId !== '';
+              })()}>
                 Create SubProject
               </Button>
             </div>

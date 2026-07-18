@@ -2,6 +2,7 @@ package io.cerp.project.dto;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -95,6 +96,12 @@ public class SubProjectCreateRequest {
      * External system identifier.
      */
     private String externalId;
+
+    /**
+     * Reference to the Building on a Construction Site.
+     */
+    @NotNull(message = "Building ID is required")
+    private UUID buildingId;
 
     // ── Constructors ──
 
@@ -221,5 +228,13 @@ public class SubProjectCreateRequest {
 
     public void setExternalId(String externalId) {
         this.externalId = externalId;
+    }
+
+    public UUID getBuildingId() {
+        return buildingId;
+    }
+
+    public void setBuildingId(UUID buildingId) {
+        this.buildingId = buildingId;
     }
 }
