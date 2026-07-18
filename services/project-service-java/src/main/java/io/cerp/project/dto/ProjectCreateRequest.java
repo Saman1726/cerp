@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.io.Serializable;
 
 /**
  * Request DTO for creating a project.
@@ -20,6 +21,8 @@ public record ProjectCreateRequest(
                 @NotNull(message = "Organization ID is required") UUID orgId,
 
                 @Size(max = 255, message = "Description must be 255 characters or less") String description,
+
+                String constructionSiteId,
 
                 UUID propertyId,
 

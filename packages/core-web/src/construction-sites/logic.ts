@@ -170,7 +170,45 @@ export async function duplicateSite(formData: FormData): Promise<SimpleActionSta
   try {
     const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
     const name = (formData.get('name') || `${site.name} (Copy)`).toString().trim();
-    await apiClient.post('/construction-sites', { name, address: site.address });
+    const newSite = await apiClient.post<any, any>('/construction-sites', { name, address: site.address });
+
+    // Duplicate all buildings with their floors and units
+    if (site.buildings && site.buildings.length > 0) {
+      for (const building of site.buildings) {
+        const newBuildingName = formData.get(`building_${building.id}_name`)?.toString()?.trim() || `${building.name} (Copy)`;
+        const newBuilding = await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings`, {
+          name: newBuildingName,
+        });
+
+        // Duplicate all floors with their units
+        if (building.floors && building.floors.length > 0) {
+          for (const floor of building.floors) {
+            const newFloorType = formData.get(`floor_${building.id}_${floor.id}_type`)?.toString()?.trim() || floor.type;
+            const newFloor = await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors`, {
+              type: newFloorType,
+              usableArea: floor.usableArea,
+              totalArea: floor.totalArea,
+            });
+
+            // Duplicate all units
+            if (floor.units && floor.units.length > 0) {
+              for (const unit of floor.units) {
+                const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
+                await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
+                  label: newUnitLabel,
+                  usableArea: unit.usableArea,
+                  bedrooms: unit.bedrooms,
+                  bathrooms: unit.bathrooms,
+                  balconies: unit.balconies,
+                  toilets: unit.toilets,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {};
   } catch {
     return { error: 'Failed to duplicate site' };
@@ -197,13 +235,53 @@ export async function duplicateBuilding(formData: FormData): Promise<SimpleActio
   if (!siteId || !buildingId) return { error: 'Missing siteId or buildingId' };
 
   try {
+    console.log(`[duplicateBuilding] Starting duplication for site=${siteId}, building=${buildingId}`);
+
     const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
     const building = site.buildings?.find((b: any) => b.id === buildingId);
     if (!building) return { error: 'Building not found' };
+
+    console.log(`[duplicateBuilding] Found building: ${building.name} with ${building.floors?.length || 0} floors`);
+
     const name = (formData.get('name') || `${building.name} (Copy)`).toString().trim();
-    await apiClient.post(`/construction-sites/${siteId}/buildings`, { name });
+    const newBuilding = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings`, { name });
+    console.log(`[duplicateBuilding] Created new building: ${newBuilding.id}`);
+
+    // Duplicate all floors with their units
+    if (building.floors && building.floors.length > 0) {
+      for (const floor of building.floors) {
+        console.log(`[duplicateBuilding] Duplicating floor: ${floor.id} (${floor.type})`);
+        const newFloorType = formData.get(`floor_${floor.id}_type`)?.toString()?.trim() || floor.type;
+        const newFloor = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors`, {
+          type: newFloorType,
+          usableArea: floor.usableArea,
+          totalArea: floor.totalArea,
+        });
+        console.log(`[duplicateBuilding] Created new floor: ${newFloor.id}`);
+
+        // Duplicate all units
+        if (floor.units && floor.units.length > 0) {
+          console.log(`[duplicateBuilding] Duplicating ${floor.units.length} units from floor ${floor.id}`);
+          for (const unit of floor.units) {
+            const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
+            await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
+              label: newUnitLabel,
+              usableArea: unit.usableArea,
+              bedrooms: unit.bedrooms,
+              bathrooms: unit.bathrooms,
+              balconies: unit.balconies,
+              toilets: unit.toilets,
+            });
+            console.log(`[duplicateBuilding] Duplicated unit: ${unit.label} -> ${newUnitLabel}`);
+          }
+        }
+      }
+    }
+
+    console.log('[duplicateBuilding] Duplication completed successfully');
     return {};
-  } catch {
+  } catch (error) {
+    console.error('[duplicateBuilding] Failed to duplicate building:', error);
     return { error: 'Failed to duplicate building' };
   }
 }
@@ -239,18 +317,44 @@ export async function duplicateFloor(formData: FormData): Promise<SimpleActionSt
   if (!siteId || !buildingId || !floorId) return { error: 'Missing ids' };
 
   try {
+    console.log(`[duplicateFloor] Starting duplication for site=${siteId}, building=${buildingId}, floor=${floorId}`);
+
     const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
     const building = site.buildings?.find((b: any) => b.id === buildingId);
     const floor = building?.floors?.find((f: any) => f.id === floorId);
     if (!floor) return { error: 'Floor not found' };
-    const name = (formData.get('name') || `${floor.type} (Copy)`).toString().trim();
-    await apiClient.post(`/construction-sites/${siteId}/buildings/${buildingId}/floors`, {
-      type: name,
+
+    console.log(`[duplicateFloor] Found floor: ${floor.id} (${floor.type}) with ${floor.units?.length || 0} units`);
+
+    const newFloorType = (formData.get('name') || floor.type).toString().trim();
+    const newFloor = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${buildingId}/floors`, {
+      type: newFloorType,
       usableArea: floor.usableArea,
       totalArea: floor.totalArea,
     });
+    console.log(`[duplicateFloor] Created new floor: ${newFloor.id}`);
+
+    // Duplicate all units
+    if (floor.units && floor.units.length > 0) {
+      console.log(`[duplicateFloor] Duplicating ${floor.units.length} units from floor ${floor.id}`);
+      for (const unit of floor.units) {
+        const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
+        await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${newFloor.id}/units`, {
+          label: newUnitLabel,
+          usableArea: unit.usableArea,
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          balconies: unit.balconies,
+          toilets: unit.toilets,
+        });
+        console.log(`[duplicateFloor] Duplicated unit: ${unit.label} -> ${newUnitLabel}`);
+      }
+    }
+
+    console.log('[duplicateFloor] Duplication completed successfully');
     return {};
-  } catch {
+  } catch (error) {
+    console.error('[duplicateFloor] Failed to duplicate floor:', error);
     return { error: 'Failed to duplicate floor' };
   }
 }

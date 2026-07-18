@@ -21,6 +21,8 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
 
         List<Workflow> findByTenantIdAndProjectIdAndSubprojectId(String tenantId, UUID projectId, UUID subprojectId);
 
+        List<Workflow> findByTenantIdAndSubprojectId(String tenantId, UUID subprojectId);
+
         List<Workflow> findByTenantIdAndStatus(String tenantId, Workflow.WorkflowStatus status);
 
         List<Workflow> findByTenantIdAndProjectIdAndSubprojectIdAndStatus(String tenantId, UUID projectId,
@@ -49,4 +51,28 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
         Optional<String> findExistingWorkflowCode(
                         @Param("subprojectId") UUID subprojectId,
                         @Param("templateId") UUID templateId);
+
+        /**
+         * Check if a workflow already exists for the given tenant, project, subproject, and template.
+         */
+        boolean existsByTenantIdAndProjectIdAndSubprojectIdAndTemplateId(
+                        @Param("tenantId") String tenantId,
+                        @Param("projectId") UUID projectId,
+                        @Param("subprojectId") UUID subprojectId,
+                        @Param("templateId") UUID templateId);
+
+        /**
+         * Count workflows for a tenant and subproject.
+         */
+        long countByTenantIdAndSubprojectId(
+                        @Param("tenantId") String tenantId,
+                        @Param("subprojectId") UUID subprojectId);
+
+        /**
+         * Find all workflow IDs for a tenant and subproject.
+         */
+        @Query("SELECT w.id FROM Workflow w WHERE w.tenantId = :tenantId AND w.subprojectId = :subprojectId")
+        List<UUID> findIdsByTenantIdAndSubprojectId(
+                        @Param("tenantId") String tenantId,
+                        @Param("subprojectId") UUID subprojectId);
 }

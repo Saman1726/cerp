@@ -128,8 +128,8 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
-      SPRING_FLYWAY_ENABLED: "true"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports:
       - '8095:8085'
 
@@ -144,14 +144,14 @@ services:
       kafka:
         condition: service_started
     environment:
-      PORT: 8089
+      SERVER_PORT: 8089
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
       DB_USER: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
     ports:
       - '8089:8089'
 

@@ -18,13 +18,34 @@ export class ApiClientError extends Error {
 // to the correct internal backend (the API gateway currently does not
 // proxy project endpoints).
 function isProjectServicePath(path: string): boolean {
-  return path.includes('/api/projects/') || path.includes('/api/v1/projects');
+  return (
+    path.includes('/api/projects/') ||
+    path.includes('/api/v1/projects') ||
+    path.includes('/api/v1/construction-sites') ||
+    path.startsWith('/construction-sites')
+  );
 }
 
 function baseUrlFor(path: string): string {
-  return isProjectServicePath(path)
-    ? PROJECT_SERVICE_URL
-    : API_URL;
+  if (!isProjectServicePath(path)) {
+    return API_URL;
+  }
+
+  return PROJECT_SERVICE_URL;
+}
+
+// Get the normalized path for the actual HTTP request
+function normalizedPathFor(path: string): string {
+  if (!isProjectServicePath(path)) {
+    return path;
+  }
+
+  // Add /api/v1 prefix if missing for construction-sites paths
+  if (path.includes('/construction-sites') && !path.startsWith('/api/v1')) {
+    return `/api/v1${path}`;
+  }
+
+  return path;
 }
 
 // Server-only: relies on next/headers, so this can only be called from
@@ -45,7 +66,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const base = baseUrlFor(path);
-  const res = await fetch(`${base}${path}`, { ...init, headers, cache: 'no-store' });
+  const effectivePath = normalizedPathFor(path);
+  const res = await fetch(`${base}${effectivePath}`, { ...init, headers, cache: 'no-store' });
 
   if (!res.ok) {
     const body = await res.json().catch(() => undefined);

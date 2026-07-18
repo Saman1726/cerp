@@ -72,6 +72,12 @@ public class Project {
     private String description;
 
     /**
+     * Reference to a construction site this project is assigned to (nullable). Each construction site can only have one active project.
+     */
+    @Column(name = "construction_site_id", length = 64)
+    private String constructionSiteId;
+
+    /**
      * Reference to a property this project belongs to (nullable).
      */
     @Column(name = "property_id")
@@ -171,6 +177,12 @@ public class Project {
      */
     @Column(name = "client_phone", length = 32)
     private String clientPhone;
+
+    /**
+     * Whether this project is soft-deleted/archived. Soft-deleted projects do not occupy the construction site link.
+     */
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean deleted = false;
 
     /**
      * External system sync status.
@@ -286,6 +298,14 @@ public class Project {
 
     public UUID getPropertyId() {
         return propertyId;
+    }
+
+    public String getConstructionSiteId() {
+        return constructionSiteId;
+    }
+
+    public void setConstructionSiteId(String constructionSiteId) {
+        this.constructionSiteId = constructionSiteId;
     }
 
     public void setPropertyId(UUID propertyId) {
@@ -430,6 +450,14 @@ public class Project {
 
     public SyncStatus getSyncStatus() {
         return syncStatus;
+    }
+
+    public Boolean getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 
     public void setSyncStatus(SyncStatus syncStatus) {

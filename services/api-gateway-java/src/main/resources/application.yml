@@ -82,6 +82,8 @@ cerp:
       url: ${CERP_VENDOR_SERVICE_URL:http://localhost:9092}
     catalog:
       url: ${CERP_CATALOG_SERVICE_URL:http://localhost:9093}
+    workflow:
+      url: ${CERP_WORKFLOW_SERVICE_URL:http://localhost:8089}
 
 # Actuator
 management:

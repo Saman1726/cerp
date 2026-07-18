@@ -57,6 +57,9 @@ public class GatewayRouteConfig {
     @Value("${cerp.services.catalog.url:http://localhost:9093}")
     private String catalogServiceUrl;
 
+    @Value("${cerp.services.workflow.url:http://localhost:8089}")
+    private String workflowServiceUrl;
+
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
@@ -113,6 +116,17 @@ public class GatewayRouteConfig {
                 .path("/api/catalog/**")
                 .filters(f -> f.stripPrefix(1))
                 .uri(catalogServiceUrl))
+
+            // ── Workflow Service ──
+            // Routes: /api/v1/{tenantId}/workflows/... and /api/workflow-templates/...
+            // stripPrefix(1) removes "/api", keeping "/v1/{tenantId}/workflows/..."
+            // rewritePath rewrites /v1/{segment} back to /api/v1/{segment}
+            .route("workflow-service", r -> r
+                .path("/api/v1/**", "/api/workflows/**", "/api/workflow-templates/**")
+                .filters(f -> f
+                    .stripPrefix(1)
+                    .rewritePath("/v1/(?<segment>.*)", "/api/v1/${segment}"))
+                .uri(workflowServiceUrl))
 
             .build();
     }

@@ -16,7 +16,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
-    List<Project> findByTenantId(String tenantId);
+    @Query("SELECT p FROM Project p WHERE p.tenantId = :tenantId AND p.deleted = false")
+    List<Project> findByTenantIdAndNotDeleted(@Param("tenantId") String tenantId);
+
+    @Query("SELECT p FROM Project p WHERE p.tenantId = :tenantId AND p.deleted = false")
+    List<Project> findByTenantId(@Param("tenantId") String tenantId);
 
     List<Project> findByTenantIdAndOrgId(String tenantId, UUID orgId);
 
@@ -30,7 +34,12 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     boolean existsByTenantIdAndCodeAndIdNot(String tenantId, String code, UUID excludedId);
 
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM Project p WHERE p.tenantId = :tenantId AND p.code = :code AND p.deleted = false")
+    boolean existsByTenantIdAndCodeNotDeleted(@Param("tenantId") String tenantId, @Param("code") String code);
+
     boolean existsByTenantIdAndCode(String tenantId, String code);
+
+    Optional<Project> findByConstructionSiteIdAndDeletedFalse(String constructionSiteId);
 
     long countByTenantIdAndStatus(String tenantId, Project.ProjectStatus status);
 

@@ -32,7 +32,7 @@ import io.cerp.project.service.ProjectService;
  * Tenant context is extracted from the X-Tenant-Id header (injected by the API Gateway). User identity is extracted from the JWT token.
  */
 @RestController
-@RequestMapping("/api/projects/v1/projects")
+@RequestMapping("/api/v1/projects")
 public class ProjectController {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectController.class);

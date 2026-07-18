@@ -77,7 +77,7 @@ export function ConstructionEngineeringPageBodyClient({
 
   return (
     <div>
-      <PageHeader title="Construction" description="Manage projects, subprojects, and work orders." />
+      <PageHeader title="Project Management" description="Manage projects, subprojects, and work orders. Each construction site can only be linked to one project." />
 
       <Card className="mb-6">
         <CardContent className="p-0">

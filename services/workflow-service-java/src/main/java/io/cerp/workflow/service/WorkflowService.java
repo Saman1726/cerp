@@ -142,6 +142,22 @@ public class WorkflowService {
     }
 
     /**
+     * Get workflows for a subproject by tenant and subproject ID only.
+     */
+    @Transactional(readOnly = true)
+    public List<Workflow> getWorkflowsBySubprojectId(String tenantId, UUID subprojectId) {
+        return workflowRepository.findByTenantIdAndSubprojectId(tenantId, subprojectId);
+    }
+
+    /**
+     * Get a workflow with its steps by ID.
+     */
+    @Transactional(readOnly = true)
+    public Optional<Workflow> getWorkflowWithSteps(UUID id) {
+        return workflowRepository.findByIdWithSteps(id);
+    }
+
+    /**
      * Start a workflow. PLANNED -> IN_PROGRESS.
      */
     @Transactional

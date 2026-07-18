@@ -8,6 +8,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.cerp.project.domain.SubProject;
 import io.cerp.project.dto.SubProjectCreateRequest;
 import io.cerp.project.dto.SubProjectResponse;
@@ -28,9 +32,13 @@ public class SubProjectService {
     private static final Logger log = LoggerFactory.getLogger(SubProjectService.class);
 
     private final SubProjectRepository subProjectRepository;
+    private final org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public SubProjectService(SubProjectRepository subProjectRepository) {
+    public SubProjectService(SubProjectRepository subProjectRepository,
+            org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate) {
         this.subProjectRepository = subProjectRepository;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     /**
@@ -175,6 +183,23 @@ public class SubProjectService {
 
         SubProject saved = subProjectRepository.save(subProject);
         log.info("Created SubProject: {} with ID: {}", saved.getCode(), saved.getId());
+
+        // Publish subproject created event to trigger workflow auto-generation
+        try {
+            String buildingType = saved.getBuildingType() != null ? saved.getBuildingType().name() : null;
+            Map<String, Object> event = Map.of(
+                "tenantId", saved.getTenantId(),
+                "orgId", saved.getOrgId().toString(),
+                "subprojectId", saved.getId().toString(),
+                "projectId", saved.getProjectId().toString(),
+                "buildingType", buildingType);
+
+            String eventJson = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send("project.subproject.created", saved.getId().toString(), eventJson);
+            log.info("Published subproject created event for subproject: {}", saved.getId());
+        } catch (Exception e) {
+            log.warn("Failed to publish subproject created event for subproject: {}", saved.getId(), e);
+        }
 
         return SubProjectResponse.fromEntity(saved);
     }

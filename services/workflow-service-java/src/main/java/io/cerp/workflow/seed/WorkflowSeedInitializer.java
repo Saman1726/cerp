@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
+import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.WorkflowTemplate;
 import io.cerp.workflow.domain.WorkflowTemplateStep;
 import io.cerp.workflow.dto.WorkflowTemplateRequest;
@@ -37,14 +38,27 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("Seed data: Initializing construction workflow templates...");
 
-        seedTemplate(FoundationTemplateDefinition.INSTANCE);
-        seedTemplate(SuperstructureTemplateDefinition.INSTANCE);
-        seedTemplate(MEPRoughInTemplateDefinition.INSTANCE);
-        seedTemplate(InteriorFinishTemplateDefinition.INSTANCE);
-        seedTemplate(SafetyManagementTemplateDefinition.INSTANCE);
-        seedTemplate(ProcurementTemplateDefinition.INSTANCE);
-        seedTemplate(HandoverTemplateDefinition.INSTANCE);
-        seedTemplate(QAAssuranceTemplateDefinition.INSTANCE);
+        // Set a system tenant context for seed data (no HTTP request context during startup)
+        String originalTenant = TenantContext.getCurrentTenantId();
+        try {
+            TenantContext.setCurrentTenantId("__system__");
+
+            seedTemplate(FoundationTemplateDefinition.INSTANCE);
+            seedTemplate(SuperstructureTemplateDefinition.INSTANCE);
+            seedTemplate(MEPRoughInTemplateDefinition.INSTANCE);
+            seedTemplate(InteriorFinishTemplateDefinition.INSTANCE);
+            seedTemplate(SafetyManagementTemplateDefinition.INSTANCE);
+            seedTemplate(ProcurementTemplateDefinition.INSTANCE);
+            seedTemplate(HandoverTemplateDefinition.INSTANCE);
+            seedTemplate(QAAssuranceTemplateDefinition.INSTANCE);
+        } finally {
+            // Restore original tenant context
+            if (originalTenant != null) {
+                TenantContext.setCurrentTenantId(originalTenant);
+            } else {
+                TenantContext.clear();
+            }
+        }
 
         log.info("Seed data: Construction workflow templates initialization complete.");
     }
@@ -67,7 +81,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
             log.info("Seed data: Created and activated template {} (id: {}, code: {})",
                 definition.name(), created.getId(), definition.code());
         } catch (Exception e) {
-            log.error("Seed data: Failed to create template {}: {}", definition.code(), e.getMessage());
+            log.error("Seed data: Failed to create template {}: {}", definition.code(), e.getMessage(), e);
         }
     }
 
@@ -256,8 +270,16 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 requiresEvidence,
                 "INSPECTION".equals(type) || "MILESTONE".equals(type),
                 1,
-                "INSPECTION".equals(type) ? 24 : "MILESTONE".equals(type) ? 12 : null,
+                slaForSuperstructure(type),
                 null, null, null);
+        }
+
+        private Integer slaForSuperstructure(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
         }
     }
 
@@ -485,7 +507,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 List.of("Safety Officer"),
                 requiresEvidence,
                 "INSPECTION".equals(type),
-                0,
+                1,
                 "INSPECTION".equals(type) ? 48 : null,
                 null, null, null);
         }
@@ -560,8 +582,16 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 requiresEvidence,
                 "INSPECTION".equals(type) || "APPROVAL".equals(type),
                 1,
-                "INSPECTION".equals(type) ? 24 : "APPROVAL".equals(type) ? 48 : null,
+                slaForProcurement(type),
                 null, null, null);
+        }
+
+        private Integer slaForProcurement(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("APPROVAL".equals(type))
+                return 48;
+            return null;
         }
     }
 
@@ -639,8 +669,16 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 requiresEvidence,
                 "INSPECTION".equals(type) || "APPROVAL".equals(type),
                 2,
-                "INSPECTION".equals(type) ? 48 : "APPROVAL".equals(type) ? 72 : null,
+                slaForHandover(type),
                 null, null, null);
+        }
+
+        private Integer slaForHandover(String type) {
+            if ("INSPECTION".equals(type))
+                return 48;
+            if ("APPROVAL".equals(type))
+                return 72;
+            return null;
         }
     }
 
@@ -710,8 +748,16 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 requiresEvidence,
                 "INSPECTION".equals(type) || "APPROVAL".equals(type),
                 1,
-                "INSPECTION".equals(type) ? 24 : "APPROVAL".equals(type) ? 48 : null,
+                slaForQA(type),
                 null, null, null);
+        }
+
+        private Integer slaForQA(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("APPROVAL".equals(type))
+                return 48;
+            return null;
         }
     }
 }

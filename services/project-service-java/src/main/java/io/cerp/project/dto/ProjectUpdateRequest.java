@@ -17,6 +17,8 @@ public record ProjectUpdateRequest(
 
         @Size(max = 255, message = "Description must be 255 characters or less") String description,
 
+        String constructionSiteId,
+
         UUID propertyId,
 
         @Size(max = 255, message = "Address line 1 must be 255 characters or less") String addressLine1,

@@ -41,6 +41,7 @@ async function createProjectActionCore(formData: FormData): Promise<{ error?: st
       name,
       orgId: orgId || DEFAULT_ORG_ID,
       description: formData.get('description')?.toString()?.trim() || undefined,
+      constructionSiteId: formData.get('constructionSiteId')?.toString()?.trim() || undefined,
       addressLine1: formData.get('addressLine1')?.toString()?.trim() || undefined,
       addressLine2: formData.get('addressLine2')?.toString()?.trim() || undefined,
       postalCode: formData.get('postalCode')?.toString()?.trim() || undefined,
@@ -54,7 +55,7 @@ async function createProjectActionCore(formData: FormData): Promise<{ error?: st
       currencyCode: formData.get('currencyCode')?.toString()?.trim() || 'EUR',
     };
 
-    await apiClient.post<ProjectCreateRequest, ProjectResponse>('/api/projects/v1/projects', request);
+    await apiClient.post<ProjectCreateRequest, ProjectResponse>('/api/v1/projects', request);
     revalidatePath('/construction');
     return {};
   } catch (error: unknown) {
@@ -77,7 +78,7 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
       return { error: 'Missing project ID' };
     }
 
-    await apiClient.delete(`/api/projects/v1/projects/${projectId}`);
+    await apiClient.delete(`/api/v1/projects/${projectId}`);
     revalidatePath('/construction');
     return {};
   } catch (error) {
@@ -88,7 +89,7 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
 
   export async function fetchProjects(): Promise<ProjectResponse[]> {
     try {
-      return await apiClient.get<ProjectResponse[]>('/api/projects/v1/projects');
+      return await apiClient.get<ProjectResponse[]>('/api/v1/projects');
     } catch {
     return [];
   }
@@ -364,49 +365,42 @@ export async function issueWorkOrderAction(
 
 async function initializeSubProjectWorkflows(subProjectId: string, projectId: string): Promise<void> {
   try {
-    // Standard construction phases that should be initialized for every SubProject
-    const standardPhases = [
-      'PRE_CONSTRUCTION',
-      'SITE_PREP',
-      'FOUNDATION',
-      'BASEMENT',
-      'SUPERSTRUCTURE',
-      'ROOF',
-      'BUILDING_ENVELOPE',
-      'INTERIOR_PARTITIONS',
-      'MEP_ROUGHIN',
-      'INTERIOR_FINISH',
-      'EXTERIOR_WORKS',
-      'TESTING_COMMISSIONING',
-      'SNAGGING',
-      'HANDOVER',
-    ];
+    // Get the tenant ID from cookies or header
+    const { cookies } = await import('next/headers');
+    const store = await cookies();
+    const tenantId = store.get('x-tenant-id')?.value || 'default';
+    const token = store.get('set-token')?.value || '';
 
-    // Fetch templates and initialize standard phase workflows
-    const templates: WorkflowTemplate[] = await apiClient.get('/api/v1/workflow-templates?all=true');
+    // Get orgId from the project
+    const project = await apiClient.get<{ orgId: string }>(`/api/v1/projects/${projectId}`);
+    const orgId = project?.orgId;
 
-    for (const phase of standardPhases) {
-      const template = templates.find((t) => t.code === phase && t.status === 'ACTIVE');
-      if (template) {
-        try {
-          const workflowInitBody: Record<string, unknown> = {
-            tenantId: '',
-            projectId,
-            subprojectId: subProjectId,
-            templateId: template.id,
-            userId: null,
-          };
-          await apiClient.post<Record<string, unknown>, unknown>(
-            '/api/v1/workflows/instantiate',
-            workflowInitBody
-          );
-        } catch {
-          // Silently fail for individual workflow creation
-          console.warn(`Failed to initialize workflow for phase: ${phase}`);
-        }
-      }
+    if (!orgId) {
+      console.warn('Cannot auto-generate workflows: orgId not found for project');
+      return;
     }
-  } catch {
-    console.warn('Failed to initialize default workflows for subProject');
+
+    // Get the API base URL from env
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+    // Call the auto-generate endpoint which handles everything via REST (query params)
+    const apiUrl = `${API_URL}/api/v1/${tenantId}/workflows/auto-generate?orgId=${orgId}&subprojectId=${subProjectId}&projectId=${projectId}&buildingType=RESIDENTIAL`;
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      console.warn(`Failed to auto-generate workflows: ${response.status} ${errorBody.message || response.statusText}`);
+      return;
+    }
+
+    console.log(`Auto-generated workflows for subProject: ${subProjectId}`);
+  } catch (error) {
+    console.warn('Failed to auto-generate workflows for subProject:', error);
   }
 }

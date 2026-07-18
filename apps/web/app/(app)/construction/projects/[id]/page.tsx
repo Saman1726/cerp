@@ -10,7 +10,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
   let constructionSites: ConstructionSite[] = [];
 
   try {
-    project = await apiClient.get<Project>(`/api/projects/v1/projects/${projectId}`);
+    project = await apiClient.get<Project>(`/api/v1/projects/${projectId}`);
   } catch {
     // Project not found
   }

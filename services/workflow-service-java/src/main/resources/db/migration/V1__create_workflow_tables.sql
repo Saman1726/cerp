@@ -1,7 +1,7 @@
 -- Workflow Templates
 CREATE TABLE workflow_templates (
     id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL,
+    tenant_id VARCHAR(255) NOT NULL,
     code VARCHAR(64) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
@@ -45,7 +45,7 @@ CREATE INDEX idx_template_steps_template ON workflow_template_steps (template_id
 -- Workflow Instances
 CREATE TABLE workflows (
     id UUID PRIMARY KEY,
-    tenant_id UUID NOT NULL,
+    tenant_id VARCHAR(255) NOT NULL,
     project_id UUID NOT NULL,
     subproject_id UUID NOT NULL,
     template_id UUID NOT NULL REFERENCES workflow_templates (id),
