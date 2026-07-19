@@ -1,5 +1,6 @@
 import { apiClient } from '../lib/api-client';
 import type { SimpleActionState } from './types';
+import type { Building, ConstructionSite, Floor, Unit, CreateFloorRequest, CreateUnitRequest, CreateBuildingRequest, CreateConstructionSiteRequest } from '@cerp/shared-types';
 
 // Non `use server` logic functions. App layer wraps these as Server Actions and handles revalidatePath.
 
@@ -168,15 +169,15 @@ export async function duplicateSite(formData: FormData): Promise<SimpleActionSta
   if (!siteId) return { error: 'Missing siteId' };
 
   try {
-    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
+    const site = await apiClient.get<ConstructionSite>(`/construction-sites/${siteId}`);
     const name = (formData.get('name') || `${site.name} (Copy)`).toString().trim();
-    const newSite = await apiClient.post<any, any>('/construction-sites', { name, address: site.address });
+    const newSite = await apiClient.post<CreateConstructionSiteRequest, ConstructionSite>('/construction-sites', { name, address: site.address });
 
     // Duplicate all buildings with their floors and units
     if (site.buildings && site.buildings.length > 0) {
       for (const building of site.buildings) {
         const newBuildingName = formData.get(`building_${building.id}_name`)?.toString()?.trim() || `${building.name} (Copy)`;
-        const newBuilding = await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings`, {
+        const newBuilding = await apiClient.post<CreateBuildingRequest, Building>(`/construction-sites/${newSite.id}/buildings`, {
           name: newBuildingName,
         });
 
@@ -184,7 +185,7 @@ export async function duplicateSite(formData: FormData): Promise<SimpleActionSta
         if (building.floors && building.floors.length > 0) {
           for (const floor of building.floors) {
             const newFloorType = formData.get(`floor_${building.id}_${floor.id}_type`)?.toString()?.trim() || floor.type;
-            const newFloor = await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors`, {
+            const newFloor = await apiClient.post<CreateFloorRequest, Floor>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors`, {
               type: newFloorType,
               usableArea: floor.usableArea,
               totalArea: floor.totalArea,
@@ -194,7 +195,7 @@ export async function duplicateSite(formData: FormData): Promise<SimpleActionSta
             if (floor.units && floor.units.length > 0) {
               for (const unit of floor.units) {
                 const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
-                await apiClient.post<any, any>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
+                await apiClient.post<CreateUnitRequest, Unit>(`/construction-sites/${newSite.id}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
                   label: newUnitLabel,
                   usableArea: unit.usableArea,
                   bedrooms: unit.bedrooms,
@@ -237,14 +238,14 @@ export async function duplicateBuilding(formData: FormData): Promise<SimpleActio
   try {
     console.log(`[duplicateBuilding] Starting duplication for site=${siteId}, building=${buildingId}`);
 
-    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
-    const building = site.buildings?.find((b: any) => b.id === buildingId);
+    const site = await apiClient.get<ConstructionSite>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: Building) => b.id === buildingId);
     if (!building) return { error: 'Building not found' };
 
     console.log(`[duplicateBuilding] Found building: ${building.name} with ${building.floors?.length || 0} floors`);
 
     const name = (formData.get('name') || `${building.name} (Copy)`).toString().trim();
-    const newBuilding = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings`, { name });
+    const newBuilding = await apiClient.post<CreateBuildingRequest, Building>(`/construction-sites/${siteId}/buildings`, { name });
     console.log(`[duplicateBuilding] Created new building: ${newBuilding.id}`);
 
     // Duplicate all floors with their units
@@ -252,7 +253,7 @@ export async function duplicateBuilding(formData: FormData): Promise<SimpleActio
       for (const floor of building.floors) {
         console.log(`[duplicateBuilding] Duplicating floor: ${floor.id} (${floor.type})`);
         const newFloorType = formData.get(`floor_${floor.id}_type`)?.toString()?.trim() || floor.type;
-        const newFloor = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors`, {
+        const newFloor = await apiClient.post<CreateFloorRequest, Floor>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors`, {
           type: newFloorType,
           usableArea: floor.usableArea,
           totalArea: floor.totalArea,
@@ -263,8 +264,8 @@ export async function duplicateBuilding(formData: FormData): Promise<SimpleActio
         if (floor.units && floor.units.length > 0) {
           console.log(`[duplicateBuilding] Duplicating ${floor.units.length} units from floor ${floor.id}`);
           for (const unit of floor.units) {
-            const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
-            await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
+          const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
+          await apiClient.post<CreateUnitRequest, Unit>(`/construction-sites/${siteId}/buildings/${newBuilding.id}/floors/${newFloor.id}/units`, {
               label: newUnitLabel,
               usableArea: unit.usableArea,
               bedrooms: unit.bedrooms,
@@ -319,15 +320,15 @@ export async function duplicateFloor(formData: FormData): Promise<SimpleActionSt
   try {
     console.log(`[duplicateFloor] Starting duplication for site=${siteId}, building=${buildingId}, floor=${floorId}`);
 
-    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
-    const building = site.buildings?.find((b: any) => b.id === buildingId);
-    const floor = building?.floors?.find((f: any) => f.id === floorId);
-    if (!floor) return { error: 'Floor not found' };
+    const site = await apiClient.get<ConstructionSite>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: Building) => b.id === buildingId);
+    const floor = building?.floors?.find((f: Floor) => f.id === floorId);
+    if (!building || !floor) return { error: 'Floor not found' };
 
     console.log(`[duplicateFloor] Found floor: ${floor.id} (${floor.type}) with ${floor.units?.length || 0} units`);
 
     const newFloorType = (formData.get('name') || floor.type).toString().trim();
-    const newFloor = await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${buildingId}/floors`, {
+    const newFloor = await apiClient.post<CreateFloorRequest, Floor>(`/construction-sites/${siteId}/buildings/${buildingId}/floors`, {
       type: newFloorType,
       usableArea: floor.usableArea,
       totalArea: floor.totalArea,
@@ -339,7 +340,7 @@ export async function duplicateFloor(formData: FormData): Promise<SimpleActionSt
       console.log(`[duplicateFloor] Duplicating ${floor.units.length} units from floor ${floor.id}`);
       for (const unit of floor.units) {
         const newUnitLabel = formData.get(`unit_${building.id}_${floor.id}_${unit.id}_label`)?.toString()?.trim() || `${unit.label} (Copy)`;
-        await apiClient.post<any, any>(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${newFloor.id}/units`, {
+        await apiClient.post<CreateUnitRequest, Unit>(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${newFloor.id}/units`, {
           label: newUnitLabel,
           usableArea: unit.usableArea,
           bedrooms: unit.bedrooms,
@@ -401,10 +402,10 @@ export async function duplicateUnit(formData: FormData): Promise<SimpleActionSta
   if (!siteId || !buildingId || !floorId || !unitId) return { error: 'Missing ids' };
 
   try {
-    const site = await apiClient.get<any>(`/construction-sites/${siteId}`);
-    const building = site.buildings?.find((b: any) => b.id === buildingId);
-    const floor = building?.floors?.find((f: any) => f.id === floorId);
-    const unit = floor?.units?.find((u: any) => u.id === unitId);
+    const site = await apiClient.get<ConstructionSite>(`/construction-sites/${siteId}`);
+    const building = site.buildings?.find((b: Building) => b.id === buildingId);
+    const floor = building?.floors?.find((f: Floor) => f.id === floorId);
+    const unit = floor?.units?.find((u: Unit) => u.id === unitId);
     if (!unit) return { error: 'Unit not found' };
     const name = (formData.get('name') || `${unit.label} (Copy)`).toString().trim();
     await apiClient.post(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}/units`, {

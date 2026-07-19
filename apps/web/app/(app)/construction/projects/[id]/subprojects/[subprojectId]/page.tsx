@@ -3,6 +3,41 @@ import { apiClient } from '@cerp/core-web/lib/api-client';
 import type { SubProjectResponse } from '@cerp/shared-types';
 import SubProjectDetailClient from './SubProjectDetailClient';
 
+// Generate static params for all subprojects within each project
+export async function generateStaticParams() {
+  const params: Array<{ id: string; subprojectId: string }> = [];
+
+  try {
+    // Fetch all projects
+    const projects = await apiClient.get<import('@cerp/shared-types').Project[]>(
+      '/api/v1/projects'
+    );
+
+    for (const project of projects) {
+      try {
+        // Fetch all subprojects for this project
+        const subProjects = await apiClient.get<import('@cerp/shared-types').SubProjectResponse[]>(
+          `/api/v1/projects/${project.id}/subprojects`
+        );
+
+        for (const subProject of subProjects) {
+          params.push({
+            id: project.id,
+            subprojectId: subProject.id,
+          });
+        }
+      } catch {
+        // Skip projects that fail to fetch subprojects
+        console.warn(`[SubProjectDetailPage] Could not fetch subprojects for project ${project.id}`);
+      }
+    }
+  } catch {
+    console.warn('[SubProjectDetailPage] Could not fetch projects for static params generation');
+  }
+
+  return params;
+}
+
 export default async function SubProjectDetailPage({
   params,
 }: {

@@ -233,7 +233,6 @@ export default function ProjectDetailClient({
                     key={subProject.id}
                     subProject={subProject}
                     projectId={project.id}
-                    projectIdPath={projectId}
                     isExpanded={expandedSubProjectId === subProject.id}
                     onToggle={() =>
                       setExpandedSubProjectId(expandedSubProjectId === subProject.id ? null : subProject.id)
@@ -374,7 +373,6 @@ export default function ProjectDetailClient({
 function SubProjectRow({
   subProject,
   projectId,
-  projectIdPath,
   isExpanded,
   onToggle,
   onDelete,
@@ -382,7 +380,6 @@ function SubProjectRow({
 }: {
   subProject: Project['subProjects'][number];
   projectId: string;
-  projectIdPath: string;
   isExpanded: boolean;
   onToggle: () => void;
   onDelete: (projectId: string, subProjectId: string) => Promise<void>;

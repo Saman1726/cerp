@@ -13,12 +13,12 @@ export default async function ConstructionPage() {
 
   let projects: Project[] = [];
   try {
-    const rawProjects = await apiClient.get<unknown[]>('/api/v1/projects');
-    projects = (rawProjects || []).map((p: any) => ({
+    const rawProjects = await apiClient.get<Record<string, unknown>[]>('/api/v1/projects');
+    projects = (rawProjects || []).map((p) => ({
       ...p,
-      type: p.projectType || p.type,
-      subProjects: p.subProjects || [],
-    })) as Project[];
+      type: (p.projectType as string) || (p.type as string),
+      subProjects: (p.subProjects as unknown[]) || [],
+    })) as unknown as Project[];
   } catch {
     console.warn('Failed to fetch projects, returning empty array');
   }
