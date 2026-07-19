@@ -142,6 +142,17 @@ public class WorkflowController {
         return ResponseEntity.ok(workflowService.cancelWorkflow(UUID.fromString(id), request.userId()));
     }
 
+    @PostMapping("/{id}/pause")
+    public ResponseEntity<Workflow> pause(@PathVariable String id,
+            @Valid @RequestBody StatusReasonRequest request) {
+        return ResponseEntity.ok(workflowService.blockWorkflow(UUID.fromString(id), request.reason()));
+    }
+
+    @PostMapping("/{id}/resume")
+    public ResponseEntity<Workflow> resume(@PathVariable String id) {
+        return ResponseEntity.ok(workflowService.unblockWorkflow(UUID.fromString(id)));
+    }
+
     // ── Step Operations ──
 
     @PostMapping("/{workflowId}/steps/{stepId}/start")

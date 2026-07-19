@@ -38,7 +38,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("Seed data: Initializing construction workflow templates...");
 
-        // Set a system tenant context for seed data (no HTTP request context during startup)
+        // Set a system tenant context for seed data (no HTTP request context during
+        // startup)
         String originalTenant = TenantContext.getCurrentTenantId();
         try {
             TenantContext.setCurrentTenantId("__system__");
@@ -51,6 +52,21 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
             seedTemplate(ProcurementTemplateDefinition.INSTANCE);
             seedTemplate(HandoverTemplateDefinition.INSTANCE);
             seedTemplate(QAAssuranceTemplateDefinition.INSTANCE);
+            seedTemplate(PreConstructionTemplateDefinition.INSTANCE);
+            seedTemplate(SitePrepTemplateDefinition.INSTANCE);
+            seedTemplate(BasementTemplateDefinition.INSTANCE);
+            seedTemplate(RoofTemplateDefinition.INSTANCE);
+            seedTemplate(BuildingEnvelopeTemplateDefinition.INSTANCE);
+            seedTemplate(InteriorPartitionsTemplateDefinition.INSTANCE);
+            seedTemplate(ExteriorWorksTemplateDefinition.INSTANCE);
+            seedTemplate(TestCommissioningTemplateDefinition.INSTANCE);
+            seedTemplate(SnaggingTemplateDefinition.INSTANCE);
+            seedTemplate(FacilityManagementTemplateDefinition.INSTANCE);
+            seedTemplate(EquipmentManagementTemplateDefinition.INSTANCE);
+            seedTemplate(WorkforceManagementTemplateDefinition.INSTANCE);
+            seedTemplate(SubcontractorManagementTemplateDefinition.INSTANCE);
+            seedTemplate(ProgressMonitoringTemplateDefinition.INSTANCE);
+            seedTemplate(CostControlTemplateDefinition.INSTANCE);
         } finally {
             // Restore original tenant context
             if (originalTenant != null) {
@@ -757,6 +773,1268 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 return 24;
             if ("APPROVAL".equals(type))
                 return 48;
+            return null;
+        }
+    }
+
+    // ── Missing Template Definitions (16 templates) ──
+
+    /**
+     * Pre-Construction template - initial project setup and planning phase.
+     */
+    static class PreConstructionTemplateDefinition implements TemplateDefinition {
+
+        static final PreConstructionTemplateDefinition INSTANCE = new PreConstructionTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "PRE_CONSTRUCTION";
+        }
+
+        @Override
+        public String name() {
+            return "Pre-Construction Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Project kickoff, design approval, permit acquisition, contractor selection, and pre-construction meetings.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "PRE_CONSTRUCTION";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("PROJECT_PLAN", "DESIGN_DRAWINGS", "PERMIT_APPLICATION", "BUSINESS_CASE");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "PROJECT_KICKOFF", "Project kickoff meeting", "TASK", false),
+                    step(2, "DESIGN_REVIEW", "Design documents review", "INSPECTION", true),
+                    step(3, "PERMIT_ACQUISITION", "Permit and approval acquisition", "TASK", true),
+                    step(4, "CONTRACTOR_SELECTION", "Contractor selection and bidding", "APPROVAL", true),
+                    step(5, "PRE_CON_MEETING", "Pre-construction conference", "TASK", true),
+                    step(6, "CONSTRUCTION_PLAN", "Construction plan approval", "APPROVAL", true),
+                    step(7, "SITE_HANDOVER", "Site handover to contractor", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Project Manager"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "APPROVAL".equals(type),
+                1,
+                slaForPreConstruction(type),
+                null, null, null);
+        }
+
+        private Integer slaForPreConstruction(String type) {
+            if ("INSPECTION".equals(type))
+                return 48;
+            if ("APPROVAL".equals(type))
+                return 72;
+            return null;
+        }
+    }
+
+    /**
+     * Site Preparation template - ground work, clearing, and site setup.
+     */
+    static class SitePrepTemplateDefinition implements TemplateDefinition {
+
+        static final SitePrepTemplateDefinition INSTANCE = new SitePrepTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "SITE_PREP";
+        }
+
+        @Override
+        public String name() {
+            return "Site Preparation Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Site clearing, grubbing, excavation, temporary utilities, erosion control, and site setup.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "SITE_PREP";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("SITE_SURVEY", "EROSION_CONTROL_PLAN", "GRADING_PLAN");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "SITE_SURVEY", "Site survey and boundary verification", "INSPECTION", true),
+                    step(2, "SITE_CLEARING", "Site clearing and grubbing", "TASK", true),
+                    step(3, "DEMOLITION", "Demolition of existing structures", "TASK", true),
+                    step(4, "EXCAVATION", "Major excavation and grading", "TASK", true),
+                    step(5, "EROSION_CONTROL", "Erosion and sediment control installation", "INSPECTION", true),
+                    step(6, "TEMP_UTILITIES", "Temporary utilities installation", "TASK", false),
+                    step(7, "SITE_ACCESS", "Site access and road construction", "TASK", false),
+                    step(8, "SITE_SETUP", "Site office and facilities setup", "TASK", false),
+                    step(9, "SITE_INSPECTION", "Pre-foundation site inspection", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Site Engineer"),
+                requiresEvidence,
+                "INSPECTION".equals(type),
+                1,
+                "INSPECTION".equals(type) ? 24 : null,
+                null, null, null);
+        }
+    }
+
+    /**
+     * Basement construction template.
+     */
+    static class BasementTemplateDefinition implements TemplateDefinition {
+
+        static final BasementTemplateDefinition INSTANCE = new BasementTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "BASEMENT";
+        }
+
+        @Override
+        public String name() {
+            return "Basement Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Basement excavation, waterproofing, structural walls, floor slab, and drainage systems.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "BASEMENT";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("WATERPROOFING_SPEC", "STRUCTURAL_DRAWINGS", "DRAINAGE_PLAN");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "BASEMENT_EXCAVATION", "Basement excavation", "TASK", true),
+                    step(2, "PILE_CAP", "Pile cap construction", "TASK", true),
+                    step(3, "BASEMENT_WALLS", "Basement wall construction", "TASK", true),
+                    step(4, "BASEMENT_SLAB", "Basement floor slab pour", "MILESTONE", true),
+                    step(5, "WATERPROOFING", "Waterproofing application", "TASK", true),
+                    step(6, "DRAINAGE_SYS", "Drainage system installation", "TASK", true),
+                    step(7, "BACKFILL", "Backfill and compaction", "TASK", false),
+                    step(8, "BASEMENT_INSPECTION", "Basement structural inspection", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Site Engineer"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForBasement(type),
+                null, null, null);
+        }
+
+        private Integer slaForBasement(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Roof construction template.
+     */
+    static class RoofTemplateDefinition implements TemplateDefinition {
+
+        static final RoofTemplateDefinition INSTANCE = new RoofTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "ROOF";
+        }
+
+        @Override
+        public String name() {
+            return "Roof Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Roof structure, waterproofing, insulation, drainage, and finishing works.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "ROOF";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("ROOF_SPEC", "WATERPROOFING_SPEC", "INSULATION_CERT");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "ROOF_STRUCT", "Roof structural works", "TASK", true),
+                    step(2, "ROOF_SLOPE", "Slope preparation", "TASK", false),
+                    step(3, "ROOF_WATERPROOF", "Waterproofing application", "TASK", true),
+                    step(4, "ROOF_INSULATION", "Insulation installation", "TASK", true),
+                    step(5, "ROOF_DRAINAGE", "Drainage and gutter installation", "TASK", true),
+                    step(6, "ROOF_FINISH", "Roof finishing works", "TASK", false),
+                    step(7, "ROOF_TEST", "Waterfall testing", "INSPECTION", true),
+                    step(8, "ROOF_INSPECTION", "Roof inspection and approval", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Roofing Foreman"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForRoof(type),
+                null, null, null);
+        }
+
+        private Integer slaForRoof(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Building Envelope template - facade, cladding, windows, and exterior finishes.
+     */
+    static class BuildingEnvelopeTemplateDefinition implements TemplateDefinition {
+
+        static final BuildingEnvelopeTemplateDefinition INSTANCE = new BuildingEnvelopeTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "BUILDING_ENVELOPE";
+        }
+
+        @Override
+        public String name() {
+            return "Building Envelope Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Facade, cladding, windows, doors, exterior insulation, and waterproofing membrane application.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "BUILDING_ENVELOPE";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("FACADE_DRAWINGS", "WINDOW_SPEC", "WATERPROOFING_SPEC");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "SCAFFOLDING", "Scaffolding erection", "TASK", false),
+                    step(2, "FACADE_PREP", "Facade preparation and anchoring", "TASK", true),
+                    step(3, "CLADDING", "Cladding panel installation", "TASK", true),
+                    step(4, "WINDOWS", "Window and glazing installation", "TASK", true),
+                    step(5, "DOORS_EXT", "Exterior door installation", "TASK", true),
+                    step(6, "EXT_INSULATION", "Exterior insulation application", "TASK", true),
+                    step(7, "WATERPROOF_EXT", "Exterior waterproofing", "TASK", true),
+                    step(8, "FAÇADE_FINISH", "Facade finishing works", "TASK", false),
+                    step(9, "AIR_TIGHTNESS", "Air tightness testing", "INSPECTION", true),
+                    step(10, "ENVELOPE_INSPECTION", "Envelope inspection", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Facade Supervisor"),
+                requiresEvidence,
+                "INSPECTION".equals(type),
+                1,
+                "INSPECTION".equals(type) ? 24 : null,
+                null, null, null);
+        }
+    }
+
+    /**
+     * Interior Partitions template.
+     */
+    static class InteriorPartitionsTemplateDefinition implements TemplateDefinition {
+
+        static final InteriorPartitionsTemplateDefinition INSTANCE = new InteriorPartitionsTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "INTERIOR_PARTITIONS";
+        }
+
+        @Override
+        public String name() {
+            return "Interior Partitions Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Internal wall framing, drywall, sound insulation, and partition finishes.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "INTERIOR_PARTITIONS";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("PARTITION_DRAWINGS", "FIRE_RATING_SPEC");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "PARTITION_LAYOUT", "Partition layout marking", "TASK", false),
+                    step(2, "STUD_FRAMING", "Stud framing installation", "TASK", true),
+                    step(3, "SOUND_INSUL", "Sound insulation installation", "TASK", true),
+                    step(4, "DRYWALL_L1", "Drywall - first layer", "TASK", false),
+                    step(5, "DRYWALL_L2", "Drywall - second layer (if required)", "TASK", false),
+                    step(6, "JOINT_FINISH", "Joint taping and finishing", "TASK", false),
+                    step(7, "PRIMER", "Primer application", "TASK", false),
+                    step(8, "PARTITION_INSPECTION", "Partition quality inspection", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Drywall Foreman"),
+                requiresEvidence,
+                "INSPECTION".equals(type),
+                1,
+                "INSPECTION".equals(type) ? 24 : null,
+                null, null, null);
+        }
+    }
+
+    /**
+     * Exterior Works template.
+     */
+    static class ExteriorWorksTemplateDefinition implements TemplateDefinition {
+
+        static final ExteriorWorksTemplateDefinition INSTANCE = new ExteriorWorksTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "EXTERIOR_WORKS";
+        }
+
+        @Override
+        public String name() {
+            return "Exterior Works Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Landscaping, paving, external lighting, fencing, parking areas, and site utilities connection.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "EXTERIOR_WORKS";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("LANDSCAPING_PLAN", "PAVING_PLAN", "EXTERNAL_LIGHTING_PLAN");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "SITE_GRADING", "Site grading and leveling", "TASK", true),
+                    step(2, "PAVING", "Paving and hardscaping", "TASK", true),
+                    step(3, "LANDSCAPING", "Landscaping and planting", "TASK", true),
+                    step(4, "EXT_LIGHTING", "External lighting installation", "TASK", true),
+                    step(5, "FENCING", "Fencing and boundary works", "TASK", true),
+                    step(6, "PARKING", "Parking area marking and signage", "TASK", false),
+                    step(7, "SITE_UTILITIES", "Site utilities connection", "TASK", true),
+                    step(8, "EXT_INSPECTION", "Exterior works inspection", "INSPECTION", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Site Supervisor"),
+                requiresEvidence,
+                "INSPECTION".equals(type),
+                1,
+                "INSPECTION".equals(type) ? 24 : null,
+                null, null, null);
+        }
+    }
+
+    /**
+     * Testing and Commissioning template.
+     */
+    static class TestCommissioningTemplateDefinition implements TemplateDefinition {
+
+        static final TestCommissioningTemplateDefinition INSTANCE = new TestCommissioningTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "TESTING_COMMISSIONING";
+        }
+
+        @Override
+        public String name() {
+            return "Testing & Commissioning Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Systematic testing of all MEP systems, commissioning, performance verification, and integrated systems testing.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "TESTING_COMMISSIONING";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("TEST_PROCEDURES", "COMMISSIONING_PLAN", "PERFORMANCE_CERTS");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "TEST_PLAN", "Testing and commissioning plan", "TASK", true),
+                    step(2, "ELEC_TEST", "Electrical systems testing", "INSPECTION", true),
+                    step(3, "PLUMBING_TEST", "Plumbing systems testing", "INSPECTION", true),
+                    step(4, "HVAC_TEST", "HVAC systems testing", "INSPECTION", true),
+                    step(5, "FIRE_TEST", "Fire protection systems testing", "INSPECTION", true),
+                    step(6, "ELEVATOR_TEST", "Elevator/escalator testing", "INSPECTION", true),
+                    step(7, "BMS_TEST", "Building management system testing", "INSPECTION", true),
+                    step(8, "INTEGRATED_TEST", "Integrated systems testing", "INSPECTION", true),
+                    step(9, "PERFORMANCE_VER", "Performance verification", "MILESTONE", true),
+                    step(10, "COMMISSIONING_REPORT", "Commissioning report submission", "TASK", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Commissioning Agent"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForTesting(type),
+                null, null, null);
+        }
+
+        private Integer slaForTesting(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Snagging template - punch list and defect identification.
+     */
+    static class SnaggingTemplateDefinition implements TemplateDefinition {
+
+        static final SnaggingTemplateDefinition INSTANCE = new SnaggingTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "SNAGGING";
+        }
+
+        @Override
+        public String name() {
+            return "Snagging Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Systematic inspection for defects, punch list creation, defect rectification, and re-inspection.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "SNAGGING";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("SNAG_LIST", "DEFECT_PHOTO", "RECTIFICATION_PLAN");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "SNAG_PLAN", "Snagging plan and scope definition", "TASK", false),
+                    step(2, "INTERIOR_SNAG", "Interior inspection and snag list", "INSPECTION", true),
+                    step(3, "EXT_SNAG", "Exterior inspection and snag list", "INSPECTION", true),
+                    step(4, "MEP_SNAG", "MEP systems snag list", "INSPECTION", true),
+                    step(5, "SNAG_COMPILATION", "Snag list compilation and prioritization", "TASK", true),
+                    step(6, "RECTIFICATION", "Defect rectification works", "TASK", true),
+                    step(7, "RE_INSPECTION", "Re-inspection of rectified items", "INSPECTION", true),
+                    step(8, "FINAL_SNAG", "Final snag-free confirmation", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("QA Inspector"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForSnagging(type),
+                null, null, null);
+        }
+
+        private Integer slaForSnagging(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Facility Management template - post-handover operations and maintenance.
+     */
+    static class FacilityManagementTemplateDefinition implements TemplateDefinition {
+
+        static final FacilityManagementTemplateDefinition INSTANCE = new FacilityManagementTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "FACILITY_MANAGEMENT";
+        }
+
+        @Override
+        public String name() {
+            return "Facility Management Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Property management, maintenance schedules, warranty management, and facility operations handover.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "FACILITY_MANAGEMENT";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("FACILITY_MANUAL", "MAINTENANCE_PLAN", "WARRANTY_SUMMARY");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "FACILITY_HANDOVER", "Facility management team handover", "TASK", true),
+                    step(2, "FM_MANUAL", "Facility management manual delivery", "TASK", true),
+                    step(3, "MAINT_SCHEDULE", "Maintenance schedule setup", "TASK", true),
+                    step(4, "WARRANTY_REG", "Warranty registration and tracking", "TASK", true),
+                    step(5, "SPARE_PARTS", "Spare parts inventory handover", "TASK", true),
+                    step(6, "FACILITY_TRAINING", "Facility operations training", "TASK", true),
+                    step(7, "PM_SCHEDULE", "Preventive maintenance schedule activation", "MILESTONE", true),
+                    step(8, "WARRANTY_CLOCK", "Warranty period clock start", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Facility Manager"),
+                requiresEvidence,
+                "MILESTONE".equals(type),
+                1,
+                slaForFacility(type),
+                null, null, null);
+        }
+
+        private Integer slaForFacility(String type) {
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Equipment Management template.
+     */
+    static class EquipmentManagementTemplateDefinition implements TemplateDefinition {
+
+        static final EquipmentManagementTemplateDefinition INSTANCE = new EquipmentManagementTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "EQUIPMENT_MANAGEMENT";
+        }
+
+        @Override
+        public String name() {
+            return "Equipment Management Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Equipment procurement, delivery, installation, calibration, and maintenance scheduling.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "EQUIPMENT_MANAGEMENT";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("EQUIPMENT_LIST", "MANUFACTURER_SPECS", "MAINTENANCE Manuals");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "EQUIP_REQ", "Equipment requirement specification", "TASK", true),
+                    step(2, "EQUIP_PROCURE", "Equipment procurement", "TASK", true),
+                    step(3, "EQUIP_DELIVERY", "Equipment delivery to site", "MILESTONE", true),
+                    step(4, "EQUIP_INSTALL", "Equipment installation", "TASK", true),
+                    step(5, "EQUIP_CALIBRATE", "Calibration and setup", "INSPECTION", true),
+                    step(6, "EQUIP_TEST", "Equipment testing and validation", "INSPECTION", true),
+                    step(7, "EQUIP_REGISTER", "Equipment register creation", "TASK", true),
+                    step(8, "MAINT_SCHEDULE_EQUIP", "Maintenance schedule setup", "TASK", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Equipment Manager"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForEquipment(type),
+                null, null, null);
+        }
+
+        private Integer slaForEquipment(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Workforce Management template.
+     */
+    static class WorkforceManagementTemplateDefinition implements TemplateDefinition {
+
+        static final WorkforceManagementTemplateDefinition INSTANCE = new WorkforceManagementTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "WORKFORCE_MANAGEMENT";
+        }
+
+        @Override
+        public String name() {
+            return "Workforce Management Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Labor planning, workforce deployment, attendance tracking, skills certification, and workforce safety training.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "WORKFORCE_MANAGEMENT";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("LABOR_PLAN", "SKILLS_MATRIX", "SAFETY_CERTS");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "LABOR_PLAN", "Labor resource planning", "TASK", true),
+                    step(2, "WORKFORCE_DEPLOY", "Workforce deployment and scheduling", "TASK", true),
+                    step(3, "ATTENDANCE", "Attendance and timesheet tracking", "TASK", false),
+                    step(4, "SKILLS_CHECK", "Skills and certification verification", "INSPECTION", true),
+                    step(5, "SAFETY_TRAIN", "Safety training delivery", "TASK", true),
+                    step(6, "PERFORMANCE_REVIEW", "Workforce performance review", "TASK", true),
+                    step(7, "WORKFORCE_REPORT", "Workforce productivity report", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("HR Manager"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForWorkforce(type),
+                null, null, null);
+        }
+
+        private Integer slaForWorkforce(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Subcontractor Management template.
+     */
+    static class SubcontractorManagementTemplateDefinition implements TemplateDefinition {
+
+        static final SubcontractorManagementTemplateDefinition INSTANCE = new SubcontractorManagementTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "SUBCONTRACTOR_MANAGEMENT";
+        }
+
+        @Override
+        public String name() {
+            return "Subcontractor Management Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Subcontractor pre-qualification, onboarding, performance evaluation, and payment certification.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "SUBCONTRACTOR_MANAGEMENT";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("SUBCONTRACT_AGREEMENT", "INSURANCE_CERT", "PERFORMANCE_EVAL");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "SUBCON_PREQUAL", "Subcontractor pre-qualification", "APPROVAL", true),
+                    step(2, "SUBCON_ONBOARD", "Subcontractor onboarding and induction", "TASK", true),
+                    step(3, "SCOPE_BRIEF", "Scope of work briefing", "TASK", true),
+                    step(4, "SUBCON_SAFETY", "Subcontractor safety orientation", "INSPECTION", true),
+                    step(5, "PERF_MONITOR", "Performance monitoring and tracking", "TASK", true),
+                    step(6, "PAYMENT_CERT", "Payment certification", "APPROVAL", true),
+                    step(7, "SUBCON_EVAL", "Subcontractor performance evaluation", "APPROVAL", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Contract Manager"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "APPROVAL".equals(type),
+                1,
+                slaForSubcontractor(type),
+                null, null, null);
+        }
+
+        private Integer slaForSubcontractor(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("APPROVAL".equals(type))
+                return 48;
+            return null;
+        }
+    }
+
+    /**
+     * Progress Monitoring template.
+     */
+    static class ProgressMonitoringTemplateDefinition implements TemplateDefinition {
+
+        static final ProgressMonitoringTemplateDefinition INSTANCE = new ProgressMonitoringTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "PROGRESS_MONITORING";
+        }
+
+        @Override
+        public String name() {
+            return "Progress Monitoring Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Schedule tracking, progress reporting, milestone verification, and schedule variance analysis.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "PROGRESS_MONITORING";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("SCHEDULE_UPDATE", "PROGRESS_REPORT", "MILESTONE_CERT");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "BASELINE_UPDATE", "Schedule baseline update", "TASK", true),
+                    step(2, "PROGRESS_MEASURE", "Progress measurement and data collection", "TASK", true),
+                    step(3, "MILESTONE_CHECK", "Milestone verification", "INSPECTION", true),
+                    step(4, "VARIANCE_ANALYSIS", "Schedule variance analysis", "TASK", true),
+                    step(5, "PROGRESS_REPORT_GEN", "Progress report generation", "TASK", true),
+                    step(6, "STAKEHOLDER_UPDATE", "Stakeholder progress update", "TASK", true),
+                    step(7, "RECOVERY_PLAN", "Recovery plan development (if behind)", "TASK", true),
+                    step(8, "WEEKLY_PROGRESS", "Weekly progress review meeting", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Project Controller"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForProgress(type),
+                null, null, null);
+        }
+
+        private Integer slaForProgress(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("MILESTONE".equals(type))
+                return 12;
+            return null;
+        }
+    }
+
+    /**
+     * Cost Control template.
+     */
+    static class CostControlTemplateDefinition implements TemplateDefinition {
+
+        static final CostControlTemplateDefinition INSTANCE = new CostControlTemplateDefinition();
+
+        @Override
+        public String code() {
+            return "COST_CONTROL";
+        }
+
+        @Override
+        public String name() {
+            return "Cost Control Workflow";
+        }
+
+        @Override
+        public String description() {
+            return "Budget tracking, cost forecasting, change order management, and financial reporting.";
+        }
+
+        @Override
+        public String phaseType() {
+            return "COST_CONTROL";
+        }
+
+        @Override
+        public List<String> requiredDocuments() {
+            return List.of("BUDGET_REPORT", "COST_FORECAST", "CHANGE_ORDER");
+        }
+
+        @Override
+        public WorkflowTemplateRequest toRequest() {
+            return new WorkflowTemplateRequest(
+                code(),
+                name(),
+                description(),
+                phaseType(),
+                null,
+                null,
+                requiredDocuments(),
+                List.of(
+                    step(1, "BUDGET_TRACK", "Budget vs actual tracking", "TASK", true),
+                    step(2, "COST_FORECAST", "Cost forecasting and projection", "TASK", true),
+                    step(3, "CHANGE_ORDER_EVAL", "Change order evaluation", "APPROVAL", true),
+                    step(4, "CHANGE_ORDER_APPROVE", "Change order approval", "APPROVAL", true),
+                    step(5, "INVOICE_CHECK", "Invoice verification and approval", "INSPECTION", true),
+                    step(6, "PAYMENT_APPROVE", "Payment certification approval", "APPROVAL", true),
+                    step(7, "COST_REPORT", "Cost performance report generation", "TASK", true),
+                    step(8, "VARIANCE_REVIEW", "Cost variance review meeting", "MILESTONE", true)));
+        }
+
+        @Override
+        public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            try {
+                return service.getActiveTemplate(code());
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+
+        private WorkflowTemplateStepRequest step(int order, String code, String name, String type,
+                boolean requiresEvidence) {
+            return new WorkflowTemplateStepRequest(
+                order,
+                code,
+                name,
+                WorkflowTemplateStepRequest.StepType.valueOf(type),
+                List.of("Cost Engineer"),
+                requiresEvidence,
+                "INSPECTION".equals(type) || "APPROVAL".equals(type) || "MILESTONE".equals(type),
+                1,
+                slaForCostControl(type),
+                null, null, null);
+        }
+
+        private Integer slaForCostControl(String type) {
+            if ("INSPECTION".equals(type))
+                return 24;
+            if ("APPROVAL".equals(type))
+                return 48;
+            if ("MILESTONE".equals(type))
+                return 12;
             return null;
         }
     }

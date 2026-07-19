@@ -178,27 +178,28 @@ services:
       - '8087:8087'
 
   web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-      target: deps
+    image: node:24-alpine
     container_name: cerp-web
     working_dir: /app
     depends_on:
       - api-java
       - project-service-java
+      - workflow-service-java
     environment:
       NODE_ENV: development
+      PORT: 3001
       API_URL: http://api-java:8080
       PROJECT_SERVICE_URL: http://project-service-java:8085
+      WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
     ports:
       - '3001:3001'
     volumes:
-      - ./apps/web:/app/apps/web
-      - ./packages:/app/packages
+      - .:/app
       - /app/node_modules
       - /app/apps/web/node_modules
-    command: pnpm --filter web run dev
+      - /app/packages/core-web/node_modules
+      - /app/packages/shared-types/node_modules
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter web run dev"
     profiles:
       - legacy
 
