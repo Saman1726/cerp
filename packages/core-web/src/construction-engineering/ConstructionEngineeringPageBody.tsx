@@ -61,18 +61,19 @@ export function ConstructionEngineeringPageBodyClient({
     setWorkOrderModalOpen(true);
   };
 
-  const handleFormSubmit = async (formData: FormData) => {
+  const handleFormSubmit = async (state: IssueWorkOrderActionState, formData: FormData): Promise<IssueWorkOrderActionState> => {
     formData.set('projectId', selectedProjectId);
     if (selectedSubProjectId) {
       formData.set('subProjectId', selectedSubProjectId);
     }
-    const result = await formAction({}, formData);
+    const result = await formAction(state, formData);
     if (!result.error) {
       setWorkOrderModalOpen(false);
       setSelectedProjectId('');
       setSelectedSubProjectId('');
       window.location.reload();
     }
+    return result;
   };
 
   return (
