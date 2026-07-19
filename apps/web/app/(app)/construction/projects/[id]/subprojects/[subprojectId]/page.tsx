@@ -8,22 +8,32 @@ export default async function SubProjectDetailPage({
 }: {
   params: Promise<{ id: string; subprojectId: string }>;
 }) {
+  console.log('[SubProjectDetailPage] ENTERED');
   const { id: projectId, subprojectId } = await params;
+  console.log('[SubProjectDetailPage] resolved params:', { projectId, subprojectId });
 
   let subProject: SubProjectResponse | null = null;
-
   try {
+    console.log('[SubProjectDetailPage] calling apiClient.get');
     subProject = await apiClient.get<SubProjectResponse>(
       `/api/v1/projects/${projectId}/subprojects/${subprojectId}`
     );
-  } catch {
-    // SubProject not found
+    console.log('[SubProjectDetailPage] API call succeeded:', subProject?.code);
+  } catch (error) {
+    console.error('[SubProjectDetailPage] Failed to fetch subproject:', {
+      projectId,
+      subprojectId,
+      error: error instanceof Error ? error.message : String(error),
+      status: (error as { status?: number })?.status,
+    });
   }
 
   if (!subProject) {
+    console.error('[SubProjectDetailPage] SubProject not found or API error');
     notFound();
   }
 
+  console.log('[SubProjectDetailPage] rendering SubProjectDetailClient');
   return (
     <SubProjectDetailClient subProject={subProject} projectId={projectId} />
   );

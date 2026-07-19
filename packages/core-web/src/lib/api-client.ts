@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { API_URL, PROJECT_SERVICE_URL } from './env';
 import { SESSION_COOKIE } from './session-cookies';
 
@@ -53,27 +53,63 @@ function normalizedPathFor(path: string): string {
 // authenticated data-fetching for this scaffold stays server-side.
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const store = await cookies();
-  const headers = new Headers(init?.headers);
-  headers.set('Content-Type', 'application/json');
+  const requestHeaders = await headers();
+  const headersInit = new Headers(init?.headers);
+  headersInit.set('Content-Type', 'application/json');
 
   const token = store.get(SESSION_COOKIE)?.value;
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (token) headersInit.set('Authorization', `Bearer ${token}`);
 
-  // Project service requires X-Tenant-Id header
-  if (isProjectServicePath(path)) {
-    const tenantId = store.get('x-tenant-id')?.value;
-    headers.set('X-Tenant-Id', tenantId || 'default');
+  const isProjectService = isProjectServicePath(path);
+  let tenantId: string | undefined;
+
+  // Project service requires X-Tenant-Id header - read from incoming request
+  // headers first, fall back to cookie value if available, then default.
+  if (isProjectService) {
+    tenantId =
+      requestHeaders.get('X-Tenant-Id') ||
+      store.get('x-tenant-id')?.value ||
+      'default';
+    headersInit.set('X-Tenant-Id', tenantId);
   }
 
   const base = baseUrlFor(path);
   const effectivePath = normalizedPathFor(path);
-  const res = await fetch(`${base}${effectivePath}`, { ...init, headers, cache: 'no-store' });
+  const fullUrl = `${base}${effectivePath}`;
+
+  console.log('[apiClient] REQUEST:', {
+    path,
+    base,
+    effectivePath,
+    fullUrl,
+    isProjectService,
+    tenantId,
+    hasAuthorization: !!token,
+  });
+
+  const res = await fetch(fullUrl, { ...init, headers: headersInit, cache: 'no-store' });
+
+  const responseHeaders: Record<string, string> = {};
+  res.headers.forEach((value, key) => {
+    responseHeaders[key] = value;
+  });
+
+  console.log('[apiClient] RESPONSE:', {
+    fullUrl,
+    status: res.status,
+    statusText: res.statusText,
+    headers: responseHeaders,
+  });
 
   if (!res.ok) {
     const body = await res.json().catch(() => undefined);
+    console.error('[apiClient] API ERROR:', { fullUrl, status: res.status, body });
     throw new ApiClientError(res.status, body?.message ?? res.statusText, body);
   }
-  return res.status === HTTP_NO_CONTENT ? (undefined as T) : res.json();
+
+  const data = res.status === HTTP_NO_CONTENT ? (undefined as T) : await res.json();
+  console.log('[apiClient] SUCCESS:', { fullUrl, hasData: !!data });
+  return data;
 }
 
 export const apiClient = {

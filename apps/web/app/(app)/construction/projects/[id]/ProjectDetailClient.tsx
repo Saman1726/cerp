@@ -51,7 +51,10 @@ export default function ProjectDetailClient({
   const site = constructionSites.find((s) => s.id === project.constructionSiteId);
 
   const handleSubProjectClick = (subProjectId: string) => {
-    router.push(`/construction/projects/${projectId}/subprojects/${subProjectId}`);
+    console.log('[ProjectDetailClient] handleSubProjectClick called:', { projectId, subProjectId });
+    const url = `/construction/projects/${projectId}/subprojects/${subProjectId}`;
+    console.log('[ProjectDetailClient] Navigating to:', url);
+    router.push(url);
   };
 
   const handleDeleteProject = async (pId: string) => {
