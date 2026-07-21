@@ -193,7 +193,8 @@ public class SubProjectService {
                 "orgId", saved.getOrgId().toString(),
                 "subprojectId", saved.getId().toString(),
                 "projectId", saved.getProjectId().toString(),
-                "buildingType", buildingType);
+                "buildingType", buildingType,
+                "constructionPhase", saved.getConstructionPhase());
 
             String eventJson = objectMapper.writeValueAsString(event);
             kafkaTemplate.send("project.subproject.created", saved.getId().toString(), eventJson);

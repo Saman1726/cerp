@@ -30,7 +30,7 @@ spring:
     baseline-version: 0
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -40,7 +40,9 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: io.cerp.workflow.*
+        spring.json.trusted.packages: '*'
+        auto.offset.reset: earliest
+        enable.auto.commit: false
 
   servlet:
     multipart:
@@ -48,9 +50,14 @@ spring:
       max-request-size: 100MB
 
 server:
-  port: ${SERVER_PORT:8085}
+  port: ${SERVER_PORT:8089}
   tomcat:
     max-http-form-post-size: 100MB
+    threads:
+      max: 200
+      min-spare: 10
+    connection-timeout: 30000
+    keep-alive-timeout: 10000
 
 management:
   endpoints:
@@ -63,8 +70,9 @@ management:
 
 logging:
   level:
-    io.cerp.workflow: INFO
+    io.cerp.workflow: DEBUG
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    root: WARN
   pattern:
-    console: '%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-}] %-5level %logger{36} - %msg%n'
+    console: '%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-}] %-5level %logger{36} - %msg%n%ex'

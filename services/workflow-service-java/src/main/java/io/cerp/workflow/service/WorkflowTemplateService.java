@@ -13,6 +13,7 @@ import io.cerp.workflow.config.KafkaEventPublisher;
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.WorkflowTemplate;
 import io.cerp.workflow.domain.WorkflowTemplateStep;
+import io.cerp.workflow.domain.WorkflowTemplateStepAssigneeRole;
 import io.cerp.workflow.dto.WorkflowTemplateRequest;
 import io.cerp.workflow.dto.WorkflowTemplateStepRequest;
 import io.cerp.workflow.event.WorkflowTemplateActivated;
@@ -190,6 +191,16 @@ public class WorkflowTemplateService {
         step.setWeight(stepReq.weight() != null ? stepReq.weight() : BigDecimal.ONE);
         step.setChecklists(stepReq.checklists());
         step.setGatingCondition(stepReq.gatingCondition());
+
+        // Populate normalized assignee role entities
+        if (stepReq.assigneeRoles() != null && !stepReq.assigneeRoles().isEmpty()) {
+            for (int i = 0; i < stepReq.assigneeRoles().size(); i++) {
+                String roleName = stepReq.assigneeRoles().get(i);
+                WorkflowTemplateStepAssigneeRole role = new WorkflowTemplateStepAssigneeRole(
+                    step, roleName, i + 1, i == 0); // First role is primary
+                step.addAssigneeRole(role);
+            }
+        }
 
         return step;
     }

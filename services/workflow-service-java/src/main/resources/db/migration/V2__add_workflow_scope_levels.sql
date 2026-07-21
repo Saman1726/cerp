@@ -1,6 +1,6 @@
 -- V2: Add workflow scope level support for SubProjects
 -- Adds applicable_scope_levels and default_scope_level to workflow_templates
--- Adds floor_ids and part_ids to workflows for building-level scoping
+-- Note: workflow_template_step_assignee_roles is created in V11 with a normalized schema
 
 -- JPA @ElementCollection creates separate join tables for applicableScopeLevels and requiredDocuments
 CREATE TABLE workflow_template_applicable_scope_levels (
@@ -24,19 +24,6 @@ CREATE TABLE workflow_template_required_documents (
 );
 
 CREATE INDEX idx_template_required_docs_template ON workflow_template_required_documents (workflow_template_id);
-
--- JPA @ElementCollection for WorkflowTemplateStep.assigneeRoles
--- Hibernate default naming: workflow_template_step_assignee_roles(workflow_template_step_id)
-CREATE TABLE workflow_template_step_assignee_roles (
-    workflow_template_step_id UUID NOT NULL REFERENCES workflow_template_steps (id) ON DELETE CASCADE,
-    assignee_roles VARCHAR(64) NOT NULL,
-    PRIMARY KEY (
-        workflow_template_step_id,
-        assignee_roles
-    )
-);
-
-CREATE INDEX idx_step_assignee_roles_step ON workflow_template_step_assignee_roles (workflow_template_step_id);
 
 -- Add default_scope_level column to workflow_templates (applicable_scope_levels is a separate table via @ElementCollection)
 ALTER TABLE workflow_templates

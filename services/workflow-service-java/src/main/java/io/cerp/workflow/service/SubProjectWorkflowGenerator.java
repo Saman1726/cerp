@@ -81,6 +81,7 @@ public class SubProjectWorkflowGenerator {
         String buildingType = request.getBuildingType();
         List<String> phaseTypes = request.getPhaseTypes();
         Map<String, Object> workflowParameters = request.getWorkflowParameters();
+        String constructionPhase = request.getConstructionPhase();
 
         List<GeneratedWorkflowDetail> generatedWorkflows = new ArrayList<>();
         List<SkippedWorkflowDetail> skippedDetails = new ArrayList<>();
@@ -227,7 +228,7 @@ public class SubProjectWorkflowGenerator {
     @Transactional
     public WorkflowGenerationResponse generateWorkflowsOnSubprojectCreation(
             String tenantId, UUID orgId, UUID subprojectId, UUID projectId,
-            String buildingType) {
+            String buildingType, String constructionPhase) {
 
         log.info("Auto-generation triggered for subproject {} (tenant: {}, org: {})",
             subprojectId, tenantId, orgId);
@@ -252,6 +253,7 @@ public class SubProjectWorkflowGenerator {
         request.setOrgId(orgId);
         request.setProjectId(projectId);
         request.setBuildingType(buildingType);
+        request.setConstructionPhase(constructionPhase);
 
         return generateWorkflows(request);
     }

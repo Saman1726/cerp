@@ -1,7 +1,9 @@
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/WorkflowServiceApplication.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/config/KafkaEventPublisher.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/config/KafkaListenerConfig.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/config/KafkaTopicConfig.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/config/TenantContext.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/config/WebSecurityConfig.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/controller/OrganisationWorkflowConfigController.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/controller/TemplatePhaseMappingController.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/controller/WorkflowController.java
@@ -14,6 +16,7 @@
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/domain/WorkflowStep.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/domain/WorkflowTemplate.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/domain/WorkflowTemplateStep.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/domain/WorkflowTemplateStepAssigneeRole.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/dto/OrganisationWorkflowConfigRequest.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/dto/OrganisationWorkflowConfigResponse.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/dto/TemplatePhaseMappingRequest.java
@@ -33,6 +36,7 @@
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/repository/WorkflowRepository.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/repository/WorkflowStepRepository.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/repository/WorkflowTemplateRepository.java
+/Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/repository/WorkflowTemplateStepAssigneeRoleRepository.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/seed/ConstructionWorkflowSeedData.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/seed/WorkflowSeedInitializer.java
 /Users/saman.anvari/Documents/GitHub/cerp/services/workflow-service-java/src/main/java/io/cerp/workflow/service/OrganisationWorkflowConfigService.java

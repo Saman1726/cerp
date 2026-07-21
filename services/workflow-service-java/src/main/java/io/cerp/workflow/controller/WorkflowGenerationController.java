@@ -116,6 +116,8 @@ public class WorkflowGenerationController {
      *            the project ID
      * @param buildingType
      *            the building type
+     * @param constructionPhase
+     *            the construction Phase
      * @return response with generated workflow details
      */
     @PostMapping("/{tenantId}/workflows/auto-generate")
@@ -124,10 +126,11 @@ public class WorkflowGenerationController {
             @RequestParam UUID orgId,
             @RequestParam UUID subprojectId,
             @RequestParam UUID projectId,
-            @RequestParam String buildingType) {
+            @RequestParam String buildingType,
+            @RequestParam String constructionPhase) {
 
         WorkflowGenerationResponse response = subProjectWorkflowGenerator
-            .generateWorkflowsOnSubprojectCreation(tenantId, orgId, subprojectId, projectId, buildingType);
+            .generateWorkflowsOnSubprojectCreation(tenantId, orgId, subprojectId, projectId, buildingType, constructionPhase);
 
         if (response.getGeneratedCount() > 0) {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);

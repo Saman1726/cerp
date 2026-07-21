@@ -5,19 +5,24 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
+import jakarta.persistence.Transient;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 /**
@@ -48,9 +53,22 @@ public class WorkflowTemplateStep {
     @Column(name = "step_type", nullable = false, length = 16)
     private StepType type;
 
-    @ElementCollection
-    @Column(name = "assignee_roles", length = 64)
+    // Note: assigneeRoles is populated from assigneeRoleEntities via SQL view or query
+    // The @ElementCollection below is intentionally removed to avoid table conflicts with assigneeRoleEntities
+    @Transient
     private List<String> assigneeRoles = new ArrayList<>();
+
+    /**
+     * Normalized assignee roles as separate entities.
+     * 
+     * <p>
+     * This replaces the assigneeRoles TEXT[] field for better queryability. Both fields are maintained for backward compatibility.
+     * </p>
+     */
+    @OneToMany(mappedBy = "templateStep", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @JsonBackReference("template-step-assignee-roles")
+    @OrderBy("roleOrder ASC")
+    private List<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities = new ArrayList<>();
 
     @Column(name = "requires_evidence", nullable = false)
     private Boolean requiresEvidence = false;
@@ -156,6 +174,42 @@ public class WorkflowTemplateStep {
 
     public void setAssigneeRoles(List<String> assigneeRoles) {
         this.assigneeRoles = assigneeRoles;
+    }
+
+    public List<WorkflowTemplateStepAssigneeRole> getAssigneeRoleEntities() {
+        return assigneeRoleEntities;
+    }
+
+    public void setAssigneeRoleEntities(List<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities) {
+        this.assigneeRoleEntities = assigneeRoleEntities;
+    }
+
+    /**
+     * Add an assignee role entity to this step.
+     */
+    public void addAssigneeRole(WorkflowTemplateStepAssigneeRole role) {
+        assigneeRoleEntities.add(role);
+        role.setTemplateStep(this);
+    }
+
+    /**
+     * Clear all assignee role entities.
+     */
+    public void clearAssigneeRoles() {
+        assigneeRoleEntities.clear();
+    }
+
+    /**
+     * Get the primary assignee role name (first role in the ordered list).
+     */
+    public String getPrimaryAssigneeRole() {
+        if (assigneeRoleEntities != null && !assigneeRoleEntities.isEmpty()) {
+            return assigneeRoleEntities.get(0).getRoleName();
+        }
+        if (assigneeRoles != null && !assigneeRoles.isEmpty()) {
+            return assigneeRoles.get(0);
+        }
+        return null;
     }
 
     public Boolean getRequiresEvidence() {

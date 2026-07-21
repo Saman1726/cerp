@@ -30,6 +30,11 @@ public class WorkflowGenerationRequest {
     private String buildingType;
 
     /**
+     * constructionPhase of the subproject (e.g., PRE-CONSTRUCTION, FOUNDATION, SITE_PREP).
+     */
+    private String constructionPhase;
+
+    /**
      * Optional list of phase types to generate. If null, all matching templates are used.
      */
     private List<String> phaseTypes;
@@ -45,12 +50,13 @@ public class WorkflowGenerationRequest {
     }
 
     public WorkflowGenerationRequest(UUID subprojectId, String tenantId, UUID orgId,
-            List<String> phaseTypes, Map<String, Object> workflowParameters) {
+            List<String> phaseTypes, Map<String, Object> workflowParameters, String constructionPhase) {
         this.subprojectId = subprojectId;
         this.tenantId = tenantId;
         this.orgId = orgId;
         this.phaseTypes = phaseTypes;
         this.workflowParameters = workflowParameters;
+        this.constructionPhase = constructionPhase;
     }
 
     // ── Getters and Setters ──
@@ -109,5 +115,13 @@ public class WorkflowGenerationRequest {
 
     public void setWorkflowParameters(Map<String, Object> workflowParameters) {
         this.workflowParameters = workflowParameters;
+    }
+
+    public String getConstructionPhase() {
+        return constructionPhase;
+    }
+
+    public void setConstructionPhase(String constructionPhase) {
+        this.constructionPhase = constructionPhase;
     }
 }

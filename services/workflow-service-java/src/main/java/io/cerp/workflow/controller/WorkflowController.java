@@ -63,12 +63,35 @@ public class WorkflowController {
 
     // ── Workflow CRUD ──
 
-    @PostMapping("/instantiate")
-    public ResponseEntity<Workflow> instantiate(@Valid @RequestBody InstantiateRequest request) {
+    /**
+     * Create a new workflow instance from a template.
+     * 
+     * <p>
+     * This is the primary POST /api/workflows endpoint. It instantiates a workflow from a template for a given project/sub-project.
+     * </p>
+     * 
+     * @param request
+     *            the instantiation request containing tenantId, projectId, subprojectId, templateId, and userId
+     * @return the created Workflow instance
+     */
+    @PostMapping
+    public ResponseEntity<Workflow> createWorkflow(@Valid @RequestBody InstantiateRequest request) {
         Workflow created = workflowService.instantiate(
             request.tenantId(), request.projectId(),
             request.subprojectId(), request.templateId(), request.userId());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * Alias for createWorkflow - instantiate a workflow from template.
+     * 
+     * @param request
+     *            the instantiation request
+     * @return the created Workflow instance
+     */
+    @PostMapping("/instantiate")
+    public ResponseEntity<Workflow> instantiate(@Valid @RequestBody InstantiateRequest request) {
+        return createWorkflow(request);
     }
 
     @GetMapping

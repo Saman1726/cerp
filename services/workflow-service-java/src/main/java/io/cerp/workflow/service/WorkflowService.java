@@ -89,9 +89,8 @@ public class WorkflowService {
                 templateStep.getId(), templateStep.getOrder(),
                 templateStep.getCode(), templateStep.getName());
 
-            step.setAssigneeRole(templateStep.getAssigneeRoles().isEmpty()
-                    ? null
-                    : templateStep.getAssigneeRoles().get(0));
+            // Use the primary assignee role from the normalized entities (falling back to TEXT[] for backward compatibility)
+            step.setAssigneeRole(templateStep.getPrimaryAssigneeRole());
             step.setWeight(templateStep.getWeight());
 
             // Compute due date

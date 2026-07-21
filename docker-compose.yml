@@ -106,8 +106,8 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
       KAFKA_BOOTSTRAP: kafka:9092
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
     ports:
       - '8085:8085'
 

@@ -61,7 +61,8 @@ public class WorkflowEventListener {
                 event.orgId(),
                 event.subprojectId(),
                 event.projectId(),
-                event.buildingType());
+                event.buildingType(),
+                event.constructionPhase());
 
             log.info("Workflow generation completed for subproject {}: {} generated, {} skipped",
                 event.subprojectId(), response.getGeneratedCount(), response.getSkippedCount());
@@ -81,6 +82,7 @@ public class WorkflowEventListener {
             UUID orgId,
             UUID subprojectId,
             UUID projectId,
-            String buildingType) {
+            String buildingType,
+            String constructionPhase) {
     }
 }
