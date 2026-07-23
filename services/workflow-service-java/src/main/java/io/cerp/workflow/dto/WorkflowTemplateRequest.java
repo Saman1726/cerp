@@ -24,5 +24,7 @@ public record WorkflowTemplateRequest(
 
         List<String> requiredDocuments,
 
-        List<WorkflowTemplateStepRequest> steps) {
+        List<WorkflowTemplateStepRequest> steps,
+
+        Integer orderNum) {
 }

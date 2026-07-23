@@ -17,6 +17,18 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
 
         List<WorkflowTemplate> findByTenantId(String tenantId);
 
+        /**
+         * Find active templates ordered by their construction phase order number.
+         */
+        @Query("SELECT t FROM WorkflowTemplate t WHERE t.tenantId = :tenantId AND t.status = 'ACTIVE' ORDER BY COALESCE(t.orderNum, 9999), t.code")
+        List<WorkflowTemplate> findByTenantIdAndStatusOrderByOrderNum(@Param("tenantId") String tenantId);
+
+        /**
+         * Find all templates ordered by their construction phase order number.
+         */
+        @Query("SELECT t FROM WorkflowTemplate t WHERE t.tenantId = :tenantId ORDER BY COALESCE(t.orderNum, 9999), t.code")
+        List<WorkflowTemplate> findByTenantIdOrderByOrderNum(@Param("tenantId") String tenantId);
+
         @Query("SELECT s FROM WorkflowTemplate t JOIN t.steps s "
                         + "WHERE t.tenantId = :tenantId AND t.status = 'ACTIVE' "
                         + "AND t.code = :templateCode AND s.code = :stepCode")
@@ -25,8 +37,13 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
                         @Param("templateCode") String templateCode,
                         @Param("stepCode") String stepCode);
 
-        @Query("SELECT DISTINCT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps WHERE t.tenantId = :tenantId ORDER BY t.code")
+        @Query("SELECT DISTINCT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps WHERE t.tenantId = :tenantId ORDER BY COALESCE(t.orderNum, 9999), t.code")
         List<WorkflowTemplate> findByTenantIdWithSteps(@Param("tenantId") String tenantId);
+
+        /**
+         * Find templates by phase type ordered by construction phase order.
+         */
+        List<WorkflowTemplate> findByTenantIdAndStatusAndPhaseTypeOrderByOrderNum(String tenantId, WorkflowTemplate.TemplateStatus status, String phaseType);
 
         boolean existsByTenantIdAndCode(String tenantId, String code);
 

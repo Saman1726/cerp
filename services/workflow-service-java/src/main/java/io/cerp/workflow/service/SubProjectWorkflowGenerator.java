@@ -1,5 +1,6 @@
 package io.cerp.workflow.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -94,16 +95,6 @@ public class SubProjectWorkflowGenerator {
         Optional<OrganisationWorkflowConfig> orgConfigOpt =
                 organisationWorkflowConfigRepository.findByTenantIdAndOrgId(tenantId, orgId);
 
-        // Get the set of phase types to process
-        Set<String> phasesToProcess;
-        if (phaseTypes != null && !phaseTypes.isEmpty()) {
-            phasesToProcess = new HashSet<>(phaseTypes);
-        } else {
-            // If no phase types specified, get all from mappings
-            phasesToProcess = new HashSet<>(
-                templatePhaseMappingRepository.findDistinctPhaseTypesByTenantId(tenantId));
-        }
-
         // Get organisation custom phase mappings if they exist
         Map<String, Map<String, List<String>>> orgCustomMappings = Map.of();
         if (orgConfigOpt.isPresent()) {
@@ -111,89 +102,36 @@ public class SubProjectWorkflowGenerator {
             orgCustomMappings = orgConfig.getCustomPhaseMappings();
         }
 
+        Optional<WorkflowTemplate> templateOpt =
+                workflowTemplateRepository.findByTenantIdAndCodeAndStatus("default".equals(tenantId) ? "__system__" : tenantId, constructionPhase,
+                    WorkflowTemplate.TemplateStatus.ACTIVE);
+
         // For each phase type, find matching templates
-        for (String phaseType : phasesToProcess) {
-            // Check if org has custom mappings for this phase
-            if (!orgCustomMappings.isEmpty()
-                    && orgCustomMappings.containsKey(phaseType)) {
-                Map<String, List<String>> phaseGroups = orgCustomMappings.get(phaseType);
-                if (phaseGroups.containsKey(buildingTypeGroup.name())) {
-                    List<String> customTemplateCodes = phaseGroups.get(buildingTypeGroup.name());
-                    // Load templates by code for this phase
-                    for (String templateCode : customTemplateCodes) {
-                        Optional<WorkflowTemplate> templateOpt =
-                                workflowTemplateRepository.findByTenantIdAndCodeAndStatus(
-                                    tenantId, templateCode, WorkflowTemplate.TemplateStatus.ACTIVE);
-                        if (templateOpt.isPresent()) {
-                            WorkflowTemplate template = templateOpt.get();
-                            // Check idempotency - skip if workflow already exists
-                            if (workflowRepository
-                                .existsByTenantIdAndProjectIdAndSubprojectIdAndTemplateId(
-                                    tenantId, projectId, subprojectId, template.getId())) {
-                                skippedDetails.add(new SkippedWorkflowDetail(
-                                    template.getCode(), phaseType,
-                                    "Workflow already exists for this template"));
-                                continue;
-                            }
-                            Workflow generated = createWorkflowFromTemplate(
-                                tenantId, projectId, subprojectId, template,
-                                phaseType, buildingType, workflowParameters);
-                            generatedWorkflows.add(new GeneratedWorkflowDetail(
-                                generated.getId(), generated.getCode(),
-                                phaseType, generated.getName(),
-                                generated.getStatus().name()));
-                            log.info("Generated workflow {} for subproject {} (phase: {}, template: {})",
-                                generated.getId(), subprojectId, phaseType, template.getCode());
-                        }
-                    }
-                    continue;
-                }
-            }
+        if (templateOpt.isPresent()) {
+            WorkflowTemplate template = templateOpt.get();
 
-            // Fall back to tenant-level mappings
-            List<TemplatePhaseMapping> mappings = templatePhaseMappingRepository
-                .findByTenantIdAndPhaseTypeAndBuildingTypeGroupAndEnabledTrue(
-                    tenantId, phaseType, buildingTypeGroup);
-
-            for (TemplatePhaseMapping mapping : mappings) {
-                Optional<WorkflowTemplate> templateOpt =
-                        workflowTemplateRepository.findByTenantIdAndCodeAndStatus(
-                            tenantId, mapping.getWorkflowTemplateCode(),
-                            WorkflowTemplate.TemplateStatus.ACTIVE);
-
-                if (templateOpt.isEmpty()) {
-                    log.warn("Template {} not found or not active for mapping {}",
-                        mapping.getWorkflowTemplateCode(), mapping.getId());
-                    skippedDetails.add(new SkippedWorkflowDetail(
-                        mapping.getWorkflowTemplateCode(), phaseType,
-                        "Template not found or not active"));
-                    continue;
-                }
-
-                WorkflowTemplate template = templateOpt.get();
-
-                // Idempotency check - skip if workflow already exists
-                if (workflowRepository.existsByTenantIdAndProjectIdAndSubprojectIdAndTemplateId(
-                    tenantId, projectId, subprojectId, template.getId())) {
-                    skippedDetails.add(new SkippedWorkflowDetail(
-                        template.getCode(), phaseType,
-                        "Workflow already exists for this template"));
-                    continue;
-                }
-
-                // Create the workflow instance
+            if (workflowRepository.existsByTenantIdAndProjectIdAndSubprojectIdAndTemplateId(
+                tenantId, projectId, subprojectId, template.getId())) {
+                skippedDetails.add(new SkippedWorkflowDetail(
+                    template.getCode(), constructionPhase,
+                    "Workflow already exists for this template"));
+            } else {
                 Workflow generated = createWorkflowFromTemplate(
                     tenantId, projectId, subprojectId, template,
-                    phaseType, buildingType, workflowParameters);
+                    constructionPhase, buildingType, workflowParameters);
+
+                // Generate workflow steps from template
+                generateWorkflowSteps(generated, template);
 
                 generatedWorkflows.add(new GeneratedWorkflowDetail(
                     generated.getId(), generated.getCode(),
-                    phaseType, generated.getName(),
+                    constructionPhase, generated.getName(),
                     generated.getStatus().name()));
-
                 log.info("Generated workflow {} for subproject {} (phase: {}, template: {})",
-                    generated.getId(), subprojectId, phaseType, template.getCode());
+                    generated.getId(), subprojectId, constructionPhase, template.getCode());
+
             }
+
         }
 
         WorkflowGenerationResponse response = new WorkflowGenerationResponse(
@@ -232,10 +170,10 @@ public class SubProjectWorkflowGenerator {
 
         log.info("Auto-generation triggered for subproject {} (tenant: {}, org: {})",
             subprojectId, tenantId, orgId);
-
+        String default_id = "00000000-0000-0000-0000-000000000001";
         // Check organisation config for auto-generation setting
         Optional<OrganisationWorkflowConfig> orgConfigOpt =
-                organisationWorkflowConfigRepository.findByTenantIdAndOrgId(tenantId, orgId);
+                organisationWorkflowConfigRepository.findByTenantIdAndOrgId("default".equals(tenantId) ? default_id : tenantId, orgId);
 
         if (orgConfigOpt.isEmpty() || !orgConfigOpt.get().getAutoGenerateOnSubprojectCreation()) {
             log.info("Auto-generation not enabled for org {} (tenant: {}). Skipping.", orgId, tenantId);
@@ -346,6 +284,33 @@ public class SubProjectWorkflowGenerator {
         }
         name.append(" - ").append(phaseType);
         return name.toString();
+    }
+
+    /**
+     * Generate workflow steps from a template and attach them to the workflow.
+     *
+     * <p>
+     * For each step in the workflow template, a corresponding WorkflowStep instance is created with the same order, code, name, and weight. Steps start in NOT_STARTED
+     * status.
+     *
+     * @param workflow
+     *            the workflow instance to attach steps to
+     * @param template
+     *            the workflow template containing step definitions
+     */
+    private void generateWorkflowSteps(Workflow workflow, WorkflowTemplate template) {
+        for (io.cerp.workflow.domain.WorkflowTemplateStep templateStep : template.getSteps()) {
+            io.cerp.workflow.domain.WorkflowStep step = new io.cerp.workflow.domain.WorkflowStep(
+                templateStep.getId(),
+                templateStep.getOrder(),
+                templateStep.getCode(),
+                templateStep.getName());
+            // Copy weight from template step
+            if (templateStep.getWeight() != null) {
+                step.setWeight(templateStep.getWeight());
+            }
+            workflow.addStep(step);
+        }
     }
 
     /**

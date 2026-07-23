@@ -194,9 +194,18 @@ export default function SubProjectDetailClient({
   const fetchWorkflows = useCallback(async () => {
     try {
       setWorkflowLoading(true);
+      console.log('[SubProjectDetailClient] Fetching workflows for subproject:', subprojectId);
       const res = await fetch(`/api/workflows/subprojects/${subprojectId}`);
-      if (!res.ok) throw new Error('Failed to fetch workflows');
+      console.log('[SubProjectDetailClient] Workflow fetch response status:', res.status, res.statusText);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[SubProjectDetailClient] Workflow fetch error:', res.status, errorText);
+        throw new Error('Failed to fetch workflows');
+      }
       const data = await res.json();
+      console.log('[SubProjectDetailClient] Workflows data received:', JSON.stringify(data, null, 2));
+      console.log('[SubProjectDetailClient] workflows array:', data.workflows);
+      console.log('[SubProjectDetailClient] steps array:', data.steps);
       setWorkflows(data.workflows ?? []);
       setWorkflowSteps(
         (data.steps ?? []).reduce((acc: Record<string, WorkflowInstanceStep[]>, step: WorkflowInstanceStep) => {
@@ -205,7 +214,8 @@ export default function SubProjectDetailClient({
           return acc;
         }, {})
       );
-    } catch {
+    } catch (error) {
+      console.error('[SubProjectDetailClient] Error fetching workflows:', error);
       // Silently fail — workflows are optional
     } finally {
       setWorkflowLoading(false);
@@ -215,11 +225,20 @@ export default function SubProjectDetailClient({
   const fetchTemplates = useCallback(async () => {
     try {
       setTemplatesLoading(true);
+      console.log('[SubProjectDetailClient] Fetching templates');
       const res = await fetch('/api/workflows/templates');
-      if (!res.ok) throw new Error('Failed to fetch templates');
+      console.log('[SubProjectDetailClient] Templates fetch response status:', res.status, res.statusText);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[SubProjectDetailClient] Templates fetch error:', res.status, errorText);
+        throw new Error('Failed to fetch templates');
+      }
       const data: WorkflowTemplate[] = await res.json();
+      console.log('[SubProjectDetailClient] Templates data received:', JSON.stringify(data, null, 2));
+      console.log('[SubProjectDetailClient] templates array:', data);
       setTemplates(data);
-    } catch {
+    } catch (error) {
+      console.error('[SubProjectDetailClient] Error fetching templates:', error);
       // Silently fail — templates are optional
     } finally {
       setTemplatesLoading(false);

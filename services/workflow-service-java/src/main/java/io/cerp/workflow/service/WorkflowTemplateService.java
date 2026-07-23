@@ -2,6 +2,7 @@ package io.cerp.workflow.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -31,11 +32,16 @@ public class WorkflowTemplateService {
 
     private final WorkflowTemplateRepository templateRepository;
     private final KafkaEventPublisher eventPublisher;
+    private final TenantService tenantService;
+    private String tenantId;
 
     public WorkflowTemplateService(WorkflowTemplateRepository templateRepository,
-            KafkaEventPublisher eventPublisher) {
+            KafkaEventPublisher eventPublisher, TenantService tenantService) {
         this.templateRepository = templateRepository;
         this.eventPublisher = eventPublisher;
+        this.tenantService = tenantService;
+        Optional<UUID> tenant = tenantService.getTenantIdByCode("default");
+        tenantId = tenant.get().toString();
     }
 
     /**
@@ -46,7 +52,6 @@ public class WorkflowTemplateService {
      */
     @Transactional
     public WorkflowTemplate createTemplate(WorkflowTemplateRequest request) {
-        String tenantId = TenantContext.getCurrentTenantId();
 
         if (templateRepository.existsByTenantIdAndCode(tenantId, request.code())) {
             throw new IllegalArgumentException("Template code '" + request.code() + "' already exists for tenant");
@@ -61,6 +66,7 @@ public class WorkflowTemplateService {
         template.setParametersSchema(request.parametersSchema());
         template.setDefaultSla(request.defaultSla());
         template.setRequiredDocuments(request.requiredDocuments() != null ? request.requiredDocuments() : java.util.Collections.emptyList());
+        template.setOrderNum(request.orderNum());
 
         if (request.steps() != null) {
             for (int i = 0; i < request.steps().size(); i++) {
@@ -86,7 +92,6 @@ public class WorkflowTemplateService {
      */
     @Transactional(readOnly = true)
     public WorkflowTemplate getActiveTemplate(String code) {
-        String tenantId = TenantContext.getCurrentTenantId();
         return templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code, WorkflowTemplate.TemplateStatus.ACTIVE)
             .orElseThrow(() -> new IllegalArgumentException("Active template not found: " + code));
     }
@@ -96,17 +101,15 @@ public class WorkflowTemplateService {
      */
     @Transactional(readOnly = true)
     public List<WorkflowTemplate> listActiveTemplates() {
-        String tenantId = TenantContext.getCurrentTenantId();
-        return templateRepository.findByTenantIdAndStatus(tenantId, WorkflowTemplate.TemplateStatus.ACTIVE);
+        return templateRepository.findByTenantIdAndStatusOrderByOrderNum(tenantId);
     }
 
     /**
-     * List all templates (any status) for the current tenant.
+     * List all templates (any status) for the current tenant, ordered by construction phase.
      */
     @Transactional(readOnly = true)
     public List<WorkflowTemplate> listAllTemplates() {
-        String tenantId = TenantContext.getCurrentTenantId();
-        return templateRepository.findByTenantId(tenantId);
+        return templateRepository.findByTenantIdOrderByOrderNum(tenantId);
     }
 
     /**
@@ -114,13 +117,12 @@ public class WorkflowTemplateService {
      */
     @Transactional
     public WorkflowTemplate updateTemplate(String code, WorkflowTemplateRequest request) {
-        String tenantId = TenantContext.getCurrentTenantId();
         WorkflowTemplate template = templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code,
             WorkflowTemplate.TemplateStatus.DRAFT)
             .orElseThrow(() -> new IllegalArgumentException("Draft template not found: " + code));
 
         template.update(request.name(), request.description(), request.phaseType(),
-            request.requiredDocuments());
+            request.requiredDocuments(), null, null, request.orderNum());
 
         templateRepository.save(template);
         return template;
@@ -131,7 +133,6 @@ public class WorkflowTemplateService {
      */
     @Transactional
     public WorkflowTemplate activateTemplate(String code) {
-        String tenantId = TenantContext.getCurrentTenantId();
         WorkflowTemplate template = templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code,
             WorkflowTemplate.TemplateStatus.DRAFT)
             .orElseThrow(() -> new IllegalArgumentException("Draft template not found: " + code));
@@ -151,7 +152,6 @@ public class WorkflowTemplateService {
      */
     @Transactional
     public WorkflowTemplate deactivateTemplate(String code) {
-        String tenantId = TenantContext.getCurrentTenantId();
         WorkflowTemplate template = templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code,
             WorkflowTemplate.TemplateStatus.ACTIVE)
             .orElseThrow(() -> new IllegalArgumentException("Active template not found: " + code));
@@ -171,7 +171,6 @@ public class WorkflowTemplateService {
      */
     @Transactional(readOnly = true)
     public List<WorkflowTemplateStep> getTemplateSteps(String code) {
-        String tenantId = TenantContext.getCurrentTenantId();
         WorkflowTemplate template = templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code,
             WorkflowTemplate.TemplateStatus.ACTIVE)
             .orElseThrow(() -> new IllegalArgumentException("Active template not found: " + code));

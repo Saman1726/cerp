@@ -7,9 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 
-import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.WorkflowTemplate;
-import io.cerp.workflow.domain.WorkflowTemplateStep;
 import io.cerp.workflow.dto.WorkflowTemplateRequest;
 import io.cerp.workflow.dto.WorkflowTemplateStepRequest;
 import io.cerp.workflow.service.WorkflowTemplateService;
@@ -40,41 +38,30 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
 
         // Set a system tenant context for seed data (no HTTP request context during
         // startup)
-        String originalTenant = TenantContext.getCurrentTenantId();
-        try {
-            TenantContext.setCurrentTenantId("__system__");
 
-            seedTemplate(FoundationTemplateDefinition.INSTANCE);
-            seedTemplate(SuperstructureTemplateDefinition.INSTANCE);
-            seedTemplate(MEPRoughInTemplateDefinition.INSTANCE);
-            seedTemplate(InteriorFinishTemplateDefinition.INSTANCE);
-            seedTemplate(SafetyManagementTemplateDefinition.INSTANCE);
-            seedTemplate(ProcurementTemplateDefinition.INSTANCE);
-            seedTemplate(HandoverTemplateDefinition.INSTANCE);
-            seedTemplate(QAAssuranceTemplateDefinition.INSTANCE);
-            seedTemplate(PreConstructionTemplateDefinition.INSTANCE);
-            seedTemplate(SitePrepTemplateDefinition.INSTANCE);
-            seedTemplate(BasementTemplateDefinition.INSTANCE);
-            seedTemplate(RoofTemplateDefinition.INSTANCE);
-            seedTemplate(BuildingEnvelopeTemplateDefinition.INSTANCE);
-            seedTemplate(InteriorPartitionsTemplateDefinition.INSTANCE);
-            seedTemplate(ExteriorWorksTemplateDefinition.INSTANCE);
-            seedTemplate(TestCommissioningTemplateDefinition.INSTANCE);
-            seedTemplate(SnaggingTemplateDefinition.INSTANCE);
-            seedTemplate(FacilityManagementTemplateDefinition.INSTANCE);
-            seedTemplate(EquipmentManagementTemplateDefinition.INSTANCE);
-            seedTemplate(WorkforceManagementTemplateDefinition.INSTANCE);
-            seedTemplate(SubcontractorManagementTemplateDefinition.INSTANCE);
-            seedTemplate(ProgressMonitoringTemplateDefinition.INSTANCE);
-            seedTemplate(CostControlTemplateDefinition.INSTANCE);
-        } finally {
-            // Restore original tenant context
-            if (originalTenant != null) {
-                TenantContext.setCurrentTenantId(originalTenant);
-            } else {
-                TenantContext.clear();
-            }
-        }
+        seedTemplate(FoundationTemplateDefinition.INSTANCE);
+        seedTemplate(SuperstructureTemplateDefinition.INSTANCE);
+        seedTemplate(MEPRoughInTemplateDefinition.INSTANCE);
+        seedTemplate(InteriorFinishTemplateDefinition.INSTANCE);
+        seedTemplate(SafetyManagementTemplateDefinition.INSTANCE);
+        seedTemplate(ProcurementTemplateDefinition.INSTANCE);
+        seedTemplate(HandoverTemplateDefinition.INSTANCE);
+        seedTemplate(QAAssuranceTemplateDefinition.INSTANCE);
+        seedTemplate(PreConstructionTemplateDefinition.INSTANCE);
+        seedTemplate(SitePrepTemplateDefinition.INSTANCE);
+        seedTemplate(BasementTemplateDefinition.INSTANCE);
+        seedTemplate(RoofTemplateDefinition.INSTANCE);
+        seedTemplate(BuildingEnvelopeTemplateDefinition.INSTANCE);
+        seedTemplate(InteriorPartitionsTemplateDefinition.INSTANCE);
+        seedTemplate(ExteriorWorksTemplateDefinition.INSTANCE);
+        seedTemplate(TestCommissioningTemplateDefinition.INSTANCE);
+        seedTemplate(SnaggingTemplateDefinition.INSTANCE);
+        seedTemplate(FacilityManagementTemplateDefinition.INSTANCE);
+        seedTemplate(EquipmentManagementTemplateDefinition.INSTANCE);
+        seedTemplate(WorkforceManagementTemplateDefinition.INSTANCE);
+        seedTemplate(SubcontractorManagementTemplateDefinition.INSTANCE);
+        seedTemplate(ProgressMonitoringTemplateDefinition.INSTANCE);
+        seedTemplate(CostControlTemplateDefinition.INSTANCE);
 
         log.info("Seed data: Construction workflow templates initialization complete.");
     }
@@ -116,6 +103,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
 
         String phaseType();
 
+        /**
+         * Order position in the construction sequence (1-23 per Section 23 of architecture docs).
+         */
+        int order();
+
         default List<String> requiredDocuments() {
             return List.of("METHOD_STATEMENT", "INSPECTION_REPORT");
         }
@@ -153,6 +145,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 3;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("METHOD_STATEMENT", "MIX_DESIGN", "INSPECTION_REPORT");
         }
@@ -167,16 +164,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null, // parametersSchema
                 null, // defaultSla
                 requiredDocuments(),
-                List.of(
-                    step(1, "EXCAVATION_VERIFY", "Excavation verification", "INSPECTION", true),
-                    step(2, "REBAR_INSTALL", "Rebar installation", "TASK", true),
-                    step(3, "FORMWORK", "Formwork", "TASK", false),
-                    step(4, "UG_UTILS", "Underground utilities", "TASK", false),
-                    step(5, "CONCRETE_POUR", "Foundation concrete pour", "MILESTONE", true),
-                    step(6, "CURING", "Curing", "TASK", false),
-                    step(7, "WATERPROOF", "Waterproofing", "TASK", false),
-                    step(8, "FOUNDATION_INSPECTION", "Foundation inspection", "INSPECTION", true),
-                    step(9, "STRUCT_APPROVAL", "Structural approval", "APPROVAL", true)));
+                null, // steps
+                order()); // orderNum
         }
 
         @Override
@@ -235,6 +224,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 5;
+        }
+
+        @Override
         public WorkflowTemplateRequest toRequest() {
             return new WorkflowTemplateRequest(
                 code(),
@@ -252,18 +246,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                         """,
                 null,
                 List.of("METHOD_STATEMENT", "MIX_DESIGN", "STRUCTURAL_DRAWING"),
-                List.of(
-                    step(1, "COLUMN_REBAR", "Column rebar installation", "TASK", true),
-                    step(2, "COLUMN_FORMWORK", "Column formwork", "TASK", false),
-                    step(3, "COLUMN_CONCRETE", "Column concrete pour", "MILESTONE", true),
-                    step(4, "BEAM_REBAR", "Beam rebar installation", "TASK", true),
-                    step(5, "SLAB_FORMWORK", "Slab formwork", "TASK", false),
-                    step(6, "SLAB_REBAR", "Slab rebar and conduits", "TASK", true),
-                    step(7, "PLUMBINGROUGH", "Plumbing rough-in in slab", "TASK", true),
-                    step(8, "SLAB_CONCRETE", "Slab concrete pour", "MILESTONE", true),
-                    step(9, "CURING", "Curing (min 7 days)", "TASK", false),
-                    step(10, "FORMWORK_REMOVAL", "Formwork removal", "TASK", false),
-                    step(11, "STRUCTURAL_INSPECTION", "Structural inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -327,6 +311,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 9;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("MEP_DRAWING", "INSPECTION_REPORT", "TEST_PROCEDURE");
         }
@@ -341,19 +330,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "ELEC_PANEL", "Main panel installation", "TASK", true),
-                    step(2, "CABLE_TRAYS", "Cable trays and conduits", "TASK", false),
-                    step(3, "WIRING", "Wiring and switch boxes", "TASK", true),
-                    step(4, "GROUNDING", "Grounding system", "TASK", true),
-                    step(5, "PLUMBING_SUPPLY", "Water supply piping", "TASK", true),
-                    step(6, "DRAINAGE", "Drainage and waste pipes", "TASK", true),
-                    step(7, "VENT_PIPES", "Vent pipes installation", "TASK", false),
-                    step(8, "HVAC_DUCT", "Duct installation", "TASK", true),
-                    step(9, "AHU_INSTALL", "AHU unit installation", "TASK", true),
-                    step(10, "FIRE_SPRINKLER", "Sprinkler system", "TASK", true),
-                    step(11, "PRESSURE_TEST", "Pressure testing", "INSPECTION", true),
-                    step(12, "MEP_INSPECTION", "MEP joint inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -409,6 +387,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 10;
+        }
+
+        @Override
         public WorkflowTemplateRequest toRequest() {
             return new WorkflowTemplateRequest(
                 code(),
@@ -418,18 +401,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 List.of("FINISH_SCHEDULE", "SAMPLE_APPROVAL"),
-                List.of(
-                    step(1, "PLASTER", "Plastering", "TASK", false),
-                    step(2, "PUTTY", "Putty application", "TASK", false),
-                    step(3, "PAINTING", "Painting", "TASK", false),
-                    step(4, "FLOORING", "Flooring installation", "TASK", true),
-                    step(5, "TILES", "Tile installation", "TASK", true),
-                    step(6, "CEILING", "Ceiling installation", "TASK", true),
-                    step(7, "INTERIOR_DOORS", "Interior doors and frames", "TASK", false),
-                    step(8, "KITCHEN", "Kitchen installation", "TASK", true),
-                    step(9, "BATH_FIXTURES", "Bathroom fixtures", "TASK", true),
-                    step(10, "STAIR_FINISH", "Stair finishing", "TASK", false),
-                    step(11, "INTERIOR_INSPECTION", "Interior quality inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -485,6 +458,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 14;
+        }
+
+        @Override
         public WorkflowTemplateRequest toRequest() {
             return new WorkflowTemplateRequest(
                 code(),
@@ -494,14 +472,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 List.of("SAFETY_PLAN", "INCIDENT_REPORT"),
-                List.of(
-                    step(1, "TOOLBOX", "Daily toolbox meeting", "TASK", false),
-                    step(2, "PPE_CHECK", "PPE verification", "INSPECTION", true),
-                    step(3, "SAFETY_INSPECTION", "Site safety inspection", "INSPECTION", true),
-                    step(4, "HAZARD_REPORT", "Hazard identification and report", "TASK", true),
-                    step(5, "HAZARD_CORRECTION", "Hazard correction action", "TASK", true),
-                    step(6, "INCIDENT_REPORT", "Incident reporting (if applicable)", "TASK", true),
-                    step(7, "SAFETY_AUDIT", "Weekly safety audit", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -557,6 +529,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 15;
+        }
+
+        @Override
         public WorkflowTemplateRequest toRequest() {
             return new WorkflowTemplateRequest(
                 code(),
@@ -566,16 +543,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 List.of("MATERIAL_REQUEST", "VENDOR_QUOTATION", "PURCHASE_ORDER"),
-                List.of(
-                    step(1, "MATERIAL_REQ", "Material request creation", "TASK", false),
-                    step(2, "RFQ_ISSUE", "RFQ issuance to vendors", "TASK", true),
-                    step(3, "VENDOR_QUOTE", "Vendor quotation receipt", "TASK", true),
-                    step(4, "TECHNICAL_APPROVAL", "Technical approval", "APPROVAL", true),
-                    step(5, "PO_ISSUE", "Purchase order issuance", "APPROVAL", true),
-                    step(6, "DELIVERY", "Material delivery to site", "MILESTONE", true),
-                    step(7, "WAREHOUSE_RECEIVE", "Warehouse receiving", "TASK", true),
-                    step(8, "MATERIAL_INSPECT", "Material quality inspection", "INSPECTION", true),
-                    step(9, "INVENTORY_UPDATE", "Inventory update", "TASK", false)));
+                null,
+                order());
         }
 
         @Override
@@ -639,6 +608,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 22;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("AS_BUILT_DRAWINGS", "O_MANUALS", "WARRANTY_DOCS", "OCCUPANCY_PERMIT");
         }
@@ -653,16 +627,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "FINAL_CLEAN", "Final cleaning", "TASK", false),
-                    step(2, "AS_BUILT_DRAW", "As-built drawings preparation", "TASK", true),
-                    step(3, "O_MANUALS", "Operation & maintenance manuals", "TASK", true),
-                    step(4, "WARRANTY_DOCS", "Warranty documents", "TASK", true),
-                    step(5, "FINAL_INSPECTION", "Final inspection", "INSPECTION", true),
-                    step(6, "OCCUPANCY_PERMIT", "Occupancy permit acquisition", "TASK", true),
-                    step(7, "CLIENT_TRAINING", "Client training", "TASK", true),
-                    step(8, "CLIENT_ACCEPTANCE", "Client acceptance sign-off", "APPROVAL", true),
-                    step(9, "BUILDING_HANDOVER", "Building handover", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -726,6 +692,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 13;
+        }
+
+        @Override
         public WorkflowTemplateRequest toRequest() {
             return new WorkflowTemplateRequest(
                 code(),
@@ -735,13 +706,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 List.of("QA_PLAN", "INSPECTION_REPORT", "NCR_FORM"),
-                List.of(
-                    step(1, "MATERIAL_APPROVAL", "Material approval request", "APPROVAL", true),
-                    step(2, "MATERIAL_INSPECTION", "Material inspection", "INSPECTION", true),
-                    step(3, "SITE_INSPECTION", "Site quality inspection", "INSPECTION", true),
-                    step(4, "NCR_CREATION", "Non-conformance report creation", "TASK", true),
-                    step(5, "CORRECTIVE_ACTION", "Corrective action implementation", "TASK", true),
-                    step(6, "QUALITY_APPROVAL", "Quality approval sign-off", "APPROVAL", true)));
+                null,
+                order());
         }
 
         @Override
@@ -807,6 +773,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 1;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("PROJECT_PLAN", "DESIGN_DRAWINGS", "PERMIT_APPLICATION", "BUSINESS_CASE");
         }
@@ -821,14 +792,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "PROJECT_KICKOFF", "Project kickoff meeting", "TASK", false),
-                    step(2, "DESIGN_REVIEW", "Design documents review", "INSPECTION", true),
-                    step(3, "PERMIT_ACQUISITION", "Permit and approval acquisition", "TASK", true),
-                    step(4, "CONTRACTOR_SELECTION", "Contractor selection and bidding", "APPROVAL", true),
-                    step(5, "PRE_CON_MEETING", "Pre-construction conference", "TASK", true),
-                    step(6, "CONSTRUCTION_PLAN", "Construction plan approval", "APPROVAL", true),
-                    step(7, "SITE_HANDOVER", "Site handover to contractor", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -892,6 +857,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 2;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("SITE_SURVEY", "EROSION_CONTROL_PLAN", "GRADING_PLAN");
         }
@@ -906,16 +876,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "SITE_SURVEY", "Site survey and boundary verification", "INSPECTION", true),
-                    step(2, "SITE_CLEARING", "Site clearing and grubbing", "TASK", true),
-                    step(3, "DEMOLITION", "Demolition of existing structures", "TASK", true),
-                    step(4, "EXCAVATION", "Major excavation and grading", "TASK", true),
-                    step(5, "EROSION_CONTROL", "Erosion and sediment control installation", "INSPECTION", true),
-                    step(6, "TEMP_UTILITIES", "Temporary utilities installation", "TASK", false),
-                    step(7, "SITE_ACCESS", "Site access and road construction", "TASK", false),
-                    step(8, "SITE_SETUP", "Site office and facilities setup", "TASK", false),
-                    step(9, "SITE_INSPECTION", "Pre-foundation site inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -971,6 +933,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 4;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("WATERPROOFING_SPEC", "STRUCTURAL_DRAWINGS", "DRAINAGE_PLAN");
         }
@@ -985,15 +952,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "BASEMENT_EXCAVATION", "Basement excavation", "TASK", true),
-                    step(2, "PILE_CAP", "Pile cap construction", "TASK", true),
-                    step(3, "BASEMENT_WALLS", "Basement wall construction", "TASK", true),
-                    step(4, "BASEMENT_SLAB", "Basement floor slab pour", "MILESTONE", true),
-                    step(5, "WATERPROOFING", "Waterproofing application", "TASK", true),
-                    step(6, "DRAINAGE_SYS", "Drainage system installation", "TASK", true),
-                    step(7, "BACKFILL", "Backfill and compaction", "TASK", false),
-                    step(8, "BASEMENT_INSPECTION", "Basement structural inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1057,6 +1017,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 6;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("ROOF_SPEC", "WATERPROOFING_SPEC", "INSULATION_CERT");
         }
@@ -1071,15 +1036,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "ROOF_STRUCT", "Roof structural works", "TASK", true),
-                    step(2, "ROOF_SLOPE", "Slope preparation", "TASK", false),
-                    step(3, "ROOF_WATERPROOF", "Waterproofing application", "TASK", true),
-                    step(4, "ROOF_INSULATION", "Insulation installation", "TASK", true),
-                    step(5, "ROOF_DRAINAGE", "Drainage and gutter installation", "TASK", true),
-                    step(6, "ROOF_FINISH", "Roof finishing works", "TASK", false),
-                    step(7, "ROOF_TEST", "Waterfall testing", "INSPECTION", true),
-                    step(8, "ROOF_INSPECTION", "Roof inspection and approval", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1143,6 +1101,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 7;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("FACADE_DRAWINGS", "WINDOW_SPEC", "WATERPROOFING_SPEC");
         }
@@ -1157,17 +1120,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "SCAFFOLDING", "Scaffolding erection", "TASK", false),
-                    step(2, "FACADE_PREP", "Facade preparation and anchoring", "TASK", true),
-                    step(3, "CLADDING", "Cladding panel installation", "TASK", true),
-                    step(4, "WINDOWS", "Window and glazing installation", "TASK", true),
-                    step(5, "DOORS_EXT", "Exterior door installation", "TASK", true),
-                    step(6, "EXT_INSULATION", "Exterior insulation application", "TASK", true),
-                    step(7, "WATERPROOF_EXT", "Exterior waterproofing", "TASK", true),
-                    step(8, "FAÇADE_FINISH", "Facade finishing works", "TASK", false),
-                    step(9, "AIR_TIGHTNESS", "Air tightness testing", "INSPECTION", true),
-                    step(10, "ENVELOPE_INSPECTION", "Envelope inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1223,6 +1177,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 8;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("PARTITION_DRAWINGS", "FIRE_RATING_SPEC");
         }
@@ -1237,15 +1196,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "PARTITION_LAYOUT", "Partition layout marking", "TASK", false),
-                    step(2, "STUD_FRAMING", "Stud framing installation", "TASK", true),
-                    step(3, "SOUND_INSUL", "Sound insulation installation", "TASK", true),
-                    step(4, "DRYWALL_L1", "Drywall - first layer", "TASK", false),
-                    step(5, "DRYWALL_L2", "Drywall - second layer (if required)", "TASK", false),
-                    step(6, "JOINT_FINISH", "Joint taping and finishing", "TASK", false),
-                    step(7, "PRIMER", "Primer application", "TASK", false),
-                    step(8, "PARTITION_INSPECTION", "Partition quality inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1301,6 +1253,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 11;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("LANDSCAPING_PLAN", "PAVING_PLAN", "EXTERNAL_LIGHTING_PLAN");
         }
@@ -1315,15 +1272,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "SITE_GRADING", "Site grading and leveling", "TASK", true),
-                    step(2, "PAVING", "Paving and hardscaping", "TASK", true),
-                    step(3, "LANDSCAPING", "Landscaping and planting", "TASK", true),
-                    step(4, "EXT_LIGHTING", "External lighting installation", "TASK", true),
-                    step(5, "FENCING", "Fencing and boundary works", "TASK", true),
-                    step(6, "PARKING", "Parking area marking and signage", "TASK", false),
-                    step(7, "SITE_UTILITIES", "Site utilities connection", "TASK", true),
-                    step(8, "EXT_INSPECTION", "Exterior works inspection", "INSPECTION", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1379,6 +1329,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 12;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("TEST_PROCEDURES", "COMMISSIONING_PLAN", "PERFORMANCE_CERTS");
         }
@@ -1393,17 +1348,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "TEST_PLAN", "Testing and commissioning plan", "TASK", true),
-                    step(2, "ELEC_TEST", "Electrical systems testing", "INSPECTION", true),
-                    step(3, "PLUMBING_TEST", "Plumbing systems testing", "INSPECTION", true),
-                    step(4, "HVAC_TEST", "HVAC systems testing", "INSPECTION", true),
-                    step(5, "FIRE_TEST", "Fire protection systems testing", "INSPECTION", true),
-                    step(6, "ELEVATOR_TEST", "Elevator/escalator testing", "INSPECTION", true),
-                    step(7, "BMS_TEST", "Building management system testing", "INSPECTION", true),
-                    step(8, "INTEGRATED_TEST", "Integrated systems testing", "INSPECTION", true),
-                    step(9, "PERFORMANCE_VER", "Performance verification", "MILESTONE", true),
-                    step(10, "COMMISSIONING_REPORT", "Commissioning report submission", "TASK", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1467,6 +1413,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 21;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("SNAG_LIST", "DEFECT_PHOTO", "RECTIFICATION_PLAN");
         }
@@ -1481,15 +1432,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "SNAG_PLAN", "Snagging plan and scope definition", "TASK", false),
-                    step(2, "INTERIOR_SNAG", "Interior inspection and snag list", "INSPECTION", true),
-                    step(3, "EXT_SNAG", "Exterior inspection and snag list", "INSPECTION", true),
-                    step(4, "MEP_SNAG", "MEP systems snag list", "INSPECTION", true),
-                    step(5, "SNAG_COMPILATION", "Snag list compilation and prioritization", "TASK", true),
-                    step(6, "RECTIFICATION", "Defect rectification works", "TASK", true),
-                    step(7, "RE_INSPECTION", "Re-inspection of rectified items", "INSPECTION", true),
-                    step(8, "FINAL_SNAG", "Final snag-free confirmation", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1553,6 +1497,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 23;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("FACILITY_MANUAL", "MAINTENANCE_PLAN", "WARRANTY_SUMMARY");
         }
@@ -1567,15 +1516,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "FACILITY_HANDOVER", "Facility management team handover", "TASK", true),
-                    step(2, "FM_MANUAL", "Facility management manual delivery", "TASK", true),
-                    step(3, "MAINT_SCHEDULE", "Maintenance schedule setup", "TASK", true),
-                    step(4, "WARRANTY_REG", "Warranty registration and tracking", "TASK", true),
-                    step(5, "SPARE_PARTS", "Spare parts inventory handover", "TASK", true),
-                    step(6, "FACILITY_TRAINING", "Facility operations training", "TASK", true),
-                    step(7, "PM_SCHEDULE", "Preventive maintenance schedule activation", "MILESTONE", true),
-                    step(8, "WARRANTY_CLOCK", "Warranty period clock start", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1637,6 +1579,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 16;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("EQUIPMENT_LIST", "MANUFACTURER_SPECS", "MAINTENANCE Manuals");
         }
@@ -1651,15 +1598,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "EQUIP_REQ", "Equipment requirement specification", "TASK", true),
-                    step(2, "EQUIP_PROCURE", "Equipment procurement", "TASK", true),
-                    step(3, "EQUIP_DELIVERY", "Equipment delivery to site", "MILESTONE", true),
-                    step(4, "EQUIP_INSTALL", "Equipment installation", "TASK", true),
-                    step(5, "EQUIP_CALIBRATE", "Calibration and setup", "INSPECTION", true),
-                    step(6, "EQUIP_TEST", "Equipment testing and validation", "INSPECTION", true),
-                    step(7, "EQUIP_REGISTER", "Equipment register creation", "TASK", true),
-                    step(8, "MAINT_SCHEDULE_EQUIP", "Maintenance schedule setup", "TASK", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1723,6 +1663,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 17;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("LABOR_PLAN", "SKILLS_MATRIX", "SAFETY_CERTS");
         }
@@ -1737,14 +1682,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "LABOR_PLAN", "Labor resource planning", "TASK", true),
-                    step(2, "WORKFORCE_DEPLOY", "Workforce deployment and scheduling", "TASK", true),
-                    step(3, "ATTENDANCE", "Attendance and timesheet tracking", "TASK", false),
-                    step(4, "SKILLS_CHECK", "Skills and certification verification", "INSPECTION", true),
-                    step(5, "SAFETY_TRAIN", "Safety training delivery", "TASK", true),
-                    step(6, "PERFORMANCE_REVIEW", "Workforce performance review", "TASK", true),
-                    step(7, "WORKFORCE_REPORT", "Workforce productivity report", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1808,6 +1747,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 18;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("SUBCONTRACT_AGREEMENT", "INSURANCE_CERT", "PERFORMANCE_EVAL");
         }
@@ -1822,14 +1766,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "SUBCON_PREQUAL", "Subcontractor pre-qualification", "APPROVAL", true),
-                    step(2, "SUBCON_ONBOARD", "Subcontractor onboarding and induction", "TASK", true),
-                    step(3, "SCOPE_BRIEF", "Scope of work briefing", "TASK", true),
-                    step(4, "SUBCON_SAFETY", "Subcontractor safety orientation", "INSPECTION", true),
-                    step(5, "PERF_MONITOR", "Performance monitoring and tracking", "TASK", true),
-                    step(6, "PAYMENT_CERT", "Payment certification", "APPROVAL", true),
-                    step(7, "SUBCON_EVAL", "Subcontractor performance evaluation", "APPROVAL", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1893,6 +1831,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 19;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("SCHEDULE_UPDATE", "PROGRESS_REPORT", "MILESTONE_CERT");
         }
@@ -1907,15 +1850,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "BASELINE_UPDATE", "Schedule baseline update", "TASK", true),
-                    step(2, "PROGRESS_MEASURE", "Progress measurement and data collection", "TASK", true),
-                    step(3, "MILESTONE_CHECK", "Milestone verification", "INSPECTION", true),
-                    step(4, "VARIANCE_ANALYSIS", "Schedule variance analysis", "TASK", true),
-                    step(5, "PROGRESS_REPORT_GEN", "Progress report generation", "TASK", true),
-                    step(6, "STAKEHOLDER_UPDATE", "Stakeholder progress update", "TASK", true),
-                    step(7, "RECOVERY_PLAN", "Recovery plan development (if behind)", "TASK", true),
-                    step(8, "WEEKLY_PROGRESS", "Weekly progress review meeting", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override
@@ -1979,6 +1915,11 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         }
 
         @Override
+        public int order() {
+            return 20;
+        }
+
+        @Override
         public List<String> requiredDocuments() {
             return List.of("BUDGET_REPORT", "COST_FORECAST", "CHANGE_ORDER");
         }
@@ -1993,15 +1934,8 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
                 null,
                 null,
                 requiredDocuments(),
-                List.of(
-                    step(1, "BUDGET_TRACK", "Budget vs actual tracking", "TASK", true),
-                    step(2, "COST_FORECAST", "Cost forecasting and projection", "TASK", true),
-                    step(3, "CHANGE_ORDER_EVAL", "Change order evaluation", "APPROVAL", true),
-                    step(4, "CHANGE_ORDER_APPROVE", "Change order approval", "APPROVAL", true),
-                    step(5, "INVOICE_CHECK", "Invoice verification and approval", "INSPECTION", true),
-                    step(6, "PAYMENT_APPROVE", "Payment certification approval", "APPROVAL", true),
-                    step(7, "COST_REPORT", "Cost performance report generation", "TASK", true),
-                    step(8, "VARIANCE_REVIEW", "Cost variance review meeting", "MILESTONE", true)));
+                null,
+                order());
         }
 
         @Override

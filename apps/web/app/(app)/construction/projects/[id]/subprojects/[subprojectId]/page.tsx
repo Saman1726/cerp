@@ -3,7 +3,8 @@ import { apiClient } from '@cerp/core-web/lib/api-client';
 import type { SubProjectResponse } from '@cerp/shared-types';
 import SubProjectDetailClient from './SubProjectDetailClient';
 
-// Generate static params for all subprojects within each project
+// Allow dynamic rendering for subprojects not pre-rendered at build time
+export const dynamicParams = true;
 export async function generateStaticParams() {
   const params: Array<{ id: string; subprojectId: string }> = [];
 

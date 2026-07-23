@@ -194,10 +194,9 @@ public class SubProjectService {
                 "subprojectId", saved.getId().toString(),
                 "projectId", saved.getProjectId().toString(),
                 "buildingType", buildingType,
-                "constructionPhase", saved.getConstructionPhase());
+                "constructionPhase", saved.getConstructionPhase() != null ? saved.getConstructionPhase().name() : null);
 
-            String eventJson = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("project.subproject.created", saved.getId().toString(), eventJson);
+            kafkaTemplate.send("project.subproject.created", saved.getId().toString(), event);
             log.info("Published subproject created event for subproject: {}", saved.getId());
         } catch (Exception e) {
             log.warn("Failed to publish subproject created event for subproject: {}", saved.getId(), e);

@@ -1,7 +1,10 @@
 package io.cerp.workflow.controller;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -23,6 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 import io.cerp.workflow.domain.Workflow;
 import io.cerp.workflow.domain.WorkflowNote;
 import io.cerp.workflow.domain.WorkflowStep;
+import io.cerp.workflow.config.TenantContext;
+import io.cerp.workflow.repository.WorkflowNoteRepository;
 import io.cerp.workflow.service.WorkflowService;
 
 /**
@@ -31,10 +36,10 @@ import io.cerp.workflow.service.WorkflowService;
  * <p>
  * Endpoints per Section 23:
  * <ul>
- * <li>POST /api/v1/workflows – instantiate from template</li>
- * <li>GET /api/v1/workflows – list</li>
- * <li>GET /api/v1/workflows/{id} – get by ID</li>
- * <li>PATCH /api/v1/workflows/{id} – update dates/description</li>
+ * <li>POST /api/v1/workflows - instantiate from template</li>
+ * <li>GET /api/v1/workflows - list</li>
+ * <li>GET /api/v1/workflows/{id} - get by ID</li>
+ * <li>PATCH /api/v1/workflows/{id} - update dates/description</li>
  * <li>POST /api/v1/workflows/{id}/start</li>
  * <li>POST /api/v1/workflows/{id}/block</li>
  * <li>POST /api/v1/workflows/{id}/unblock</li>
@@ -56,20 +61,22 @@ import io.cerp.workflow.service.WorkflowService;
 public class WorkflowController {
 
     private final WorkflowService workflowService;
+    private final WorkflowNoteRepository workflowNoteRepository;
 
-    public WorkflowController(WorkflowService workflowService) {
+    public WorkflowController(WorkflowService workflowService, WorkflowNoteRepository workflowNoteRepository) {
         this.workflowService = workflowService;
+        this.workflowNoteRepository = workflowNoteRepository;
     }
 
     // ── Workflow CRUD ──
 
     /**
      * Create a new workflow instance from a template.
-     * 
+     *
      * <p>
      * This is the primary POST /api/workflows endpoint. It instantiates a workflow from a template for a given project/sub-project.
      * </p>
-     * 
+     *
      * @param request
      *            the instantiation request containing tenantId, projectId, subprojectId, templateId, and userId
      * @return the created Workflow instance
@@ -84,7 +91,7 @@ public class WorkflowController {
 
     /**
      * Alias for createWorkflow - instantiate a workflow from template.
-     * 
+     *
      * @param request
      *            the instantiation request
      * @return the created Workflow instance
@@ -98,14 +105,80 @@ public class WorkflowController {
     public ResponseEntity<List<Workflow>> list(
             @RequestParam(required = false) UUID projectId,
             @RequestParam(required = false) UUID subprojectId) {
-        // Implementation will be enhanced with tenant context
+        String tenantId = getTenantIdFromContext();
+        if (subprojectId != null && projectId != null) {
+            return ResponseEntity.ok(workflowService.listBySubproject(tenantId, projectId, subprojectId));
+        }
+        if (subprojectId != null) {
+            return ResponseEntity.ok(workflowService.getWorkflowsBySubprojectId(tenantId, subprojectId));
+        }
+        if (projectId != null) {
+            return ResponseEntity.ok(workflowService.listByProject(tenantId, projectId));
+        }
         return ResponseEntity.ok(List.of());
+    }
+
+    /**
+     * Get workflows for a subproject with steps. Returns: { workflows: [...], steps: [...] }
+     *
+     * <p>
+     * Falls back to querying without tenant filter when TenantContext is empty (e.g., development, migration, or when X-Tenant-Id header is not provided).
+     * </p>
+     */
+    @GetMapping("/subprojects/{subprojectId}")
+    public ResponseEntity<Map<String, Object>> getWorkflowsBySubproject(
+            @PathVariable String subprojectId) {
+        String tenantId = getTenantIdFromContext();
+        UUID subprojectUuid = UUID.fromString(subprojectId);
+
+        List<Workflow> workflows;
+        if (tenantId != null && !tenantId.isEmpty()) {
+            workflows = workflowService.getWorkflowsBySubprojectId(tenantId, subprojectUuid);
+        } else {
+            // Fall back to querying by subprojectId only (no tenant filter)
+            workflows = workflowService.getWorkflowsBySubprojectIdWithoutTenant(subprojectUuid);
+        }
+
+        // Collect all steps for all workflows
+        List<WorkflowStep> allSteps = workflows.stream()
+            .flatMap(w -> {
+                Optional<Workflow> withSteps = workflowService.getWorkflowWithSteps(w.getId());
+                return withSteps.map(opt -> opt.getSteps().stream()).orElse(java.util.stream.Stream.empty());
+            })
+            .toList();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workflows", workflows);
+        response.put("steps", allSteps);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<Workflow> getById(@PathVariable String id) {
         Workflow workflow = workflowService.getById(UUID.fromString(id));
         return ResponseEntity.ok(workflow);
+    }
+
+    /**
+     * Get workflow detail with steps and notes. Returns: { workflow: {...}, steps: [...], notes: [...] }
+     */
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<Map<String, Object>> getWorkflowDetail(@PathVariable String id) {
+        Workflow workflow = workflowService.getById(UUID.fromString(id));
+        Optional<Workflow> withSteps = workflowService.getWorkflowWithSteps(workflow.getId());
+
+        List<WorkflowStep> steps = withSteps.map(Workflow::getSteps).orElse(List.of());
+        List<WorkflowNote> workflowNotes = withSteps
+            .map(w -> workflowNoteRepository.findByWorkflowIdOrderByCreatedAtDesc(w.getId()))
+            .orElse(List.of());
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("workflow", workflow);
+        response.put("steps", steps);
+        response.put("notes", workflowNotes);
+
+        return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{id}")
@@ -122,6 +195,15 @@ public class WorkflowController {
             workflow.setDescription(request.description());
         }
         return ResponseEntity.ok(workflow);
+    }
+
+    // ── Step listing ──
+
+    @GetMapping("/{workflowId}/steps")
+    public ResponseEntity<List<WorkflowStep>> getSteps(@PathVariable String workflowId) {
+        Optional<Workflow> workflowOpt = workflowService.getWorkflowWithSteps(UUID.fromString(workflowId));
+        List<WorkflowStep> steps = workflowOpt.map(Workflow::getSteps).orElse(List.of());
+        return ResponseEntity.ok(steps);
     }
 
     // ── Workflow Status Transitions ──
@@ -225,11 +307,30 @@ public class WorkflowController {
 
     // ── Notes ──
 
+    @GetMapping("/{workflowId}/notes")
+    public ResponseEntity<List<WorkflowNote>> getNotes(@PathVariable String workflowId) {
+        List<WorkflowNote> workflowNotes = workflowNoteRepository
+            .findByWorkflowIdOrderByCreatedAtDesc(UUID.fromString(workflowId));
+        return ResponseEntity.ok(workflowNotes);
+    }
+
     @PostMapping("/{workflowId}/notes")
     public ResponseEntity<WorkflowNote> addNote(@PathVariable String workflowId,
             @Valid @RequestBody AddNoteRequest request) {
         // Notes will be implemented in next iteration
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
+
+    // ── Helpers ──
+
+    /**
+     * Extract the tenant ID from TenantContext.
+     *
+     * @return the tenant ID string if set, null otherwise
+     */
+    private String getTenantIdFromContext() {
+        UUID tenantId = TenantContext.getCurrentTenantId();
+        return tenantId != null ? tenantId.toString() : null;
     }
 
     // ── DTOs ──

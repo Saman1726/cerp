@@ -16,5 +16,5 @@ COPY --from=build /app/src/main/resources/db/migration ./db/migration
 
 USER appuser
 
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0"
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5005"
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar"]

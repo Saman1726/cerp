@@ -154,6 +154,7 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
     ports:
       - '8089:8089'
+      - '5005:5005'
 
   procurement-service-java:
     build:

@@ -15,8 +15,8 @@ import java.util.Map;
  * Kafka listener configuration for the workflow service.
  *
  * <p>
- * Configures the Kafka listener container factory with settings that prevent blocking of the Spring Boot application startup. The key setting is
- * {@code autoStartup=false}, which allows the application to start even if Kafka is temporarily unavailable.
+ * Configures the Kafka listener container factory with proper consumer settings. The listener auto-starts and will attempt to reconnect if Kafka is temporarily
+ * unavailable.
  */
 @Configuration
 public class KafkaListenerConfig {
@@ -44,13 +44,10 @@ public class KafkaListenerConfig {
     }
 
     /**
-     * Configure the Kafka listener container factory with non-blocking settings.
+     * Configure the Kafka listener container factory.
      *
      * <p>
-     * The key configuration here:
-     * <ul>
-     * <li>setAutoStartup(false) - allows app to start even if Kafka is unavailable</li>
-     * </ul>
+     * The listener auto-starts and will attempt to reconnect if Kafka is temporarily unavailable.
      */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory(
@@ -60,8 +57,9 @@ public class KafkaListenerConfig {
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory);
 
-        // Allow the application to start even if Kafka is not available
-        factory.setAutoStartup(false);
+        // Allow the application to start even if Kafka is temporarily unavailable
+        // The listener will attempt to connect and recover automatically
+        factory.setAutoStartup(true);
 
         return factory;
     }

@@ -75,4 +75,10 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
         List<UUID> findIdsByTenantIdAndSubprojectId(
                         @Param("tenantId") String tenantId,
                         @Param("subprojectId") UUID subprojectId);
+
+        /**
+         * Find all workflows for a subproject regardless of tenant. Used as a fallback when TenantContext is empty (e.g., development, migration).
+         */
+        @Query("SELECT w FROM Workflow w WHERE w.subprojectId = :subprojectId")
+        List<Workflow> findBySubprojectIdOnly(@Param("subprojectId") UUID subprojectId);
 }

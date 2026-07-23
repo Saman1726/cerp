@@ -86,6 +86,13 @@ public class WorkflowTemplate {
     @Column(name = "status", nullable = false, length = 16)
     private TemplateStatus status = TemplateStatus.DRAFT;
 
+    /**
+     * Order position of this workflow template in the construction sequence (1-23 per Section 23 of architecture docs).
+     * Used to display templates in the correct construction phase order.
+     */
+    @Column(name = "order_num")
+    private Integer orderNum;
+
     @OneToMany(mappedBy = "template", orphanRemoval = true)
     private List<WorkflowTemplateStep> steps = new ArrayList<>();
 
@@ -146,6 +153,14 @@ public class WorkflowTemplate {
      */
     public void update(String name, String description, String phaseType, List<String> requiredDocuments,
             List<String> applicableScopeLevels, String defaultScopeLevel) {
+        update(name, description, phaseType, requiredDocuments, applicableScopeLevels, defaultScopeLevel, null);
+    }
+
+    /**
+     * Update mutable template fields with scope level and order support. Only DRAFT templates can be updated.
+     */
+    public void update(String name, String description, String phaseType, List<String> requiredDocuments,
+            List<String> applicableScopeLevels, String defaultScopeLevel, Integer orderNum) {
         if (this.status != TemplateStatus.DRAFT) {
             throw new IllegalStateException("Only DRAFT templates can be updated");
         }
@@ -166,6 +181,9 @@ public class WorkflowTemplate {
         }
         if (defaultScopeLevel != null) {
             this.defaultScopeLevel = defaultScopeLevel;
+        }
+        if (orderNum != null) {
+            this.orderNum = orderNum;
         }
     }
 
@@ -318,5 +336,13 @@ public class WorkflowTemplate {
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public Integer getOrderNum() {
+        return orderNum;
+    }
+
+    public void setOrderNum(Integer orderNum) {
+        this.orderNum = orderNum;
     }
 }

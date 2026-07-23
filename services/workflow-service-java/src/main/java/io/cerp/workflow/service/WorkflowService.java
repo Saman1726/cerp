@@ -149,6 +149,23 @@ public class WorkflowService {
     }
 
     /**
+     * Get workflows for a subproject without tenant filter.
+     * 
+     * <p>
+     * Used as a fallback when TenantContext is empty (e.g., development, migration, or when the X-Tenant-Id header is not provided and we want to return whatever data
+     * exists).
+     * </p>
+     * 
+     * @param subprojectId
+     *            the subproject UUID
+     * @return list of workflows for the subproject regardless of tenant
+     */
+    @Transactional(readOnly = true)
+    public List<Workflow> getWorkflowsBySubprojectIdWithoutTenant(UUID subprojectId) {
+        return workflowRepository.findBySubprojectIdOnly(subprojectId);
+    }
+
+    /**
      * Get a workflow with its steps by ID.
      */
     @Transactional(readOnly = true)
