@@ -36,6 +36,7 @@ public class WorkflowTemplateStep {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @JsonBackReference("template-steps")
     @ManyToOne(optional = false)
     @JoinColumn(name = "template_id")
     private WorkflowTemplate template;

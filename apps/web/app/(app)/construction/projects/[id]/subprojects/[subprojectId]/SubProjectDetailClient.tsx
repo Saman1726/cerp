@@ -205,15 +205,17 @@ export default function SubProjectDetailClient({
       const data = await res.json();
       console.log('[SubProjectDetailClient] Workflows data received:', JSON.stringify(data, null, 2));
       console.log('[SubProjectDetailClient] workflows array:', data.workflows);
-      console.log('[SubProjectDetailClient] steps array:', data.steps);
       setWorkflows(data.workflows ?? []);
-      setWorkflowSteps(
-        (data.steps ?? []).reduce((acc: Record<string, WorkflowInstanceStep[]>, step: WorkflowInstanceStep) => {
-          if (!acc[step.workflowId]) acc[step.workflowId] = [];
-          acc[step.workflowId].push(step);
-          return acc;
-        }, {})
-      );
+
+      // Build workflowSteps map from nested steps in each workflow
+      const stepsMap: Record<string, WorkflowInstanceStep[]> = {};
+      const workflows = data.workflows ?? [];
+      for (const wf of workflows) {
+        const wfSteps = (wf as Workflow & { steps: WorkflowInstanceStep[] }).steps ?? [];
+        stepsMap[wf.id] = wfSteps;
+      }
+      setWorkflowSteps(stepsMap);
+      
     } catch (error) {
       console.error('[SubProjectDetailClient] Error fetching workflows:', error);
       // Silently fail — workflows are optional
@@ -226,7 +228,7 @@ export default function SubProjectDetailClient({
     try {
       setTemplatesLoading(true);
       console.log('[SubProjectDetailClient] Fetching templates');
-      const res = await fetch('/api/workflows/templates');
+      const res = await fetch('/api/workflow-templates');
       console.log('[SubProjectDetailClient] Templates fetch response status:', res.status, res.statusText);
       if (!res.ok) {
         const errorText = await res.text();
@@ -247,7 +249,7 @@ export default function SubProjectDetailClient({
 
   const fetchTemplateDetail = useCallback(async (templateCode: string) => {
     try {
-      const res = await fetch(`/api/workflows/templates/${templateCode}`);
+      const res = await fetch(`/api/workflow-templates${templateCode}`);
       if (!res.ok) throw new Error('Failed to fetch template detail');
       const data: WorkflowTemplateResponse = await res.json();
       setTemplateDetail(data);

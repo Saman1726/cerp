@@ -35,52 +35,6 @@ function getField(obj: Record<string, unknown>, camelCase: string, snakeCase: st
   return obj[camelCase] ?? obj[snakeCase];
 }
 
-// Transform Java Workflow to frontend Workflow format
-function transformWorkflow(javaWorkflow: Record<string, unknown>, javaSteps: Record<string, unknown>[]): Record<string, unknown> {
-  const completedSteps = javaSteps.filter(
-    (s: Record<string, unknown>) => {
-      const sStatus = getField(s, 'status', 'status') as string;
-      return sStatus === 'COMPLETED' || sStatus === 'APPROVED';
-    }
-  ).length as unknown as number;
-  const totalSteps = javaSteps.length as unknown as number;
-
-  const progressPercent = getField(javaWorkflow, 'progressPercent', 'progress_percent');
-  let progress = 0;
-  if (progressPercent !== undefined && progressPercent !== null) {
-    if (typeof progressPercent === 'object' && 'toNumber' in progressPercent) {
-      progress = (progressPercent as { toNumber: () => number }).toNumber();
-    } else {
-      progress = Number(progressPercent);
-    }
-  }
-
-  const startDate = getField(javaWorkflow, 'startDate', 'start_date');
-  const endDate = getField(javaWorkflow, 'endDate', 'end_date');
-
-  return {
-    id: javaWorkflow.id ?? getField(javaWorkflow, 'id', 'id'),
-    code: javaWorkflow.code ?? getField(javaWorkflow, 'code', 'code'),
-    name: javaWorkflow.name ?? getField(javaWorkflow, 'name', 'name'),
-    description: javaWorkflow.description ?? getField(javaWorkflow, 'description', 'description'),
-    subprojectIds: javaWorkflow.subprojectId ? [(javaWorkflow.subprojectId as string) ?? ''] : [],
-    templateId: javaWorkflow.templateId ? String(javaWorkflow.templateId) : null,
-    templateCode: null,
-    status: mapWorkflowStatus(String(getField(javaWorkflow, 'status', 'status') ?? '')),
-    phaseType: '',
-    currentStepId: null,
-    currentStepOrder: null,
-    progress,
-    completedSteps,
-    totalSteps,
-    parameters: null,
-    startedAt: startDate ? String(startDate) : null,
-    completedAt: endDate ? String(endDate) : null,
-    createdAt: javaWorkflow.createdAt ?? getField(javaWorkflow, 'createdAt', 'created_at'),
-    updatedAt: javaWorkflow.updatedAt ?? getField(javaWorkflow, 'updatedAt', 'updated_at'),
-  };
-}
-
 // Transform Java WorkflowStep to frontend WorkflowInstanceStep format
 function transformStep(javaStep: Record<string, unknown>, javaWorkflow: Record<string, unknown>): Record<string, unknown> {
   const evidence = getField(javaStep, 'evidence', 'evidence');
@@ -138,12 +92,23 @@ export async function GET(
 
     if (!res.ok) {
       const data = await res.json().catch(() => undefined);
+      console.error('[API workflows/subprojects/[subprojectId]] Backend error:', res.status, data?.message ?? res.statusText);
       return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+    }
+
+    if (res.status === 0 || !res.body) {
+      console.error('[API workflows/subprojects/[subprojectId]] Network error - response body is empty');
+      return NextResponse.json({ message: 'Network error: empty response from workflow service' }, { status: 502 });
     }
 
     const rawData = await res.text();
     console.log('[API workflows/subprojects/[subprojectId]] Raw response:', rawData.substring(0, 2000));
-    
+
+    if (!rawData.trim()) {
+      console.error('[API workflows/subprojects/[subprojectId]] Empty response body from workflow service');
+      return NextResponse.json({ message: 'Empty response from workflow service' }, { status: 502 });
+    }
+
     let data: unknown;
     try {
       data = JSON.parse(rawData);
@@ -167,7 +132,7 @@ export async function GET(
       console.log('[API workflows/subprojects/[subprojectId]] First step keys:', Object.keys(javaSteps[0] as object));
     }
 
-    // Build a map of workflowId -> steps
+    // Build a map of workflowId -> steps from the flat steps list
     const workflowStepsMap: Record<string, Record<string, unknown>[]> = {};
     for (const step of javaSteps) {
       const wfId = getField(step, 'workflowId', 'workflow_id') as string | undefined;
@@ -179,28 +144,84 @@ export async function GET(
       }
     }
 
-    // Transform workflows with their steps
+    // Also extract steps embedded in each workflow object (via @JsonManagedReference)
+    // This serves as a fallback/supplement to the flat steps list
+    for (const wf of javaWorkflows) {
+      const wfId = getField(wf, 'id', 'id') as string | undefined;
+      const embeddedSteps = wf.steps as Record<string, unknown>[] | undefined;
+      if (wfId && embeddedSteps && embeddedSteps.length > 0) {
+        // Only add embedded steps if not already in the map (flat list takes priority)
+        if (!workflowStepsMap[wfId]) {
+          workflowStepsMap[wfId] = embeddedSteps;
+        }
+      }
+    }
+
+    // Helper: Transform workflow with nested steps array
+    function transformWorkflowWithSteps(javaWorkflow: Record<string, unknown>, javaSteps: Record<string, unknown>[]): Record<string, unknown> {
+      const completedSteps = javaSteps.filter(
+        (s: Record<string, unknown>) => {
+          const sStatus = getField(s, 'status', 'status') as string;
+          return sStatus === 'COMPLETED' || sStatus === 'APPROVED';
+        }
+      ).length as unknown as number;
+      const totalSteps = javaSteps.length as unknown as number;
+
+      const progressPercent = getField(javaWorkflow, 'progressPercent', 'progress_percent');
+      let progress = 0;
+      if (progressPercent !== undefined && progressPercent !== null) {
+        if (typeof progressPercent === 'object' && 'toNumber' in progressPercent) {
+          progress = (progressPercent as { toNumber: () => number }).toNumber();
+        } else {
+          progress = Number(progressPercent);
+        }
+      }
+
+      const startDate = getField(javaWorkflow, 'startDate', 'start_date');
+      const endDate = getField(javaWorkflow, 'endDate', 'end_date');
+
+      // Transform each step
+      const transformedSteps = javaSteps.map((step: Record<string, unknown>) => {
+        return transformStep(step, javaWorkflow);
+      });
+
+      return {
+        id: javaWorkflow.id ?? getField(javaWorkflow, 'id', 'id'),
+        code: javaWorkflow.code ?? getField(javaWorkflow, 'code', 'code'),
+        name: javaWorkflow.name ?? getField(javaWorkflow, 'name', 'name'),
+        description: javaWorkflow.description ?? getField(javaWorkflow, 'description', 'description'),
+        subprojectIds: javaWorkflow.subprojectId ? [(javaWorkflow.subprojectId as string) ?? ''] : [],
+        templateId: javaWorkflow.templateId ? String(javaWorkflow.templateId) : null,
+        templateCode: null,
+        status: mapWorkflowStatus(String(getField(javaWorkflow, 'status', 'status') ?? '')),
+        phaseType: '',
+        currentStepId: null,
+        currentStepOrder: null,
+        progress,
+        completedSteps,
+        totalSteps,
+        parameters: null,
+        startedAt: startDate ? String(startDate) : null,
+        completedAt: endDate ? String(endDate) : null,
+        createdAt: javaWorkflow.createdAt ?? getField(javaWorkflow, 'createdAt', 'created_at'),
+        updatedAt: javaWorkflow.updatedAt ?? getField(javaWorkflow, 'updatedAt', 'updated_at'),
+        steps: transformedSteps,
+      };
+    }
+
+    // Transform workflows with their steps attached as nested steps array
+    // The Workflow interface now expects steps: WorkflowInstanceStep[]
     const workflows = javaWorkflows.map((wf: Record<string, unknown>) => {
       const wfId = getField(wf, 'id', 'id') as string;
-      const steps = workflowStepsMap[wfId] ?? [];
-      return transformWorkflow(wf, steps);
+      const wfSteps = workflowStepsMap[wfId] ?? [];
+      return transformWorkflowWithSteps(wf, wfSteps);
     });
-
-    // Transform steps
-    const transformedSteps = javaSteps.map((step: Record<string, unknown>) => {
-      const stepWfId = getField(step, 'workflowId', 'workflow_id') as string | undefined;
-      const workflow = stepWfId ? javaWorkflows.find((wf: Record<string, unknown>) => String(getField(wf, 'id', 'id')!) === stepWfId) : undefined;
-      if (workflow) {
-        return transformStep(step, workflow);
-      }
-      return null;
-    }).filter((item: Record<string, unknown> | null): item is Record<string, unknown> => item !== null);
 
     return NextResponse.json({
       workflows,
-      steps: transformedSteps,
     });
   } catch (error) {
+    console.error('[API workflows/subprojects/[subprojectId]] Unexpected error:', error);
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

@@ -35,7 +35,7 @@ public class Tenant {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false)
+    @Column(name = "is_active", nullable = false)
     private Boolean active = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)

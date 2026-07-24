@@ -52,6 +52,7 @@ export interface Workflow {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  steps:WorkflowInstanceStep[];
 }
 
 export interface WorkflowResponse {
@@ -64,7 +65,6 @@ export interface WorkflowResponse {
 
 export interface WorkflowInstanceStep {
   id: string;
-  workflowId: string;
   templateStepId: string | null;
   code: string;
   name: string;

@@ -2,6 +2,8 @@ package io.cerp.workflow.domain;
 
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -27,6 +29,7 @@ public class WorkflowTemplateStepAssigneeRole {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @JsonManagedReference("template-step-assignee-roles")
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "template_step_id", nullable = false)
     private WorkflowTemplateStep templateStep;

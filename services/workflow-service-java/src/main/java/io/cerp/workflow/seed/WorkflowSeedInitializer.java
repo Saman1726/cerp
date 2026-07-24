@@ -170,8 +170,10 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
 
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
+            // Check for ANY existing template with this code (regardless of status)
+            // to avoid duplicate key violations on order_num and other unique constraints
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -253,7 +255,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -337,7 +339,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -408,7 +410,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -479,7 +481,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -550,7 +552,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -634,7 +636,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -713,7 +715,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -799,7 +801,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -883,7 +885,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -959,7 +961,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1043,7 +1045,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1127,7 +1129,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1203,7 +1205,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1279,7 +1281,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1355,7 +1357,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1439,7 +1441,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1523,7 +1525,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1605,7 +1607,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1689,7 +1691,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1773,7 +1775,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1857,7 +1859,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }
@@ -1941,7 +1943,7 @@ public class WorkflowSeedInitializer implements CommandLineRunner {
         @Override
         public WorkflowTemplate findExisting(WorkflowTemplateService service) {
             try {
-                return service.getActiveTemplate(code());
+                return service.getTemplateByCode(this.code());
             } catch (IllegalArgumentException e) {
                 return null;
             }

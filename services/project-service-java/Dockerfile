@@ -2,7 +2,7 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN for i in 1 2 3; do mvn dependency:go-offline -B && break || (echo "Attempt $i failed, retrying..." && sleep 10); done
 COPY src ./src
 RUN mvn clean package -DskipTests -B
 

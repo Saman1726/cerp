@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
@@ -31,6 +32,7 @@ public class WorkflowStep {
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "workflow_id")
+    @JsonBackReference
     private Workflow workflow;
 
     @Column(name = "template_step_id")

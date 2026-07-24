@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.workflow.config.KafkaEventPublisher;
-import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.WorkflowTemplate;
 import io.cerp.workflow.domain.WorkflowTemplateStep;
 import io.cerp.workflow.domain.WorkflowTemplateStepAssigneeRole;
@@ -32,16 +31,13 @@ public class WorkflowTemplateService {
 
     private final WorkflowTemplateRepository templateRepository;
     private final KafkaEventPublisher eventPublisher;
-    private final TenantService tenantService;
     private String tenantId;
 
     public WorkflowTemplateService(WorkflowTemplateRepository templateRepository,
-            KafkaEventPublisher eventPublisher, TenantService tenantService) {
+            KafkaEventPublisher eventPublisher) {
         this.templateRepository = templateRepository;
         this.eventPublisher = eventPublisher;
-        this.tenantService = tenantService;
-        Optional<UUID> tenant = tenantService.getTenantIdByCode("default");
-        tenantId = tenant.get().toString();
+        tenantId = TenantService.getInstance().getTenantIdByCodeStr("default");
     }
 
     /**
@@ -88,12 +84,42 @@ public class WorkflowTemplateService {
     }
 
     /**
+     * Get any template by code (regardless of status). Used by seed initializer to detect existing templates and avoid duplicate key violations. If tenantId is not yet
+     * initialized (null during startup), checks all templates by code.
+     */
+    @Transactional(readOnly = true)
+    public WorkflowTemplate getTemplateByCode(String code) {
+        // During startup seed, tenantId may not be initialized yet
+        if (tenantId == null) {
+            return templateRepository.findByCode(code).orElse(null);
+        }
+        return templateRepository.findByTenantIdAndCode(tenantId, code)
+            .orElse(null);
+    }
+
+    /**
+     * Check if any template with the given code exists (ignoring tenant). Used by seed initializer as a fallback check.
+     */
+    @Transactional(readOnly = true)
+    public boolean existsByCode(String code) {
+        return templateRepository.existsByCode(code);
+    }
+
+    /**
      * Get an active template by code.
      */
     @Transactional(readOnly = true)
     public WorkflowTemplate getActiveTemplate(String code) {
         return templateRepository.findByTenantIdAndCodeAndStatus(tenantId, code, WorkflowTemplate.TemplateStatus.ACTIVE)
             .orElseThrow(() -> new IllegalArgumentException("Active template not found: " + code));
+    }
+
+    /**
+     * Find a template by tenant ID and code (any status).
+     */
+    @Transactional(readOnly = true)
+    public Optional<WorkflowTemplate> findByTenantIdAndCode(String tenantId, String code) {
+        return templateRepository.findByTenantIdAndCode(tenantId, code);
     }
 
     /**

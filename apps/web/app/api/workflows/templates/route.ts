@@ -62,18 +62,51 @@ function transformTemplate(javaTemplate: Record<string, unknown>, javaSteps: Rec
 export async function GET(request: NextRequest) {
   try {
     const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates`;
+    console.log('[API workflows/templates] Fetching from workflow service:', url);
 
     const res = await fetch(url, {
       headers: getBackendHeaders(request),
       cache: 'no-store',
     });
 
+    console.log('[API workflows/templates] Workflow service response status:', res.status, res.statusText);
+
     if (!res.ok) {
       const data = await res.json().catch(() => undefined);
+      console.error('[API workflows/templates] Backend error:', res.status, data?.message ?? res.statusText);
       return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
     }
 
-    const data: unknown[] = await res.json();
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('[API workflows/templates] Unexpected content type:', contentType);
+      const text = await res.text();
+      console.error('[API workflows/templates] Response body:', text.substring(0, 1000));
+      return NextResponse.json({ message: `Unexpected content type: ${contentType}` }, { status: 502 });
+    }
+
+    const rawData = await res.text();
+    console.log('[API workflows/templates] Raw response:', rawData.substring(0, 2000));
+
+    if (!rawData.trim()) {
+      console.error('[API workflows/templates] Empty response body from workflow service');
+      return NextResponse.json({ message: 'Empty response from workflow service' }, { status: 502 });
+    }
+
+    let data: unknown[];
+    try {
+      data = JSON.parse(rawData);
+    } catch (parseError) {
+      console.error('[API workflows/templates] JSON parse error:', parseError);
+      return NextResponse.json({ message: 'Invalid JSON response from workflow service' }, { status: 502 });
+    }
+
+    if (!Array.isArray(data)) {
+      console.error('[API workflows/templates] Response is not an array:', typeof data);
+      return NextResponse.json({ message: 'Expected array response from workflow service' }, { status: 502 });
+    }
+
+    console.log('[API workflows/templates] Templates count:', data.length);
 
     // Transform each template
     const templates = data.map((value: unknown) => {
@@ -84,6 +117,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(templates);
   } catch (error) {
+    console.error('[API workflows/templates] Unexpected error:', error);
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

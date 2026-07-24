@@ -2,6 +2,8 @@ package io.cerp.workflow.event;
 
 import java.time.LocalDateTime;
 
+import io.cerp.workflow.service.TenantService;
+
 /**
  * Base envelope for all Workflow domain events.
  *
@@ -28,7 +30,7 @@ public abstract class WorkflowEvent {
         this.eventType = eventType;
         this.version = "1.0";
         this.occurredAt = LocalDateTime.now();
-        this.tenantId = io.cerp.workflow.config.TenantContext.getCurrentTenantId();
+        this.tenantId = "default";
         this.aggregateType = "WorkflowTemplate";
         this.aggregateId = templateId;
         this.aggregateVersion = "1";

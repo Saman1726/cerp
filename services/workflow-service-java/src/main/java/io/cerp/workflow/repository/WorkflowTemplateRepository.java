@@ -47,6 +47,12 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
 
         boolean existsByTenantIdAndCode(String tenantId, String code);
 
+        boolean existsByCode(String code);
+
+        Optional<WorkflowTemplate> findByTenantIdAndCode(String tenantId, String code);
+
+        Optional<WorkflowTemplate> findByCode(String code);
+
         Optional<WorkflowTemplate> findByTenantIdAndCodeAndStatus(String tenantId, String code,
                         WorkflowTemplate.TemplateStatus status);
 }

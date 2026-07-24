@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.transaction.annotation.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -125,6 +126,7 @@ public class WorkflowController {
      * Falls back to querying without tenant filter when TenantContext is empty (e.g., development, migration, or when X-Tenant-Id header is not provided).
      * </p>
      */
+    @Transactional(readOnly = true)
     @GetMapping("/subprojects/{subprojectId}")
     public ResponseEntity<Map<String, Object>> getWorkflowsBySubproject(
             @PathVariable String subprojectId) {
@@ -139,12 +141,14 @@ public class WorkflowController {
             workflows = workflowService.getWorkflowsBySubprojectIdWithoutTenant(subprojectUuid);
         }
 
-        // Collect all steps for all workflows
+        // Eagerly load steps for each workflow and replace with the loaded entity
+        workflows = workflows.stream()
+            .map(w -> workflowService.getWorkflowWithSteps(w.getId()).orElse(w))
+            .toList();
+
+        // Collect all steps for all workflows into a flat list
         List<WorkflowStep> allSteps = workflows.stream()
-            .flatMap(w -> {
-                Optional<Workflow> withSteps = workflowService.getWorkflowWithSteps(w.getId());
-                return withSteps.map(opt -> opt.getSteps().stream()).orElse(java.util.stream.Stream.empty());
-            })
+            .flatMap(w -> w.getSteps().stream())
             .toList();
 
         Map<String, Object> response = new HashMap<>();
@@ -154,10 +158,14 @@ public class WorkflowController {
         return ResponseEntity.ok(response);
     }
 
+    @Transactional(readOnly = true)
     @GetMapping("/{id}")
     public ResponseEntity<Workflow> getById(@PathVariable String id) {
         Workflow workflow = workflowService.getById(UUID.fromString(id));
-        return ResponseEntity.ok(workflow);
+        // Collect all steps for all workflows
+        Optional<Workflow> withSteps = workflowService.getWorkflowWithSteps(workflow.getId());
+
+        return ResponseEntity.ok(withSteps.get());
     }
 
     /**

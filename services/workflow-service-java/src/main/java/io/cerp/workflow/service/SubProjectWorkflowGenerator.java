@@ -26,6 +26,7 @@ import io.cerp.workflow.dto.WorkflowGenerationResponse.SkippedWorkflowDetail;
 import io.cerp.workflow.repository.OrganisationWorkflowConfigRepository;
 import io.cerp.workflow.repository.TemplatePhaseMappingRepository;
 import io.cerp.workflow.repository.WorkflowRepository;
+import io.cerp.workflow.repository.WorkflowStepRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
 
 /**
@@ -42,16 +43,20 @@ public class SubProjectWorkflowGenerator {
     private final TemplatePhaseMappingRepository templatePhaseMappingRepository;
     private final WorkflowTemplateRepository workflowTemplateRepository;
     private final WorkflowRepository workflowRepository;
+    private final WorkflowStepRepository workflowStepRepository;
+
     private final OrganisationWorkflowConfigRepository organisationWorkflowConfigRepository;
 
     public SubProjectWorkflowGenerator(TemplatePhaseMappingRepository templatePhaseMappingRepository,
             WorkflowTemplateRepository workflowTemplateRepository,
             WorkflowRepository workflowRepository,
-            OrganisationWorkflowConfigRepository organisationWorkflowConfigRepository) {
+            OrganisationWorkflowConfigRepository organisationWorkflowConfigRepository,
+            WorkflowStepRepository workflowStepRepository) {
         this.templatePhaseMappingRepository = templatePhaseMappingRepository;
         this.workflowTemplateRepository = workflowTemplateRepository;
         this.workflowRepository = workflowRepository;
         this.organisationWorkflowConfigRepository = organisationWorkflowConfigRepository;
+        this.workflowStepRepository = workflowStepRepository;
     }
 
     /**
@@ -75,7 +80,7 @@ public class SubProjectWorkflowGenerator {
         log.info("Generating workflows for subproject {} (tenant: {}, org: {})",
             request.getSubprojectId(), request.getTenantId(), request.getOrgId());
 
-        String tenantId = request.getTenantId();
+        String tenantId = TenantService.getInstance().getTenantIdByCodeStr(request.getTenantId());
         UUID subprojectId = request.getSubprojectId();
         UUID orgId = request.getOrgId();
         UUID projectId = request.getProjectId();
@@ -309,7 +314,8 @@ public class SubProjectWorkflowGenerator {
             if (templateStep.getWeight() != null) {
                 step.setWeight(templateStep.getWeight());
             }
-            workflow.addStep(step);
+            step.setWorkflow(workflow);
+            workflowStepRepository.save(step);
         }
     }
 

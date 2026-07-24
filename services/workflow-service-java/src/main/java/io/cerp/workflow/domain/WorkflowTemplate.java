@@ -18,6 +18,8 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.UniqueConstraint;
 
 /**
@@ -87,12 +89,13 @@ public class WorkflowTemplate {
     private TemplateStatus status = TemplateStatus.DRAFT;
 
     /**
-     * Order position of this workflow template in the construction sequence (1-23 per Section 23 of architecture docs).
-     * Used to display templates in the correct construction phase order.
+     * Order position of this workflow template in the construction sequence (1-23 per Section 23 of architecture docs). Used to display templates in the correct
+     * construction phase order.
      */
     @Column(name = "order_num")
     private Integer orderNum;
 
+    @JsonManagedReference("template-steps")
     @OneToMany(mappedBy = "template", orphanRemoval = true)
     private List<WorkflowTemplateStep> steps = new ArrayList<>();
 

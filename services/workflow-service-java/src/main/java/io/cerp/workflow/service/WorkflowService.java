@@ -1,9 +1,6 @@
 package io.cerp.workflow.service;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -14,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.workflow.config.KafkaEventPublisher;
-import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.Workflow;
 import io.cerp.workflow.domain.WorkflowStep;
 import io.cerp.workflow.domain.WorkflowTemplate;
@@ -35,14 +31,11 @@ public class WorkflowService {
 
     private final WorkflowRepository workflowRepository;
     private final WorkflowTemplateRepository templateRepository;
-    private final KafkaEventPublisher eventPublisher;
 
     public WorkflowService(WorkflowRepository workflowRepository,
-            WorkflowTemplateRepository templateRepository,
-            KafkaEventPublisher eventPublisher) {
+            WorkflowTemplateRepository templateRepository) {
         this.workflowRepository = workflowRepository;
         this.templateRepository = templateRepository;
-        this.eventPublisher = eventPublisher;
     }
 
     /**

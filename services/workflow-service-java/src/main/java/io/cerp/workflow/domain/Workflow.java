@@ -7,11 +7,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -104,20 +107,21 @@ public class Workflow {
     /**
      * Floor identifiers for FLOOR scope level workflows. Examples: "F1", "F2", "GROUND", "FIRST", etc.
      */
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @Column(name = "floor_ids", length = 64)
     private List<String> floorIds = new ArrayList<>();
 
     /**
      * Building part identifiers for PART scope level workflows. Examples: "facade", "basement", "roof", "elevator_shaft", "hvac_room", etc.
      */
-    @ElementCollection
+    @ElementCollection(fetch = FetchType.EAGER)
     @Column(name = "part_ids", length = 64)
     private List<String> partIds = new ArrayList<>();
 
     @Column(name = "created_by", length = 128)
     private String createdBy;
 
+    @JsonManagedReference
     @OneToMany(mappedBy = "workflow", orphanRemoval = true)
     private List<WorkflowStep> steps = new ArrayList<>();
 

@@ -78,6 +78,12 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- Jackson Hibernate6 Module for lazy-loading support -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-hibernate6</artifactId>
+        </dependency>
+
         <!-- OpenTelemetry -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
