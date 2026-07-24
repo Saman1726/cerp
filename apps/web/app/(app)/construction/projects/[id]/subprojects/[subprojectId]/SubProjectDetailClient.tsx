@@ -189,8 +189,6 @@ export default function SubProjectDetailClient({
 
   const subprojectId = subProject.id;
 
-  const [initialized, setInitialized] = useState(false);
-
   const fetchWorkflows = useCallback(async () => {
     try {
       setWorkflowLoading(true);
@@ -285,14 +283,12 @@ export default function SubProjectDetailClient({
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!initialized) {
-      fetchWorkflows();
-      fetchTemplates();
-      setInitialized(true);
-    }
-  }, [fetchWorkflows, fetchTemplates, initialized]);
+    /* eslint-disable react-hooks/set-state-in-effect */
+    fetchWorkflows();
+    fetchTemplates();
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [fetchWorkflows, fetchTemplates]);
 
   const handleCreateWorkflow = async (e: React.FormEvent) => {
     e.preventDefault();

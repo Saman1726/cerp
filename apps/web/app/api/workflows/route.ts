@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
 
-async function workflowFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const headersInit = new Headers(init?.headers);
-  headersInit.set('Content-Type', 'application/json');
-
-  const fullUrl = `${WORKFLOW_SERVICE_URL}${path}`;
-
-  const res = await fetch(fullUrl, { ...init, headers: headersInit, cache: 'no-store' });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => undefined);
-    throw new Error(body?.message ?? res.statusText);
-  }
-
-  return res.json();
-}
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

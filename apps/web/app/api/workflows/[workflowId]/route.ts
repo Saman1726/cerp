@@ -191,7 +191,7 @@ export async function PATCH(
       phaseType: '',
       currentStepId: null,
       currentStepOrder: null,
-      progress: javaWorkflow.progressPercent?.toNumber?.() ?? Number(javaWorkflow.progressPercent) ?? 0,
+      progress: javaWorkflow.progressPercent?.toNumber?.() ?? (javaWorkflow.progressPercent as number | null) ?? 0,
       completedSteps: 0,
       totalSteps: 0,
       parameters: null,
