@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getAuthHeaders } from '../../../utils';
+import { getAuthHeaders } from '../../../../utils';
 
 export async function POST(
   request: NextRequest,

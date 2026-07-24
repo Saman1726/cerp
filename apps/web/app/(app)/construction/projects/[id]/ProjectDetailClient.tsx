@@ -200,7 +200,7 @@ export default function ProjectDetailClient({
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Address</p>
           <p className="mt-1 text-sm font-medium">
-            {[project.address, project.city, project.country].filter(Boolean).join(', ') || '—'}
+            {[project.addressLine1, project.addressLine2, project.city, project.countryCode].filter(Boolean).join(', ') || '—'}
           </p>
         </div>
       </div>

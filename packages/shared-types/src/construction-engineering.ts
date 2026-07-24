@@ -47,6 +47,7 @@ export interface Project {
 export interface CreateProjectRequest {
   code: string;
   name: string;
+  orgId: string;
   description?: string;
   constructionSiteId?: string;
   propertyId?: string;
@@ -56,7 +57,7 @@ export interface CreateProjectRequest {
   city?: string;
   countryCode?: string;
   status?: ProjectStatus;
-  type?: ProjectType;
+  projectType?: ProjectType;
   startDate?: string;
   endDate?: string;
   budget?: number;
@@ -64,6 +65,40 @@ export interface CreateProjectRequest {
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
+}
+
+// Alias for backward compatibility with existing code
+export type ProjectCreateRequest = CreateProjectRequest;
+
+export interface ProjectResponse {
+  id: string;
+  code: string;
+  name: string;
+  orgId: string;
+  description: string | null;
+  constructionSiteId: string | null;
+  propertyId: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  countryCode: string | null;
+  status: ProjectStatus;
+  projectType: ProjectType;
+  startDate: string | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  progress: number | null;
+  budget: number | null;
+  currencyCode: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  syncStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
 }
 
 export interface UpdateProjectRequest {
@@ -114,6 +149,8 @@ export interface SubProject {
   buildingId: string | null;
   externalId: string | null;
   syncStatus: string | null;
+  floors: SubProjectFloor[];
+  buildingParts: SubProjectBuildingPart[];
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;

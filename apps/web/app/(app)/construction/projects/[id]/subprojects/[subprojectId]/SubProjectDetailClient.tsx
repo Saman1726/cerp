@@ -108,7 +108,7 @@ export default function SubProjectDetailClient({
 }: {
   subProject: SubProjectResponse;
   projectId: string;
-}): JSX.Element {
+}) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
@@ -906,7 +906,7 @@ export default function SubProjectDetailClient({
                         {template.code}
                       </Badge>
                       <Badge variant="secondary">
-                        {formatStepStatus((template as { status?: string }).status ?? 'ACTIVE')}
+                        {formatPhaseType((template as { status?: string | undefined }).status ?? null)}
                       </Badge>
                     </div>
                     {template.description && (
