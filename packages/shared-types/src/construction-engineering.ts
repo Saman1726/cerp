@@ -1,5 +1,146 @@
 import { z } from 'zod';
 
+// ── Project Types ──
+
+export type ProjectStatus = 'PLANNED' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
+
+export type ProjectType =
+  | 'NEW_CONSTRUCTION'
+  | 'RENOVATION'
+  | 'MAINTENANCE'
+  | 'INFRASTRUCTURE'
+  | 'COMMERCIAL'
+  | 'RESIDENTIAL'
+  | 'INDUSTRIAL';
+
+export interface Project {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  constructionSiteId: string | null;
+  propertyId: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  postalCode: string | null;
+  city: string | null;
+  countryCode: string | null;
+  status: ProjectStatus;
+  type: ProjectType;
+  startDate: string | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  progress: number | null;
+  budget: number | null;
+  currencyCode: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  syncStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  subProjects: SubProject[];
+}
+
+export interface CreateProjectRequest {
+  code: string;
+  name: string;
+  description?: string;
+  constructionSiteId?: string;
+  propertyId?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
+  city?: string;
+  countryCode?: string;
+  status?: ProjectStatus;
+  type?: ProjectType;
+  startDate?: string;
+  endDate?: string;
+  budget?: number;
+  currencyCode?: string;
+  clientName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+}
+
+export interface UpdateProjectRequest {
+  code?: string;
+  name?: string;
+  description?: string;
+  constructionSiteId?: string;
+  propertyId?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  postalCode?: string;
+  city?: string;
+  countryCode?: string;
+  status?: ProjectStatus;
+  type?: ProjectType;
+  startDate?: string;
+  endDate?: string;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  budget?: number;
+  currencyCode?: string;
+  clientName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+}
+
+// ── SubProject Types ──
+
+// Note: SubProjectStatus and SubProjectBuildingType are already defined later in this file (lines ~232-254)
+// Using the existing definitions to avoid duplicates
+
+export interface SubProject {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  buildingType: SubProjectBuildingType;
+  constructionPhase: SubProjectConstructionPhase | null;
+  status: SubProjectStatus;
+  projectId: string;
+  startDate: string | null;
+  endDate: string | null;
+  actualStartDate: string | null;
+  actualEndDate: string | null;
+  progress: number | null;
+  budget: number | null;
+  currencyCode: string | null;
+  buildingId: string | null;
+  externalId: string | null;
+  syncStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+}
+
+export interface CreateSubProjectRequest {
+  code: string;
+  name: string;
+  description?: string;
+  projectId: string;
+  buildingId?: string;
+  buildingType?: SubProjectBuildingType;
+  constructionPhase?: SubProjectConstructionPhase;
+}
+
+export interface UpdateSubProjectRequest {
+  code?: string;
+  name?: string;
+  description?: string;
+  buildingType?: SubProjectBuildingType;
+  constructionPhase?: SubProjectConstructionPhase;
+  status?: SubProjectStatus;
+  startDate?: string;
+  endDate?: string;
+  budget?: number;
+}
+
 export type WorkOrderStatus = 'issued' | 'completed';
 
 export interface WorkOrder {
