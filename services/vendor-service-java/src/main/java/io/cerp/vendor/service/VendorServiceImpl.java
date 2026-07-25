@@ -137,9 +137,9 @@ public class VendorServiceImpl implements VendorService {
     }
 
     @Override
-    public List<VendorResponse> listVendors(String category) {
+    public List<VendorResponse> listVendors(String category, String name, String city) {
         requireTenant();
-        List<Vendor> vendors = vendorRepository.findAllByOptionalCategory(category);
+        List<Vendor> vendors = vendorRepository.findAllBySearchCriteria(category, name, city);
         List<VendorResponse> out = new ArrayList<>(vendors.size());
         for (Vendor v : vendors) {
             out.add(VendorResponse.from(v));

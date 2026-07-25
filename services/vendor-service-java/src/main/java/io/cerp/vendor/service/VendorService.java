@@ -17,5 +17,5 @@ public interface VendorService {
 
     VendorResponse getVendor(UUID id);
 
-    List<VendorResponse> listVendors(String category);
+    List<VendorResponse> listVendors(String category, String name, String city);
 }

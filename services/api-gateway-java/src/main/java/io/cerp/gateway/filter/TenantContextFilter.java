@@ -37,8 +37,17 @@ public class TenantContextFilter implements GlobalFilter, Ordered {
 
     public static final String TENANT_ID_HEADER = "X-Tenant-Id";
 
+    /**
+     * Default tenant ID used when no tenant context is available in development environments. This matches the default tenant seeded by TenantSeedInitializer in
+     * workflow-service.
+     */
+    public static final String DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
     @Value("${cerp.gateway.tenant.jwt-claim:resource_access}")
     private String jwtTenantClaimPath;
+
+    @Value("${cerp.gateway.tenant.fallback-to-default:true}")
+    private boolean fallbackToDefault;
 
     @Override
     @Order(-100)
@@ -55,6 +64,15 @@ public class TenantContextFilter implements GlobalFilter, Ordered {
         }
 
         if (tenantId != null && !tenantId.isBlank()) {
+            ServerHttpRequest mutatedRequest = request.mutate()
+                .header(TENANT_ID_HEADER, tenantId)
+                .build();
+            return chain.filter(exchange.mutate().request(mutatedRequest).build());
+        }
+
+        // Fallback to default tenant ID for development environments
+        if (fallbackToDefault) {
+            tenantId = DEFAULT_TENANT_ID;
             ServerHttpRequest mutatedRequest = request.mutate()
                 .header(TENANT_ID_HEADER, tenantId)
                 .build();

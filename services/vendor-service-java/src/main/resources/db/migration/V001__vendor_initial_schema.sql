@@ -63,5 +63,5 @@ LEFT JOIN supply.vendor_ratings r ON r.vendor_id = v.id
 GROUP BY v.tenant_id, v.id, v.legal_name, v.status, v.categories, v.created_at, v.updated_at;
 
 -- Note on RLS:
--- Phase 2 requires tenant isolation via RLS keyed by tenant_id. Introduced in V2__rls.sql.
+-- Phase 2 requires tenant isolation via RLS keyed by tenant_id. Introduced in V002__vendor_rls_and_policies.sql.
 -- Application should set current_setting('app.tenant_id', true) per request/session.

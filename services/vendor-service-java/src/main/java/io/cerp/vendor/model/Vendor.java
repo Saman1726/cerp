@@ -19,7 +19,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "vendors", schema = "supply", indexes = {
         @Index(name = "idx_vendors_tenant_id", columnList = "tenant_id"),
-        @Index(name = "idx_vendors_status", columnList = "status")
+        @Index(name = "idx_vendors_status", columnList = "status"),
+        @Index(name = "idx_vendors_city", columnList = "city")
 })
 public class Vendor {
 
@@ -43,6 +44,9 @@ public class Vendor {
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "categories", columnDefinition = "text[]")
     private List<String> categories = new ArrayList<>();
+
+    @Column(name = "city")
+    private String city;
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
@@ -99,6 +103,14 @@ public class Vendor {
 
     public void setCategories(List<String> categories) {
         this.categories = categories;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
     }
 
     public OffsetDateTime getCreatedAt() {

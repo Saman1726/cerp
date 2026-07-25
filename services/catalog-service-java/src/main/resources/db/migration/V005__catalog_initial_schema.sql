@@ -36,14 +36,6 @@ CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id ON supply.catalog_prices (
 
 CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id_valid_from ON supply.catalog_prices (item_id, valid_from DESC);
 
--- Optional: a current price view per item (latest by valid_from where valid_to is null)
--- CREATE OR REPLACE VIEW supply.catalog_item_current_price AS
--- SELECT DISTINCT ON (p.item_id)
---   p.item_id, p.currency, p.amount, p.valid_from
--- FROM supply.catalog_prices p
--- WHERE p.valid_to IS NULL
--- ORDER BY p.item_id, p.valid_from DESC;
-
 -- Note on RLS:
 -- Phase 2 requires tenant isolation via RLS keyed by tenant_id.
--- Introduced in V2__rls_and_policies.sql. Application should set current_setting('app.tenant_id', true) per request/session.
+-- Introduced in V006__catalog_rls_and_policies.sql. Application should set current_setting('app.tenant_id', true) per request/session.

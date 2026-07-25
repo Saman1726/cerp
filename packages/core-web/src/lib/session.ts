@@ -27,6 +27,7 @@ export async function getSession(): Promise<Session | null> {
 
 export async function clearSession(): Promise<void> {
   const store = await cookies();
-  store.delete(SESSION_COOKIE);
-  store.delete(REFRESH_COOKIE);
+  const expired = new Date(0); // Expire immediately (Jan 1, 1970)
+  store.set(SESSION_COOKIE, '', { ...sessionCookieOptions, expires: expired });
+  store.set(REFRESH_COOKIE, '', { ...sessionCookieOptions, expires: expired });
 }

@@ -1,4 +1,4 @@
--- V2: Enable Row Level Security (RLS) and tenant isolation policies for Vendor Service
+-- V002: Enable Row Level Security (RLS) and tenant isolation policies for Vendor Service
 -- Uses current_setting('app.tenant_id', true) to enforce per-tenant access.
 -- Application layer should set: SET LOCAL app.tenant_id = '<tenant-uuid>';
 

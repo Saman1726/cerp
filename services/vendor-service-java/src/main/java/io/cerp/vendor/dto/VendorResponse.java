@@ -14,6 +14,7 @@ public class VendorResponse {
     private String status;
     private Map<String, Object> taxProfile;
     private List<String> categories = new ArrayList<>();
+    private String city;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
@@ -25,6 +26,7 @@ public class VendorResponse {
         r.setStatus(v.getStatus());
         r.setTaxProfile(v.getTaxProfile());
         r.setCategories(v.getCategories());
+        r.setCity(v.getCity());
         r.setCreatedAt(v.getCreatedAt());
         r.setUpdatedAt(v.getUpdatedAt());
         return r;
@@ -76,6 +78,14 @@ public class VendorResponse {
 
     public void setCategories(List<String> categories) {
         this.categories = categories;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
     }
 
     public OffsetDateTime getCreatedAt() {

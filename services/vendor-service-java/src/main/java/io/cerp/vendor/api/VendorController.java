@@ -46,7 +46,10 @@ public class VendorController {
     }
 
     @GetMapping
-    public List<VendorResponse> list(@RequestParam(name = "category", required = false) String category) {
-        return service.listVendors(category);
+    public List<VendorResponse> list(
+            @RequestParam(name = "category", required = false) String category,
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "city", required = false) String city) {
+        return service.listVendors(category, name, city);
     }
 }

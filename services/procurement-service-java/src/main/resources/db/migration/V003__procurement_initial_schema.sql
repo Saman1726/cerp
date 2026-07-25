@@ -19,5 +19,5 @@ CREATE INDEX IF NOT EXISTS idx_requests_tenant_id ON procurement.requests (tenan
 CREATE INDEX IF NOT EXISTS idx_requests_status ON procurement.requests (status);
 
 -- Note on RLS:
--- Phase 2 requires tenant isolation via RLS keyed by tenant_id. Introduced in V2__rls_and_policies.sql.
+-- Phase 2 requires tenant isolation via RLS keyed by tenant_id. Introduced in V004__procurement_rls_and_policies.sql.
 -- Application should set current_setting('app.tenant_id', true) per request/session.

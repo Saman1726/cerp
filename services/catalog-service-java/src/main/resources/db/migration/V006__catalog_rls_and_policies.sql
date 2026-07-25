@@ -1,4 +1,4 @@
--- V2: Enable Row Level Security (RLS) and tenant isolation policies for Catalog Service
+-- V006: Enable Row Level Security (RLS) and tenant isolation policies for Catalog Service
 -- Uses current_setting('app.tenant_id', true) to enforce per-tenant access.
 -- Application layer should set: SET LOCAL app.tenant_id = '<tenant-uuid>';
 
@@ -67,4 +67,4 @@ CREATE POLICY catalog_prices_tenant_isolation
     )
   );
 
--- Helpful indexes (root and FKs already added in V1)
+-- Helpful indexes (root and FKs already added in V005)

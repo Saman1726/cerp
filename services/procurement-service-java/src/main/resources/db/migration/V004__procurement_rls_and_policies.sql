@@ -1,4 +1,4 @@
--- V2: Enable Row Level Security (RLS) and tenant isolation policies for Procurement Service
+-- V004: Enable Row Level Security (RLS) and tenant isolation policies for Procurement Service
 -- Uses current_setting('app.tenant_id', true) to enforce per-tenant access.
 -- Application layer should set: SET LOCAL app.tenant_id = '<tenant-uuid>';
 
@@ -33,5 +33,3 @@ CREATE POLICY requests_tenant_isolation
 
 -- Helpful indexes (if not already existing)
 CREATE INDEX IF NOT EXISTS idx_requests_tenant_id ON procurement.requests (tenant_id);
-
-CREATE INDEX IF NOT EXISTS idx_requests_status ON procurement.requests (status);

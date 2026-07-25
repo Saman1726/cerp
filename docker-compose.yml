@@ -73,21 +73,39 @@ services:
       dockerfile: Dockerfile
     container_name: cerp-catalog-service-java
     depends_on:
-      postgres:
+      supply-postgres:
         condition: service_healthy
       kafka:
         condition: service_started
     environment:
       PORT: 8086
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_URL: jdbc:postgresql://supply-postgres:5432/supply_db
       DB_USER: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
       KAFKA_BOOTSTRAP: kafka:9092
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
     ports:
       - '8086:8086'
+
+  supply-postgres:
+    image: postgres:17-alpine
+    container_name: cerp-supply-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cerp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
+      POSTGRES_DB: supply_db
+    ports:
+      - '5433:5432'
+    volumes:
+      - cerp_supply_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-cerp} -d supply_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   vendor-service-java:
     build:
@@ -95,13 +113,13 @@ services:
       dockerfile: Dockerfile
     container_name: cerp-vendor-service-java
     depends_on:
-      postgres:
+      supply-postgres:
         condition: service_healthy
       kafka:
         condition: service_started
     environment:
       PORT: 8085
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_URL: jdbc:postgresql://supply-postgres:5432/supply_db
       DB_USER: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
@@ -162,19 +180,19 @@ services:
       dockerfile: Dockerfile
     container_name: cerp-procurement-service-java
     depends_on:
-      postgres:
+      supply-postgres:
         condition: service_healthy
       kafka:
         condition: service_started
     environment:
       PORT: 8087
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
+      DB_URL: jdbc:postgresql://supply-postgres:5432/supply_db
       DB_USER: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
       KAFKA_BOOTSTRAP: kafka:9092
-      SPRING_FLYWAY_ENABLED: "false"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
     ports:
       - '8087:8087'
 
@@ -296,4 +314,5 @@ services:
 
 volumes:
   cerp_postgres_data:
+  cerp_supply_data:
   cerp_minio_data:
