@@ -29,6 +29,9 @@ export interface ConstructionEngineeringPageBodyClientProps {
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   formAction: (state: IssueWorkOrderActionState, formData: FormData) => Promise<IssueWorkOrderActionState>;
+  currentUserEmail?: string;
+  assignUsersAction?: (projectId: string, userIds: string[]) => Promise<{ error?: string }>;
+  removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
 }
 
 export function ConstructionEngineeringPageBodyClient({
@@ -41,6 +44,9 @@ export function ConstructionEngineeringPageBodyClient({
   deleteProjectAction,
   deleteSubProjectAction,
   formAction,
+  currentUserEmail,
+  assignUsersAction,
+  removeUserAction,
 }: ConstructionEngineeringPageBodyClientProps) {
   const [workOrderModalOpen, setWorkOrderModalOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -90,6 +96,9 @@ export function ConstructionEngineeringPageBodyClient({
             deleteProjectAction={deleteProjectAction}
             deleteSubProjectAction={deleteSubProjectAction}
             onCreateWorkOrder={handleCreateWorkOrder}
+            assignUsersAction={assignUsersAction}
+            removeUserAction={removeUserAction}
+            currentUserEmail={currentUserEmail}
           />
         </CardContent>
       </Card>

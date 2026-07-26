@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.Arrays;
 
 import io.cerp.project.domain.Project;
 
@@ -41,8 +42,12 @@ public record ProjectResponse(
         String syncStatus,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
+        List<String> assignedUserIds,
         List<SubProjectResponse> subProjects) {
     public static ProjectResponse from(Project p) {
+        List<String> assignedUserIds = p.getAssignedUserIds() != null
+                ? Arrays.asList(p.getAssignedUserIds())
+                : List.of();
         return new ProjectResponse(
             p.getId(),
             p.getTenantId(),
@@ -73,6 +78,7 @@ public record ProjectResponse(
             p.getSyncStatus() != null ? p.getSyncStatus().name() : null,
             p.getCreatedAt(),
             p.getUpdatedAt(),
+            assignedUserIds,
             p.getSubProjects() != null ? p.getSubProjects().stream()
                 .map(SubProjectResponse::fromEntity)
                 .toList() : List.of());

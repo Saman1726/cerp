@@ -10,6 +10,29 @@ import type {
   Workflow,
   WorkOrder,
 } from '@cerp/shared-types';
+import { SESSION_COOKIE } from '@cerp/core-web/lib/session-cookies';
+
+// Get the current user's info from the JWT token stored in the cookie
+// Returns the user's email (sub) which is used as userId for project filtering
+async function getCurrentUserEmail(): Promise<string | null> {
+  try {
+    const { cookies } = await import('next/headers');
+    const store = await cookies();
+    const token = store.get(SESSION_COOKIE)?.value;
+    if (!token) return null;
+
+    // Parse the JWT token to extract the user's email as identifier
+    // Token format: header.payload.signature (base64url encoded)
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    const payload = Buffer.from(parts[1] ?? '', 'base64').toString('utf-8');
+    const parsed = JSON.parse(payload);
+    return parsed.sub || null;
+  } catch {
+    return null;
+  }
+}
 
 // ── Project Actions ──
 
@@ -92,6 +115,39 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
       return await apiClient.get<ProjectResponse[]>('/api/v1/projects');
     } catch {
     return [];
+  }
+}
+
+
+// ── Project Assignment Actions ──
+
+export async function assignUsersToProjectAction(projectId: string, userIds: string[]): Promise<{ error?: string }> {
+  try {
+    if (!projectId || !userIds || userIds.length === 0) {
+      return { error: 'Project ID and user IDs are required' };
+    }
+
+    await apiClient.post(`/api/v1/projects/${projectId}/assign`, { userIds });
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to assign users to project:', error);
+    return { error: 'Failed to assign users to project' };
+  }
+}
+
+export async function removeUserFromProjectAction(projectId: string, userIdToRemove: string): Promise<{ error?: string }> {
+  try {
+    if (!projectId || !userIdToRemove) {
+      return { error: 'Project ID and user ID are required' };
+    }
+
+    await apiClient.delete(`/api/v1/projects/${projectId}/assign/${userIdToRemove}`);
+    revalidatePath('/construction');
+    return {};
+  } catch (error) {
+    console.error('Failed to remove user from project:', error);
+    return { error: 'Failed to remove user from project' };
   }
 }
 

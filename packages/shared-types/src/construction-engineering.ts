@@ -41,6 +41,7 @@ export interface Project {
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+  assignedUserIds: string[];
   subProjects: SubProject[];
 }
 
@@ -99,6 +100,7 @@ export interface ProjectResponse {
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+  assignedUserIds: string[];
 }
 
 export interface UpdateProjectRequest {
@@ -123,6 +125,11 @@ export interface UpdateProjectRequest {
   clientName?: string;
   clientEmail?: string;
   clientPhone?: string;
+  assignedUserIds?: string[];
+}
+
+export interface AddAssignUsersRequest {
+  userIds: string[];
 }
 
 // ── SubProject Types ──

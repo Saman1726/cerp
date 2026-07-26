@@ -194,9 +194,122 @@ public class SeedDataConfig {
                 log.info("Seeded resource membership for John on project 2");
             }
 
-            log.info("Seeding complete: Metal (vendor) and John (user) accounts are ready");
-            log.info("  Metal: email=metal@cerp.dev, password=secret");
-            log.info("  John: email=john@cerp.dev, password=secret");
+            // ── Seed Admin User ──
+
+            // Seed tenant for Admin
+            UUID adminTenantId = UUID.fromString("00000000-0000-0000-0000-000000000003");
+            if (tenantRepo.findById(adminTenantId).isEmpty()) {
+                Tenant adminTenant = new Tenant();
+                adminTenant.setId(adminTenantId);
+                adminTenant.setName("Admin Workspace");
+                adminTenant.setRegion("admin");
+                tenantRepo.save(adminTenant);
+                log.info("Seeded tenant: ADM - Admin Workspace");
+            }
+
+            // Seed Admin's user account
+            String adminEmail = "admin@cerp.dev";
+            String adminUsername = "Admin";
+            String adminPassword = "secret";
+
+            if (userRepo.findByEmail(adminEmail).isEmpty()) {
+                UserAccount adminUser = new UserAccount();
+                adminUser.setEmail(adminEmail);
+                adminUser.setName(adminUsername);
+                adminUser.setPasswordHash(passwordEncoder.encode(adminPassword));
+                adminUser.setStatus("active");
+                userRepo.save(adminUser);
+                log.info("Seeded admin user: {} ({}) with password: {}", adminUsername, adminEmail, adminPassword);
+            } else {
+                log.info("Admin user {} already exists", adminEmail);
+            }
+
+            // Seed admin membership with admin role for tenant-level access
+            UserAccount adminUser = userRepo.findByEmail(adminEmail).orElse(null);
+            if (adminUser != null && membershipRepo.findByTenantIdAndUserId(adminTenantId, adminUser.getId()).isEmpty()) {
+                Membership adminMembership = new Membership();
+                adminMembership.setTenantId(adminTenantId);
+                adminMembership.setUserId(adminUser.getId());
+                adminMembership.setRoles(List.of("admin", "manager"));
+                adminMembership.setScopes(Map.of());
+                membershipRepo.save(adminMembership);
+                log.info("Seeded membership for admin user {} in tenant ADM with roles: admin, manager", adminEmail);
+            }
+
+            // ── Add Admin resource memberships for all seeded construction sites and projects ──
+
+            // Construction Site 1 access for Admin
+            if (!resourceMembershipRepo.existsByResourceTypeAndResourceIdAndUserId(
+                ResourceType.CONSTRUCTION_SITE, constructionSite1Id, adminUser.getId())) {
+                resourceMembershipRepo.save(new ResourceMembership(
+                    ResourceType.CONSTRUCTION_SITE,
+                    constructionSite1Id,
+                    adminUser.getId(),
+                    List.of("admin"),
+                    Map.of(
+                        "read", true,
+                        "write", true,
+                        "delete", true,
+                        "assign", true),
+                    adminUser.getId()));
+                log.info("Seeded resource membership for Admin on construction site 1");
+            }
+
+            // Construction Site 2 access for Admin
+            if (!resourceMembershipRepo.existsByResourceTypeAndResourceIdAndUserId(
+                ResourceType.CONSTRUCTION_SITE, constructionSite2Id, adminUser.getId())) {
+                resourceMembershipRepo.save(new ResourceMembership(
+                    ResourceType.CONSTRUCTION_SITE,
+                    constructionSite2Id,
+                    adminUser.getId(),
+                    List.of("admin"),
+                    Map.of(
+                        "read", true,
+                        "write", true,
+                        "delete", true,
+                        "assign", true),
+                    adminUser.getId()));
+                log.info("Seeded resource membership for Admin on construction site 2");
+            }
+
+            // Project 1 access for Admin
+            if (!resourceMembershipRepo.existsByResourceTypeAndResourceIdAndUserId(
+                ResourceType.PROJECT, project1Id, adminUser.getId())) {
+                resourceMembershipRepo.save(new ResourceMembership(
+                    ResourceType.PROJECT,
+                    project1Id,
+                    adminUser.getId(),
+                    List.of("admin"),
+                    Map.of(
+                        "read", true,
+                        "write", true,
+                        "delete", true,
+                        "assign", true),
+                    adminUser.getId()));
+                log.info("Seeded resource membership for Admin on project 1");
+            }
+
+            // Project 2 access for Admin
+            if (!resourceMembershipRepo.existsByResourceTypeAndResourceIdAndUserId(
+                ResourceType.PROJECT, project2Id, adminUser.getId())) {
+                resourceMembershipRepo.save(new ResourceMembership(
+                    ResourceType.PROJECT,
+                    project2Id,
+                    adminUser.getId(),
+                    List.of("admin"),
+                    Map.of(
+                        "read", true,
+                        "write", true,
+                        "delete", true,
+                        "assign", true),
+                    adminUser.getId()));
+                log.info("Seeded resource membership for Admin on project 2");
+            }
+
+            log.info("Seeding complete: Metal (vendor), John (user), and Admin accounts are ready");
+            log.info("  Metal: email=metal@cerp.dev, password=secret, role=vendor");
+            log.info("  John: email=john@cerp.dev, password=secret, roles=user,owner");
+            log.info("  Admin: email=admin@cerp.dev, password=secret, roles=admin,manager");
         };
     }
 }

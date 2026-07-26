@@ -1,6 +1,7 @@
 package io.cerp.project.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -44,13 +45,20 @@ public class ProjectController {
     }
 
     /**
-     * List all projects for the tenant.
+     * List all projects for the tenant. Optionally filter by assigned user ID. If userId is provided, only returns projects where that user is assigned (or projects with
+     * no assigned users, which are visible to everyone).
      */
     @GetMapping
     public ResponseEntity<List<ProjectResponse>> list(
-            @RequestHeader("X-Tenant-Id") String tenantId) {
-        log.debug("Listing projects for tenant: {}", tenantId);
-        List<ProjectResponse> projects = projectService.findAll(tenantId);
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "userId", required = false) String userId) {
+        log.debug("Listing projects for tenant: {}, userId: {}", tenantId, userId);
+        List<ProjectResponse> projects;
+        if (userId != null && !userId.isBlank()) {
+            projects = projectService.findByAssignedUserId(tenantId, userId);
+        } else {
+            projects = projectService.findAll(tenantId);
+        }
         return ResponseEntity.ok(projects);
     }
 
@@ -112,5 +120,36 @@ public class ProjectController {
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID id) {
         projectService.delete(tenantId, id);
+    }
+
+    /**
+     * Assign users to a project.
+     */
+    @PostMapping("/{id}/assign")
+    public ResponseEntity<ProjectResponse> assignUsers(
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
+            @PathVariable UUID id,
+            @Valid @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> userIds = (List<String>) body.get("userIds");
+        if (userIds == null || userIds.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        ProjectResponse updated = projectService.assignUsers(tenantId, id, userIds, userId);
+        return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Remove a user from a project.
+     */
+    @DeleteMapping("/{id}/assign/{userIdToRemove}")
+    public ResponseEntity<ProjectResponse> removeUser(
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
+            @PathVariable UUID id,
+            @PathVariable String userIdToRemove) {
+        ProjectResponse updated = projectService.removeUser(tenantId, id, userIdToRemove);
+        return ResponseEntity.ok(updated);
     }
 }

@@ -24,7 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { ChevronDown, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronRight, MoreHorizontal, Users } from 'lucide-react';
 
 export interface ProjectListProps {
   projects: Project[];
@@ -34,6 +34,9 @@ export interface ProjectListProps {
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   onCreateWorkOrder: (project: Project, subProject?: { id: string; name: string }) => void;
+  assignUsersAction?: (projectId: string, userIds: string[]) => Promise<{ error?: string }>;
+  removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
+  currentUserEmail?: string;
 }
 
 const statusVariant: Record<string, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
@@ -53,6 +56,7 @@ function ProjectRow({
   onCreateSubProject,
   onDeleteProject,
   onDeleteSubProject,
+  onAssignUsers,
 }: {
   project: Project;
   constructionSites: ConstructionSite[];
@@ -62,6 +66,7 @@ function ProjectRow({
   onCreateSubProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteSubProject: (formData: FormData) => Promise<void>;
+  onAssignUsers: (projectId: string) => void;
 }) {
   const router = useRouter();
   const site = constructionSites.find((s) => s.id === project.constructionSiteId);
@@ -128,6 +133,10 @@ function ProjectRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onAssignUsers(project.id)}>
+                <Users className="mr-2 h-4 w-4" />
+                Assign Users
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onCreateWorkOrder(project)}>
                 Create Work Order
               </DropdownMenuItem>
@@ -231,19 +240,46 @@ export function ProjectList({
   deleteProjectAction,
   deleteSubProjectAction,
   onCreateWorkOrder,
+  assignUsersAction,
+  removeUserAction,
+  currentUserEmail,
 }: ProjectListProps) {
+  // Debug: log props to verify they are being passed
+  console.log('[ProjectList DEBUG] projects:', projects?.length, 'assignUsersAction:', !!assignUsersAction, 'removeUserAction:', !!removeUserAction, 'currentUserEmail:', currentUserEmail);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createSubProjectOpen, setCreateSubProjectOpen] = useState<string | null>(null);
+  const [assignUsersOpen, setAssignUsersOpen] = useState<string | null>(null);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [selectedConSiteId, setSelectedConSiteId] = useState<string>('');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [subProjectProjectId, setSubProjectProjectId] = useState<string>('');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
+  // Get users currently assigned to the project
+  const getAssignedUsers = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    return project?.assignedUserIds || [];
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold">Projects</h3>
-        <Button onClick={() => setCreateProjectOpen(true)}>+ Add Project</Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setCreateProjectOpen(true)}>+ Add Project</Button>
+          {projects.length > 0 && projects[0] && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedUserIds([]);
+                setAssignUsersOpen(projects[0]!.id);
+              }}
+            >
+              <Users className="mr-2 h-4 w-4" />
+              Assign Users
+            </Button>
+          )}
+        </div>
       </div>
 
       {projects.length === 0 ? (
@@ -280,6 +316,10 @@ export function ProjectList({
                   }}
                   onDeleteProject={deleteProjectAction}
                   onDeleteSubProject={deleteSubProjectAction}
+                  onAssignUsers={(projectId) => {
+                    setSelectedUserIds(getAssignedUsers(projectId));
+                    setAssignUsersOpen(projectId);
+                  }}
                 />
               ))}
             </TableBody>
@@ -424,6 +464,96 @@ export function ProjectList({
           </div>
         </form>
       </Modal>
+
+      {/* Assign Users Modal */}
+      {assignUsersOpen && (
+        <Modal
+          open={!!assignUsersOpen}
+          onClose={() => {
+            setAssignUsersOpen(null);
+            setSelectedUserIds([]);
+          }}
+          title={`Assign users to ${projects.find(p => p.id === assignUsersOpen)?.name ?? 'project'}`}
+        >
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                {currentUserEmail && currentUserEmail !== '' && !getAssignedUsers(assignUsersOpen).includes(currentUserEmail)
+                  ? `Your email (${currentUserEmail}) is not assigned to this project. Add yourself to see this project.`
+                  : getAssignedUsers(assignUsersOpen).length === 0
+                    ? 'No users are assigned to this project. All users will be able to see it.'
+                    : `Assigned users: ${getAssignedUsers(assignUsersOpen).join(', ')}`
+                }
+              </p>
+              {getAssignedUsers(assignUsersOpen).length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {getAssignedUsers(assignUsersOpen).map((userId) => (
+                    <div key={userId} className="flex items-center gap-1">
+                      <Badge variant="secondary">{userId}</Badge>
+                      {removeUserAction && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-4 w-4 p-0 hover:bg-destructive/20"
+                          type="button"
+                          onClick={async () => {
+                            const result = await removeUserAction(assignUsersOpen, userId);
+                            if (!result.error) {
+                              setSelectedUserIds(getAssignedUsers(assignUsersOpen).filter(id => id !== userId));
+                              window.location.reload();
+                            }
+                          }}
+                        >
+                          ×
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="assign-user-input">Add user by email</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="assign-user-input"
+                  placeholder="Enter user email"
+                  value={selectedUserIds.join(', ')}
+                  onChange={(e) => {
+                    const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                    setSelectedUserIds(emails);
+                  }}
+                />
+                {assignUsersAction && (
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      if (selectedUserIds.length === 0) {
+                        alert('Please enter at least one email');
+                        return;
+                      }
+                      const result = await assignUsersAction(assignUsersOpen, selectedUserIds);
+                      if (result.error) {
+                        alert(result.error);
+                      } else {
+                        setSelectedUserIds(getAssignedUsers(assignUsersOpen));
+                        setAssignUsersOpen(null);
+                        window.location.reload();
+                      }
+                    }}
+                  >
+                    Assign
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Enter one or more email addresses separated by commas.
+              </p>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Create SubProject Modal */}
       <Modal

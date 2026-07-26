@@ -209,6 +209,12 @@ public class Project {
     @OneToMany(mappedBy = "project", fetch = FetchType.EAGER)
     private java.util.List<SubProject> subProjects = new java.util.ArrayList<>();
 
+    /**
+     * List of user IDs assigned to this project (e.g., vendors who should see this project).
+     */
+    @Column(name = "assigned_user_ids", columnDefinition = "text[]")
+    private String[] assignedUserIds = new String[0];
+
     // ── Constructors ──
 
     protected Project() {
@@ -494,6 +500,14 @@ public class Project {
 
     public void setSubProjects(java.util.List<SubProject> subProjects) {
         this.subProjects = subProjects;
+    }
+
+    public String[] getAssignedUserIds() {
+        return assignedUserIds;
+    }
+
+    public void setAssignedUserIds(String[] assignedUserIds) {
+        this.assignedUserIds = assignedUserIds;
     }
 
     /**

@@ -53,8 +53,32 @@ public class ProjectService {
     public List<ProjectResponse> findAll(String tenantId) {
         log.debug("Finding all projects for tenant: {}", tenantId);
         return repository.findByTenantId(tenantId).stream()
+            .filter(p -> !Boolean.TRUE.equals(p.getDeleted()))
             .map(ProjectResponse::from)
             .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectResponse> findByAssignedUserId(String tenantId, String assignedUserId) {
+        log.debug("Finding projects for tenant: {}, assigned user: {}", tenantId, assignedUserId);
+        return repository.findByTenantId(tenantId).stream()
+            .filter(p -> !Boolean.TRUE.equals(p.getDeleted()))
+            .filter(p -> isUserAssigned(p, assignedUserId))
+            .map(ProjectResponse::from)
+            .toList();
+    }
+
+    /**
+     * Check if a user ID is assigned to the project. Only projects where the user's ID is in assignedUserIds are visible. Projects with empty/null assignedUserIds are
+     * NOT visible to vendor users.
+     */
+    private boolean isUserAssigned(Project project, String userId) {
+        String[] assignedIds = project.getAssignedUserIds();
+        if (assignedIds == null || assignedIds.length == 0) {
+            // If no users are assigned, the project is NOT visible to vendor users
+            return false;
+        }
+        return java.util.Arrays.stream(assignedIds).anyMatch(id -> id.equals(userId));
     }
 
     @Transactional(readOnly = true)
@@ -178,6 +202,51 @@ public class ProjectService {
         log.info("Updated project {} for tenant: {}", saved.getId(), tenantId);
 
         publishEvent(TOPIC_UPDATED, saved.getCode(), saved);
+
+        return ProjectResponse.from(saved);
+    }
+
+    @Transactional
+    public ProjectResponse assignUsers(String tenantId, UUID projectId, List<String> userIds, String userId) {
+        Project project = repository.findById(projectId)
+            .filter(p -> p.getTenantId().equals(tenantId))
+            .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        // Merge existing assigned user IDs with new ones
+        String[] currentIds = project.getAssignedUserIds();
+        java.util.Set<String> combined = new java.util.LinkedHashSet<>();
+        if (currentIds != null) {
+            java.util.Collections.addAll(combined, currentIds);
+        }
+        combined.addAll(userIds);
+
+        project.setAssignedUserIds(combined.toArray(new String[0]));
+        project.setUpdatedBy(userId);
+
+        Project saved = repository.save(project);
+        log.info("Assigned users {} to project {}", userIds, projectId);
+
+        return ProjectResponse.from(saved);
+    }
+
+    @Transactional
+    public ProjectResponse removeUser(String tenantId, UUID projectId, String userIdToRemove) {
+        Project project = repository.findById(projectId)
+            .filter(p -> p.getTenantId().equals(tenantId))
+            .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        String[] currentIds = project.getAssignedUserIds();
+        if (currentIds != null && currentIds.length > 0) {
+            String[] filtered = java.util.Arrays.stream(currentIds)
+                .filter(id -> !id.equals(userIdToRemove))
+                .toArray(String[]::new);
+            project.setAssignedUserIds(filtered);
+        }
+
+        project.setUpdatedBy(userIdToRemove);
+
+        Project saved = repository.save(project);
+        log.info("Removed user {} from project {}", userIdToRemove, projectId);
 
         return ProjectResponse.from(saved);
     }

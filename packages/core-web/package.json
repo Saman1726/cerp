@@ -4,6 +4,7 @@
   "private": true,
   "exports": {
     "./lib/session": "./src/lib/session.ts",
+    "./lib/session-cookies": "./src/lib/session-cookies.ts",
     "./lib/api-client": "./src/lib/api-client.ts",
     "./lib/env": "./src/lib/env.ts",
     "./lib/utils": "./src/lib/utils.ts",
