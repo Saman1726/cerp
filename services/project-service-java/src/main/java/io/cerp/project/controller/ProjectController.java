@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
+import io.cerp.project.dto.ProjectUserAssignmentRequest;
 import io.cerp.project.service.ProjectService;
 
 /**
@@ -123,10 +124,27 @@ public class ProjectController {
     }
 
     /**
-     * Assign users to a project.
+     * Assign users to a project with roles. Each assignment includes a user ID (email) and a role (VIEWER, EDITOR, or ADMIN).
      */
     @PostMapping("/{id}/assign")
     public ResponseEntity<ProjectResponse> assignUsers(
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
+            @PathVariable UUID id,
+            @Valid @RequestBody ProjectUserAssignmentRequest request) {
+        if (request.assignments() == null || request.assignments().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        ProjectResponse updated = projectService.assignUsersWithRoles(tenantId, id, request.assignments(), userId);
+        return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Assign users to a project (legacy endpoint for backward compatibility - assigns users with VIEWER role by default). Accepts body: { "userIds": ["email1", "email2"]
+     * }
+     */
+    @PostMapping("/{id}/assign-legacy")
+    public ResponseEntity<ProjectResponse> assignUsersLegacy(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
             @PathVariable UUID id,

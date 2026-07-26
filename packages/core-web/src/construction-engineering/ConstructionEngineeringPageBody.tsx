@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Project, WorkOrder } from '@cerp/shared-types';
+import type { Project, WorkOrder, ProjectUserRole } from '@cerp/shared-types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { PageHeader } from '../shell/PageHeader';
 import type { Partner } from '../partners/types';
@@ -30,7 +30,7 @@ export interface ConstructionEngineeringPageBodyClientProps {
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   formAction: (state: IssueWorkOrderActionState, formData: FormData) => Promise<IssueWorkOrderActionState>;
   currentUserEmail?: string;
-  assignUsersAction?: (projectId: string, userIds: string[]) => Promise<{ error?: string }>;
+  assignUsersAction?: (projectId: string, assignments: Array<{ userId: string; role: ProjectUserRole }>) => Promise<{ error?: string }>;
   removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
 }
 

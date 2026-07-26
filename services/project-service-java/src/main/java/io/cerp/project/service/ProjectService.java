@@ -17,6 +17,7 @@ import io.cerp.project.domain.Project;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
+import io.cerp.project.dto.ProjectUserAssignmentRequest;
 import io.cerp.project.dto.SubProjectCreateRequest;
 import io.cerp.project.repository.ProjectRepository;
 
@@ -206,6 +207,46 @@ public class ProjectService {
         return ProjectResponse.from(saved);
     }
 
+    /**
+     * Assign users to a project with specific roles. Each assignment includes a user ID and a role (VIEWER, EDITOR, or ADMIN).
+     */
+    @Transactional
+    public ProjectResponse assignUsersWithRoles(String tenantId, UUID projectId, List<ProjectUserAssignmentRequest.UserAssignment> assignments, String userId) {
+        Project project = repository.findById(projectId)
+            .filter(p -> p.getTenantId().equals(tenantId))
+            .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        // Merge existing assigned user IDs with new ones
+        String[] currentIds = project.getAssignedUserIds();
+        java.util.Set<String> combined = new java.util.LinkedHashSet<>();
+        if (currentIds != null) {
+            java.util.Collections.addAll(combined, currentIds);
+        }
+        assignments.forEach(a -> combined.add(a.userId()));
+
+        // Merge existing roles with new ones
+        java.util.Map<String, String> rolesToUpdate = new java.util.HashMap<>();
+        java.util.Map<String, String> currentRoles = project.getAssignedUserRoles();
+        if (currentRoles != null) {
+            rolesToUpdate.putAll(currentRoles);
+        }
+        for (ProjectUserAssignmentRequest.UserAssignment a : assignments) {
+            rolesToUpdate.put(a.userId(), a.role());
+        }
+
+        project.setAssignedUserIds(combined.toArray(new String[0]));
+        project.setAssignedUserRoles(rolesToUpdate);
+        project.setUpdatedBy(userId);
+
+        Project saved = repository.save(project);
+        log.info("Assigned users with roles {} to project {}", assignments, projectId);
+
+        return ProjectResponse.from(saved);
+    }
+
+    /**
+     * Assign users to a project (legacy method - assigns users without roles for backward compatibility).
+     */
     @Transactional
     public ProjectResponse assignUsers(String tenantId, UUID projectId, List<String> userIds, String userId) {
         Project project = repository.findById(projectId)

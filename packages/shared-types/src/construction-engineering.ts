@@ -13,6 +13,21 @@ export type ProjectType =
   | 'RESIDENTIAL'
   | 'INDUSTRIAL';
 
+// ── Project User Role Types ──
+
+export type ProjectUserRole = 'VIEWER' | 'EDITOR' | 'ADMIN';
+
+/**
+ * User assignment with role for project-based access control.
+ * - VIEWER: Read-only access to the project
+ * - EDITOR: Can modify project content (work orders, subprojects, etc.)
+ * - ADMIN: Full control including user management and role assignment
+ */
+export interface ProjectUserAssignment {
+  userId: string;
+  role: ProjectUserRole;
+}
+
 export interface Project {
   id: string;
   code: string;
@@ -42,6 +57,8 @@ export interface Project {
   updatedAt: string;
   createdBy: string | null;
   assignedUserIds: string[];
+  /** User roles mapping: { "user@example.com": "VIEWER" } */
+  assignedUserRoles: Record<string, ProjectUserRole>;
   subProjects: SubProject[];
 }
 
@@ -101,6 +118,8 @@ export interface ProjectResponse {
   updatedAt: string;
   createdBy: string | null;
   assignedUserIds: string[];
+  /** User roles mapping: { "user@example.com": "VIEWER" } */
+  assignedUserRoles: Record<string, ProjectUserRole>;
 }
 
 export interface UpdateProjectRequest {
@@ -130,6 +149,10 @@ export interface UpdateProjectRequest {
 
 export interface AddAssignUsersRequest {
   userIds: string[];
+}
+
+export interface ProjectUserAssignRequest {
+  assignments: ProjectUserAssignment[];
 }
 
 // ── SubProject Types ──

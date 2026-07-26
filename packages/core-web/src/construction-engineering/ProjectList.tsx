@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { Project, ConstructionSite } from '@cerp/shared-types';
+import type { Project, ConstructionSite, ProjectUserRole } from '@cerp/shared-types';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -26,6 +26,28 @@ import {
 } from '../components/ui/dropdown-menu';
 import { ChevronDown, ChevronRight, MoreHorizontal, Users } from 'lucide-react';
 
+/** Reusable role dropdown component */
+function RoleDropdown({ value, onChange, size }: { value: ProjectUserRole; onChange: (value: ProjectUserRole) => void; size?: 'sm' | 'md' }) {
+  const ROLE_OPTIONS: { value: ProjectUserRole; label: string }[] = [
+    { value: 'VIEWER', label: 'Viewer' },
+    { value: 'EDITOR', label: 'Editor' },
+    { value: 'ADMIN', label: 'Admin' },
+  ];
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as ProjectUserRole)}
+      className={`flex h-9 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring ${size === 'sm' ? 'w-24' : 'w-32'}`}
+    >
+      {ROLE_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export interface ProjectListProps {
   projects: Project[];
   constructionSites: ConstructionSite[];
@@ -34,7 +56,8 @@ export interface ProjectListProps {
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   onCreateWorkOrder: (project: Project, subProject?: { id: string; name: string }) => void;
-  assignUsersAction?: (projectId: string, userIds: string[]) => Promise<{ error?: string }>;
+  /** Assign users with roles: [{ userId, role }] */
+  assignUsersAction?: (projectId: string, assignments: Array<{ userId: string; role: ProjectUserRole }>) => Promise<{ error?: string }>;
   removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
   currentUserEmail?: string;
 }
@@ -254,6 +277,8 @@ export function ProjectList({
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [subProjectProjectId, setSubProjectProjectId] = useState<string>('');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [userRoles, setUserRoles] = useState<Record<string, ProjectUserRole>>({});
+  const [defaultRoleForNewUsers, setDefaultRoleForNewUsers] = useState<ProjectUserRole>('VIEWER');
 
   // Get users currently assigned to the project
   const getAssignedUsers = (projectId: string) => {
@@ -261,10 +286,16 @@ export function ProjectList({
     return project?.assignedUserIds || [];
   };
 
+  // Get roles for users assigned to the project
+  const getAssignedUserRoles = (projectId: string): Record<string, ProjectUserRole> => {
+    const project = projects.find((p) => p.id === projectId);
+    return (project?.assignedUserRoles as Record<string, ProjectUserRole>) || {};
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold">Projects</h3>
+      <div className="flex items-center justify-between pb-2">
+        <h3 className="text-base font-semibold ml-1">Projects</h3>
         <div className="flex gap-2">
           <Button onClick={() => setCreateProjectOpen(true)}>+ Add Project</Button>
           {projects.length > 0 && projects[0] && (
@@ -317,6 +348,8 @@ export function ProjectList({
                   onDeleteProject={deleteProjectAction}
                   onDeleteSubProject={deleteSubProjectAction}
                   onAssignUsers={(projectId) => {
+                    const roles = getAssignedUserRoles(projectId);
+                    setUserRoles(roles);
                     setSelectedUserIds(getAssignedUsers(projectId));
                     setAssignUsersOpen(projectId);
                   }}
@@ -472,84 +505,167 @@ export function ProjectList({
           onClose={() => {
             setAssignUsersOpen(null);
             setSelectedUserIds([]);
+            setUserRoles({});
           }}
           title={`Assign users to ${projects.find(p => p.id === assignUsersOpen)?.name ?? 'project'}`}
         >
           <div className="flex flex-col gap-4">
             <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground mb-3">
-                {currentUserEmail && currentUserEmail !== '' && !getAssignedUsers(assignUsersOpen).includes(currentUserEmail)
-                  ? `Your email (${currentUserEmail}) is not assigned to this project. Add yourself to see this project.`
-                  : getAssignedUsers(assignUsersOpen).length === 0
-                    ? 'No users are assigned to this project. All users will be able to see it.'
-                    : `Assigned users: ${getAssignedUsers(assignUsersOpen).join(', ')}`
-                }
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-muted-foreground">
+                  {getAssignedUsers(assignUsersOpen).length === 0
+                    ? 'No users assigned yet.'
+                    : `Assigned users:`
+                  }
+                </p>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">Default role:</label>
+                  <RoleDropdown
+                    value={defaultRoleForNewUsers}
+                    onChange={setDefaultRoleForNewUsers}
+                    size="sm"
+                  />
+                </div>
+              </div>
               {getAssignedUsers(assignUsersOpen).length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {getAssignedUsers(assignUsersOpen).map((userId) => (
-                    <div key={userId} className="flex items-center gap-1">
-                      <Badge variant="secondary">{userId}</Badge>
-                      {removeUserAction && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-4 w-4 p-0 hover:bg-destructive/20"
-                          type="button"
-                          onClick={async () => {
-                            const result = await removeUserAction(assignUsersOpen, userId);
-                            if (!result.error) {
-                              setSelectedUserIds(getAssignedUsers(assignUsersOpen).filter(id => id !== userId));
-                              window.location.reload();
-                            }
-                          }}
-                        >
-                          ×
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-2">
+                  {getAssignedUsers(assignUsersOpen).map((userId) => {
+                    // Use userRoles state for reactive display of selected role
+                    const selectedRole = userRoles[userId] || getAssignedUserRoles(assignUsersOpen)[userId] || 'VIEWER';
+                    return (
+                      <div key={userId} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary">{userId}</Badge>
+                          <Badge variant={selectedRole === 'ADMIN' ? 'destructive' : selectedRole === 'EDITOR' ? 'default' : 'secondary'}>{selectedRole}</Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <RoleDropdown
+                            value={selectedRole}
+                            onChange={(newRole) => {
+                              setUserRoles({ ...userRoles, [userId]: newRole });
+                            }}
+                            size="sm"
+                          />
+                          {removeUserAction && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 hover:bg-destructive/20"
+                              type="button"
+                              onClick={async () => {
+                                const result = await removeUserAction(assignUsersOpen, userId);
+                                if (!result.error) {
+                                  window.location.reload();
+                                }
+                              }}
+                            >
+                              ×
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             <div className="grid gap-2">
               <Label htmlFor="assign-user-input">Add user by email</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="assign-user-input"
-                  placeholder="Enter user email"
-                  value={selectedUserIds.join(', ')}
-                  onChange={(e) => {
-                    const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                    setSelectedUserIds(emails);
-                  }}
-                />
-                {assignUsersAction && (
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      if (selectedUserIds.length === 0) {
-                        alert('Please enter at least one email');
-                        return;
-                      }
-                      const result = await assignUsersAction(assignUsersOpen, selectedUserIds);
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <Input
+                    id="assign-user-input"
+                    placeholder="Enter user email (or comma-separated emails)"
+                    value={selectedUserIds.join(', ')}
+                    onChange={(e) => {
+                      const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                      setSelectedUserIds(emails);
+                      // Initialize default role for new emails based on current default selection
+                      const newRoles = { ...userRoles };
+                      emails.forEach(email => {
+                        if (!newRoles[email]) {
+                          newRoles[email] = defaultRoleForNewUsers;
+                        }
+                      });
+                      setUserRoles(newRoles);
+                    }}
+                  />
+                  {assignUsersAction && (
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        if (selectedUserIds.length === 0) {
+                          alert('Please enter at least one email');
+                          return;
+                        }
+                        // Build assignments array with roles from userRoles state
+                        const assignments: Array<{ userId: string; role: ProjectUserRole }> = selectedUserIds.map(email => ({
+                          userId: email,
+                          role: userRoles[email] || defaultRoleForNewUsers,
+                        }));
+                        const result = await assignUsersAction(assignUsersOpen, assignments);
+                        if (result.error) {
+                          alert(result.error);
+                        } else {
+                          // Keep modal open, clear selected users and reset default role
+                          setSelectedUserIds([]);
+                          setDefaultRoleForNewUsers('VIEWER');
+                        }
+                      }}
+                    >
+                      Assign
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Enter one or more email addresses separated by commas. Use the role selector above to set the default role for new assignments.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal footer with Cancel/Done buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAssignUsersOpen(null);
+                  setSelectedUserIds([]);
+                  setUserRoles({});
+                  setDefaultRoleForNewUsers('VIEWER');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  // Apply any pending role changes to existing assigned users
+                  if (assignUsersAction) {
+                    const assignedUsers = getAssignedUsers(assignUsersOpen);
+                    const pendingAssignments: Array<{ userId: string; role: ProjectUserRole }> = assignedUsers.map(userId => ({
+                      userId,
+                      role: userRoles[userId] || getAssignedUserRoles(assignUsersOpen)[userId] || 'VIEWER',
+                    }));
+                    if (pendingAssignments.length > 0) {
+                      const result = await assignUsersAction(assignUsersOpen, pendingAssignments);
                       if (result.error) {
                         alert(result.error);
-                      } else {
-                        setSelectedUserIds(getAssignedUsers(assignUsersOpen));
-                        setAssignUsersOpen(null);
-                        window.location.reload();
+                        return;
                       }
-                    }}
-                  >
-                    Assign
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Enter one or more email addresses separated by commas.
-              </p>
+                    }
+                  }
+                  // Close modal on success
+                  setAssignUsersOpen(null);
+                  setSelectedUserIds([]);
+                  setUserRoles({});
+                  setDefaultRoleForNewUsers('VIEWER');
+                  window.location.reload();
+                }}
+              >
+                Done
+              </Button>
             </div>
           </div>
         </Modal>

@@ -9,6 +9,7 @@ import type {
   WorkflowTemplate,
   Workflow,
   WorkOrder,
+  ProjectUserAssignment,
 } from '@cerp/shared-types';
 import { SESSION_COOKIE } from '@cerp/core-web/lib/session-cookies';
 
@@ -121,13 +122,18 @@ async function deleteProjectActionCore(projectId: string): Promise<{ error?: str
 
 // ── Project Assignment Actions ──
 
-export async function assignUsersToProjectAction(projectId: string, userIds: string[]): Promise<{ error?: string }> {
+/**
+ * Assign users to a project with roles.
+ * @param projectId - The project ID
+ * @param assignments - Array of { userId, role } where role is VIEWER, EDITOR, or ADMIN
+ */
+export async function assignUsersToProjectAction(projectId: string, assignments: ProjectUserAssignment[]): Promise<{ error?: string }> {
   try {
-    if (!projectId || !userIds || userIds.length === 0) {
-      return { error: 'Project ID and user IDs are required' };
+    if (!projectId || !assignments || assignments.length === 0) {
+      return { error: 'Project ID and user assignments are required' };
     }
 
-    await apiClient.post(`/api/v1/projects/${projectId}/assign`, { userIds });
+    await apiClient.post(`/api/v1/projects/${projectId}/assign`, { assignments });
     revalidatePath('/construction');
     return {};
   } catch (error) {

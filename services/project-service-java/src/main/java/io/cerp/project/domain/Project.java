@@ -19,6 +19,9 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 /**
  * Project entity representing a construction project or project portfolio.
  *
@@ -214,6 +217,14 @@ public class Project {
      */
     @Column(name = "assigned_user_ids", columnDefinition = "text[]")
     private String[] assignedUserIds = new String[0];
+
+    /**
+     * User roles mapping for this project. JSONB format: {"user@example.com": "VIEWER", "admin@example.com": "ADMIN"}. Roles: VIEWER (read-only), EDITOR (can modify),
+     * ADMIN (full control including user management).
+     */
+    @Column(name = "assigned_user_roles", columnDefinition = "jsonb")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private java.util.Map<String, String> assignedUserRoles = new java.util.HashMap<>();
 
     // ── Constructors ──
 
@@ -508,6 +519,14 @@ public class Project {
 
     public void setAssignedUserIds(String[] assignedUserIds) {
         this.assignedUserIds = assignedUserIds;
+    }
+
+    public java.util.Map<String, String> getAssignedUserRoles() {
+        return assignedUserRoles;
+    }
+
+    public void setAssignedUserRoles(java.util.Map<String, String> assignedUserRoles) {
+        this.assignedUserRoles = assignedUserRoles;
     }
 
     /**
