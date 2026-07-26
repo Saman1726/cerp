@@ -52,8 +52,8 @@ public class AuthController {
                 String email = identityUser.email();
 
                 long nowSec = Instant.now().getEpochSecond();
-                String accessToken = makeDevJwt(req.username(), primaryRole, nowSec + 60L * 30L);
-                String refreshToken = makeDevJwt(req.username(), primaryRole, nowSec + 60L * 60L * 24L * 7L);
+                String accessToken = makeDevJwt(email, primaryRole, nowSec + 60L * 30L);
+                String refreshToken = makeDevJwt(email, primaryRole, nowSec + 60L * 60L * 24L * 7L);
 
                 return new LoginResponse(accessToken, refreshToken, new AuthUser(userId, email, primaryRole));
             }
@@ -84,7 +84,8 @@ public class AuthController {
         String newRefresh = makeDevJwt(sub, role, nowSec + 60L * 60L * 24L * 7L);
 
         // User object is not used by the refresh middleware, but we return a stable shape.
-        AuthUser user = new AuthUser(sub, sub + "@example.com", role);
+        // sub is now always the email address since we fixed the login endpoint.
+        AuthUser user = new AuthUser(sub, sub, role);
         return new LoginResponse(newAccess, newRefresh, user);
     }
 
