@@ -45,7 +45,7 @@ public class SecurityConfig {
         @Value("${cerp.gateway.logout.path:/logout}")
         private String logoutPath;
 
-        @Value("${cerp.gateway.allowed-origins:https://localhost:3001,https://localhost:3000}")
+        @Value("${cerp.gateway.allowed-origins:http://localhost:3000,http://localhost:3001,https://localhost:3000,https://localhost:3001}")
         private String allowedOrigins;
 
         // ── Resource-server chain: all API routes protected ──

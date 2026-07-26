@@ -8,6 +8,7 @@ export const config = {
     '/procurement/:path*',
     '/tenants/:path*',
     '/partners/:path*',
+    '/vendors/:path*',
     '/settings/:path*',
     '/login',
   ],

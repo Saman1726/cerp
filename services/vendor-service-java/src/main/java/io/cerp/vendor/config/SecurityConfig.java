@@ -9,10 +9,21 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    @Bean
+    public org.springframework.security.oauth2.jwt.JwtDecoder jwtDecoderProduction(
+            @Value("${OAUTH_ISSUER_URI:http://keycloak:8081/realms/master}") String issuerUri) {
+        // Production decoder for Keycloak-signed RS256 JWTs
+        // Only used when DevJwtDecoder is not active (i.e., DEV_MODE is not true)
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(issuerUri + "/protocol/openid-connect/certs").build();
+        return decoder;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, TenantRequestFilter tenantRequestFilter) throws Exception {
@@ -30,7 +41,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/vendors/**").authenticated()
                 // everything else requires auth
                 .anyRequest().authenticated())
-            // Validate JWTs issued by Keycloak via issuer-uri configured in application.yml
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
         // Skip tenant context extraction for public endpoints

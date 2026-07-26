@@ -12,6 +12,7 @@ import { Label } from '@cerp/core-web/components/ui/label';
 export default function UserRegisterPage() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -22,21 +23,40 @@ export default function UserRegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPending(true);
+    setError(null);
 
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match');
+      setError('Passwords do not match');
       setPending(false);
       return;
     }
 
-    // TODO: Implement actual registration API call
-    console.log('User registration:', { username: formData.username, email: formData.email });
-    
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/auth/register-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || 'Registration failed. Please try again.');
+        setPending(false);
+        return;
+      }
+
+      // Registration successful, redirect to login
+      router.push('/login?registered=true');
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('An unexpected error occurred. Please try again.');
       setPending(false);
-      router.push('/login');
-    }, 1000);
+    }
   };
 
   return (
@@ -47,6 +67,11 @@ export default function UserRegisterPage() {
           <CardDescription>Create your individual user account</CardDescription>
         </CardHeader>
         <CardContent>
+          {error && (
+            <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label htmlFor="username">Username</Label>

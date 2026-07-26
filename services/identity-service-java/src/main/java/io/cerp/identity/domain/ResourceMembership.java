@@ -1,6 +1,8 @@
 package io.cerp.identity.domain;
 
+import io.cerp.identity.converter.ResourceTypeConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -33,7 +35,7 @@ public class ResourceMembership {
     private UUID id;
 
     @Column(name = "resource_type", nullable = false)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Convert(converter = ResourceTypeConverter.class)
     private ResourceType resourceType;
 
     @Column(name = "resource_id", nullable = false)

@@ -5,11 +5,12 @@ import type { Project, WorkOrder, ConstructionSite } from '@cerp/shared-types';
 import type { Partner } from '@cerp/core-web/partners';
 
 export default async function ConstructionPage() {
-  const [workOrders, contractors, constructionSites]: [WorkOrder[], Partner[], ConstructionSite[]] = await Promise.all([
+  const [workOrders, constructionSites]: [WorkOrder[], ConstructionSite[]] = await Promise.all([
     apiClient.get<WorkOrder[]>('/work-orders'),
-    apiClient.get<Partner[]>('/partners'),
     apiClient.get<ConstructionSite[]>('/construction-sites'),
   ]);
+
+  const contractors: Partner[] = [];
 
   let projects: Project[] = [];
   try {

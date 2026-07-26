@@ -8,7 +8,6 @@ import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { PageHeader } from '../shell/PageHeader';
-import { apiClient } from '../lib/api-client';
 import type { Vendor } from './types';
 
 function initialFetchVendors(): { vendors: Vendor[]; loading: boolean } {
@@ -28,7 +27,13 @@ export function VendorsPageBody() {
       if (category) params.set('category', category);
       if (name) params.set('name', name);
       if (city) params.set('city', city);
-      const result = await apiClient.get<Vendor[]>(`/vendors?${params.toString()}`);
+      // Use Next.js API proxy - it handles reading the httpOnly session cookie
+      // server-side and forwarding the Authorization header to the backend
+      const response = await fetch(`/api/vendors/proxy?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch vendors: ${response.status}`);
+      }
+      const result = await response.json();
       setData({ vendors: result, loading: false });
     } catch (error) {
       console.error('Failed to fetch vendors:', error);

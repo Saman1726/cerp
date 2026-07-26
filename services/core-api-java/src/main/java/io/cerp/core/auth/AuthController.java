@@ -1,9 +1,5 @@
 package io.cerp.core.auth;
 
-import io.cerp.core.partyregistry.PartnerLoginRequest;
-import io.cerp.core.partyregistry.PartnerLoginResult;
-import io.cerp.core.partyregistry.PartnerSystemClient;
-import io.cerp.core.partyregistry.PartyRegistryEntry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,14 +24,12 @@ import java.util.*;
 @RequestMapping("/auth")
 public class AuthController {
 
-    private final PartnerSystemClient partnerClient;
     private final RestTemplate restTemplate;
     private final String identityServiceUrl;
 
-    public AuthController(PartnerSystemClient partnerClient,
+    public AuthController(
             RestTemplate restTemplate,
             @Value("${cerp.identity-service.url:http://localhost:8090}") String identityServiceUrl) {
-        this.partnerClient = partnerClient;
         this.restTemplate = restTemplate;
         this.identityServiceUrl = identityServiceUrl;
     }
@@ -43,7 +37,7 @@ public class AuthController {
     @PostMapping("/login")
     @ResponseStatus(HttpStatus.OK)
     public LoginResponse login(@Valid @RequestBody LoginRequest req) {
-        // Strategy 1: Try identity-service first (for users registered via identity-service)
+        // Strategy: Try identity-service for login
         try {
             ResponseEntity<IdentityLoginResponse> resp = restTemplate.postForEntity(
                 identityServiceUrl + "/auth/login",
@@ -64,41 +58,11 @@ public class AuthController {
                 return new LoginResponse(accessToken, refreshToken, new AuthUser(userId, email, primaryRole));
             }
         } catch (Exception e) {
-            // identity-service not available or error, fall through to partner-system
+            // identity-service not available or error
         }
 
-        // Strategy 2: Discover partnerCode by trying each known partner with the provided username/password.
-        List<PartyRegistryEntry> partners = partnerClient.findAll();
-        PartnerLoginResult matched = null;
-        for (PartyRegistryEntry p : partners) {
-            try {
-                matched = partnerClient.login(new PartnerLoginRequest(p.code(), req.username(), req.password()));
-                if (matched != null)
-                    break;
-            } catch (ResponseStatusException ex) {
-                // Ignore 401s and keep trying other partners
-                if (ex.getStatusCode().value() != 401) {
-                    // propagate unexpected errors
-                    throw ex;
-                }
-            }
-        }
-
-        if (matched == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
-        }
-
-        // Build a minimal user object for the frontend
-        String userId = matched.partnerId() + ":" + matched.username();
-        String email = matched.username() + "@" + matched.partnerCode().toLowerCase() + ".example";
-        AuthUser user = new AuthUser(userId, email, matched.role());
-
-        // Issue short-lived access and longer-lived refresh tokens
-        long nowSec = Instant.now().getEpochSecond();
-        String accessToken = makeDevJwt(matched.username(), matched.role(), nowSec + 60L * 30L); // 30 minutes
-        String refreshToken = makeDevJwt(matched.username(), matched.role(), nowSec + 60L * 60L * 24L * 7L); // 7 days
-
-        return new LoginResponse(accessToken, refreshToken, user);
+        // If identity-service login fails, return unauthorized
+        throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
     }
 
     @PostMapping("/refresh")

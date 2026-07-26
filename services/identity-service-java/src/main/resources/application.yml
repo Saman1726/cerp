@@ -24,9 +24,9 @@ spring:
     enabled: true
     locations: classpath:db/migration
     create-schemas: true
-    baseline-on-migrate: true
     default-schema: identity
     schemas: identity
+    validate-on-migrate: false
 
   security:
     oauth2:

@@ -31,6 +31,7 @@ services:
       DB_USERNAME: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       SPRING_FLYWAY_ENABLED: "false"
+      IDENTITY_SERVICE_URL: http://identity-service-java:8090
     ports:
       - '8080:8080'
 
@@ -50,7 +51,7 @@ services:
       OIDC_ISSUER_URI: http://keycloak:8081/realms/master
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       APP_EVENTS_ENABLED: "true"
-      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_FLYWAY_ENABLED: "true"
     ports:
       - '8090:8090'
 
@@ -113,6 +114,7 @@ services:
       KAFKA_BOOTSTRAP: kafka:9092
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      DEV_MODE: "true"
     ports:
       - '8085:8085'
 
@@ -196,11 +198,15 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
-      API_URL: http://api-java:8080
-      PROJECT_SERVICE_URL: http://project-service-java:8085
-      WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
-      IDENTITY_SERVICE_URL: http://identity-service-java:8090
+      # Server-side URL for API proxy routes (uses Docker DNS to reach services)
       VENDOR_SERVICE_URL: http://vendor-service-java:8085
+      # These URLs are embedded in the browser bundle, so use host.docker.internal
+      # to reach services via the host's forwarded ports (not Docker service names)
+      NEXT_PUBLIC_API_URL: http://host.docker.internal:8080
+      NEXT_PUBLIC_PROJECT_SERVICE_URL: http://host.docker.internal:8095
+      NEXT_PUBLIC_WORKFLOW_SERVICE_URL: http://host.docker.internal:8089
+      NEXT_PUBLIC_IDENTITY_SERVICE_URL: http://host.docker.internal:8090
+      NEXT_PUBLIC_VENDOR_SERVICE_URL: http://host.docker.internal:8085
     ports:
       - '3001:3001'
     volumes:

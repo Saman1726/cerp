@@ -1,77 +1,55 @@
 -- V2: Align users and memberships tables with Phase 1 contract
--- - tenants.region TEXT
--- - users: name TEXT (rename from display_name), status TEXT DEFAULT 'active'
--- - memberships: roles JSONB (default []), scopes JSONB (default {}), drop legacy role TEXT
+-- NOTE: V1 already creates the tables with correct schema (user_accounts, memberships)
+-- This migration is kept for backward compatibility but is now a no-op
+-- because V1 already includes:
+-- - user_accounts.name (not display_name)
+-- - user_accounts.status DEFAULT 'active'
+-- - memberships.roles JSONB DEFAULT []
+-- - memberships.scopes JSONB DEFAULT {}
 
--- Tenants: add region
-ALTER TABLE identity.tenants ADD COLUMN IF NOT EXISTS region TEXT;
+-- Safety: ensure schema exists
+CREATE SCHEMA IF NOT EXISTS identity;
 
--- Users: rename display_name -> name if present, ensure name exists, add status
-DO $$
-BEGIN
-  IF EXISTS (
+-- All table structure changes were moved to V1__initial_schema.sql
+-- This migration ensures Flyway history is consistent.
+
+-- Update memberships to have roles and scopes if they somehow don't exist
+-- (V1 already creates them, but this ensures idempotency)
+DO $$ BEGIN IF NOT EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'users'
-      AND column_name = 'display_name'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.users RENAME COLUMN display_name TO name';
-  END IF;
+    WHERE
+        table_schema = 'identity'
+        AND table_name = 'memberships'
+        AND column_name = 'roles'
+) THEN
+EXECUTE 'ALTER TABLE identity.memberships ADD COLUMN roles JSONB NOT NULL DEFAULT ''[]''::jsonb';
 
-  IF NOT EXISTS (
+END IF;
+
+IF NOT EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'users'
-      AND column_name = 'name'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.users ADD COLUMN name TEXT';
-  END IF;
+    WHERE
+        table_schema = 'identity'
+        AND table_name = 'memberships'
+        AND column_name = 'scopes'
+) THEN
+EXECUTE 'ALTER TABLE identity.memberships ADD COLUMN scopes JSONB NOT NULL DEFAULT ''{}''::jsonb';
 
-  IF NOT EXISTS (
+END IF;
+
+-- Drop legacy role column if it somehow exists
+IF EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'users'
-      AND column_name = 'status'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.users ADD COLUMN status TEXT NOT NULL DEFAULT ''active''';
-  END IF;
-END
-$$;
+    WHERE
+        table_schema = 'identity'
+        AND table_name = 'memberships'
+        AND column_name = 'role'
+) THEN
+EXECUTE 'ALTER TABLE identity.memberships DROP COLUMN role';
 
--- Memberships: add roles, scopes jsonb; drop legacy role column if exists
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'memberships'
-      AND column_name = 'roles'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.memberships ADD COLUMN roles JSONB NOT NULL DEFAULT ''[]''::jsonb';
-  END IF;
+END IF;
 
-  IF NOT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'memberships'
-      AND column_name = 'scopes'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.memberships ADD COLUMN scopes JSONB NOT NULL DEFAULT ''{}''::jsonb';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'identity'
-      AND table_name = 'memberships'
-      AND column_name = 'role'
-  ) THEN
-    EXECUTE 'ALTER TABLE identity.memberships DROP COLUMN role';
-  END IF;
-END
-$$;
+END $$;
