@@ -7,7 +7,7 @@ import { UserMenu } from './UserMenu';
 export interface AppShellProps {
   branding: BrandingConfig;
   navItems: NavItem[];
-  logoutAction: () => Promise<void>;
+  logoutAction?: () => Promise<void>;
   children: ReactNode;
 }
 

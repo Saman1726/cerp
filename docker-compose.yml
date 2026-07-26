@@ -17,16 +17,6 @@ services:
       timeout: 5s
       retries: 10
 
-  partner-system-java:
-    build:
-      context: services/partner-system-java
-      dockerfile: Dockerfile
-    container_name: cerp-partner-system-java
-    environment:
-      PORT: 3020
-    # No host port published to avoid conflict with Node partner-system (3020).
-    # Reached by other containers via http://partner-system-java:3020
-
   api-java:
     build:
       context: services/core-api-java
@@ -35,14 +25,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      partner-system-java:
-        condition: service_started
     environment:
       PORT: 8080
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
       DB_USERNAME: ${POSTGRES_USER:-cerp}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
-      PARTNER_SYSTEM_URL: http://partner-system-java:3020
       SPRING_FLYWAY_ENABLED: "false"
     ports:
       - '8080:8080'
@@ -204,12 +191,16 @@ services:
       - api-java
       - project-service-java
       - workflow-service-java
+      - identity-service-java
+      - vendor-service-java
     environment:
       NODE_ENV: development
       PORT: 3001
       API_URL: http://api-java:8080
       PROJECT_SERVICE_URL: http://project-service-java:8085
       WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
+      IDENTITY_SERVICE_URL: http://identity-service-java:8090
+      VENDOR_SERVICE_URL: http://vendor-service-java:8085
     ports:
       - '3001:3001'
     volumes:
@@ -276,43 +267,6 @@ services:
       timeout: 5s
       retries: 20
 
-  schema-registry:
-    image: confluentinc/cp-schema-registry:7.6.1
-    container_name: cerp-schema-registry
-    depends_on:
-      kafka:
-        condition: service_started
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8082
-    ports:
-      - '8082:8082'
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:8082/subjects']
-      interval: 10s
-      timeout: 5s
-      retries: 20
-
-  minio:
-    image: minio/minio:latest
-    container_name: cerp-minio
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-    command: server /data --console-address ':9001'
-    ports:
-      - '9000:9000'
-      - '9001:9001'
-    volumes:
-      - cerp_minio_data:/data
-    healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/ready']
-      interval: 10s
-      timeout: 5s
-      retries: 20
-
 volumes:
   cerp_postgres_data:
   cerp_supply_data:
-  cerp_minio_data:

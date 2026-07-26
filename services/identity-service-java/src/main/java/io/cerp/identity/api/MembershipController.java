@@ -79,6 +79,12 @@ public class MembershipController {
         throw new BadRequestException("Provide tenantId and userId for single membership, or one of tenantId/userId to list");
     }
 
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        membershipService.delete(id);
+    }
+
     @ResponseStatus(HttpStatus.NOT_FOUND)
     static class ResourceNotFoundException extends RuntimeException {
         public ResourceNotFoundException(String msg) {

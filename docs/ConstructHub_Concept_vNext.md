@@ -1073,6 +1073,76 @@ Phase 1 services (independently deployable)
   - authz_projection: flattens memberships to per-tenant role claims for fast authorization checks.
 - Notes: Sync minimal user info with Keycloak on user creation (via admin API); keep Keycloak as source of authentication, service as SoR for memberships and tenant scoping.
 
+**Resource-Level Access Control (Phase 1.5 Enhancement)**
+
+To address the problem where users with tenant membership (e.g., Vendor role) could see all resources belonging to that tenant — including projects and construction sites they should not access — a resource-level access control model has been implemented alongside the existing tenant-level membership model.
+
+| **Purpose**             | Enable fine-grained, resource-specific access control for Projects and Construction Sites. Users are assigned to individual resources (not just tenants) with granular read/write/delete/assign permissions, decoupling access to specific resources from tenant-wide membership.                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ----                    |
+| │ - **Aggregate roots** | `Identity` (the credential - email, password hash, status); `Membership` (a separate aggregate, not a child of `Identity` - granting one `Identity` a role inside one context, so granting/revoking access at one tenant never has to lock or reason about that identity's unrelated memberships elsewhere); `Invitation` (its own pending/accepted/expired/revoked lifecycle, since it can target an email with no `Identity` yet); **`ResourceMembership`** (new - granting one `Identity` a role with specific permissions inside one specific resource, e.g., a project or construction site, independent of the user's tenant membership) |
+| │----                   |
+| │                       | **Entities & value objects**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `ProjectAssignment` (entity, child of `Membership` - scopes a role to one specific project _within_ that membership's context, so its own invariant - "this assignment's project must belong to this membership's tenant" - is enforced by the aggregate boundary); `MembershipContext` (value object: `type` of `tenant` \| `party` \| `generic`, plus the referenced `contextId` - a tenant, or a Party Registry record, or unset for generic); `Role` (value object, e.g. Owner/Admin/Staff at the org level, PM/Finance/Investor/Contractor/Viewer at the project level); **`ResourceType`** (value object: `PROJECT` or `CONSTRUCTION_SITE`); **`PermissionSet`** (value object - JSONB: read, write, delete, assign booleans per resource membership)                                                                                                                                                                                                           |
+| │----                   |
+| │                       | **Domain events**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `IdentityRegistered`, `MembershipGranted`, `MembershipRevoked`, `ProjectAssignmentGranted`, `ProjectAssignmentRevoked`, `InvitationSent`, `InvitationAccepted`, `InvitationExpired`, `InvitationRevoked`, **`ResourceAccessGranted`**, **`ResourceAccessRevoked`**, **`ResourcePermissionUpdated`**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| │----                   |
+| │                       | **Inbound ports**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `AuthenticateIdentityPort` (email + password → the list of that identity's memberships, not yet a tenant-scoped session); `SelectMembershipPort` (choose one membership from that list → issues the actual scoped session/token for that context - this is the "switch" action, and it never requires re-entering a password); `InviteUserPort` (new email, no `Identity` yet → creates a pending `Invitation`); `AcceptInvitationPort` (creates the `Identity` if needed, plus the `Membership` and any `ProjectAssignment`s the invitation specified); `AssignUserToProjectPort` (for an identity that already has a `Membership` - directly creates a new `ProjectAssignment`, no invitation step); **`GrantResourceAccessPort`** (grants a user specific permissions on a specific resource - project/construction site, independent of tenant membership); **`CheckResourcePermissionPort`** (checks if a user has a specific permission on a specific resource) |
+| │----                   |
+
+2. Identity & Access Service (Phase 1)
+
+- Purpose/Scope: Tenant (organization) identity boundary, users and memberships registry, role assignments. Delegates authentication to Keycloak. Emits canonical identity events. Also owns resource-level access control (ResourceMembership) for Projects and Construction Sites.
+
+- Commands/Queries (REST):
+  - POST /tenants {name, legalName, region, ...} → 201 TenantCreated
+  - POST /users {email, name, ...} → 201 UserCreated
+  - POST /memberships {tenantId, userId, roles[], scopes} → 201 RoleAssigned
+  - GET /tenants/:id, GET /users/:id, GET /memberships?tenantId=...
+
+* POST /resources/{resourceType}/{resourceId}/members {userId, roles[], permissions} → 201 ResourceAccessGranted
+* GET /resources/{resourceType}/{resourceId}/members → 200 List of members with permissions
+* PATCH /resources/memberships/{membershipId} → 200 ResourcePermissionUpdated
+* DELETE /resources/memberships/{membershipId} → 204 ResourceAccessRevoked
+
+- Domain Events (Kafka topics):
+  - identity.tenant.v1: TenantCreated, TenantUpdated
+  - identity.user.v1: UserCreated, UserUpdated, UserDeactivated
+  - identity.membership.v1: RoleAssigned, RoleRevoked
+
+* identity.resource_access.v1: ResourceAccessGranted, ResourceAccessRevoked, ResourcePermissionUpdated
+
+- Write Model (PostgreSQL; RLS default):
+  - tenants(id, name, region, created_at, updated_at)
+  - users(id, email, name, status, created_at, updated_at)
+  - memberships(id, tenant_id, user_id, roles jsonb, scopes jsonb, created_at)
+  - RLS policy: tenant_id on memberships; tenant_id scoped queries enforced at service.
+
+* resource_members(
+* id UUID PRIMARY KEY,
+* resource_type varchar(50) NOT NULL, -- 'PROJECT' or 'CONSTRUCTION_SITE'
+* resource_id UUID NOT NULL,
+* user_id UUID NOT NULL REFERENCES users(id),
+* roles jsonb NOT NULL, -- e.g., ['viewer'], ['member', 'editor']
+* permissions jsonb NOT NULL, -- {read: true, write: false, delete: false, assign: false}
+* invited_by UUID REFERENCES users(id),
+* created_at timestamptz DEFAULT now(),
+* updated_at timestamptz DEFAULT now()
+* )
+* Indexes: idx_resource_members_user (user_id), idx_resource_members_resource (resource_type, resource_id)
+
+- Projections (Phase 1):
+  - authz_projection: flattens memberships to per-tenant role claims for fast authorization checks.
+
+* resource_access_projection: flattens resource_members for fast permission checks at resource level.
+* login_access_projection: merges memberships + resource_members into login response (accessibleResources).
+
+- Notes:
+  - Sync minimal user info with Keycloak on user creation (via admin API); keep Keycloak as source of authentication, service as SoR for memberships and tenant scoping.
+  - **Tenant Admin/Manager Inheritance**: Users with `admin` or `manager` roles at the tenant level automatically inherit full access (read/write/delete/assign) to ALL resources (projects, construction sites) within that tenant.
+  - **Resource-Level Isolation**: Users with only `vendor`, `contractor`, or `viewer` tenant roles see ONLY the resources where they have been explicitly granted direct access via `resource_members` table. They are automatically filtered from all other resources belonging to the tenant.
+  - **Login Response**: The auth/login endpoint now returns `accessibleResources` - a list of all resource IDs the user has direct access to, enabling the frontend to filter navigation and API calls accordingly.
+  - **Permission Hierarchy**: Tenant Admin/Manager > Resource Owner > Resource Manager > Resource Member > Resource Viewer
+
 3. Organization Service
 
 - Purpose/Scope: Business organization profile (distinct from tenant auth construct) and org metadata required by downstream services; links to tenant id.
@@ -1223,7 +1293,370 @@ Roadmap Linkage
 
 - Sets foundation for Phase 2 additions (Vendors, Materials, Procurement, Inventory, Marketplace primitives) without changing Phase 1 contracts. New services will subscribe to identity/project events and emit their own domains without retrofitting Phase 1 boundaries.
 
-## 22. Repository Strategy and Engineering Governance
+## 22. Vendor Registration Flow
+
+### Overview
+
+The vendor registration system enables external suppliers to self-register on ConstructHub as vendors. It uses an **event-driven architecture** where vendor-service and identity-service communicate via Kafka events. The registration creates a tenant, user account, membership with vendor role, and vendor record with business details.
+
+### Architecture
+
+```
+┌──────────────┐     ┌──────────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
+│   Frontend   │     │   vendor-service     │     │   Kafka Broker       │     │  identity-service    │
+│              │     │                      │     │                      │     │                      │
+│ Vendor Form  │────►│  VendorController    │────►│ vendor.registered.v1 │────►│ VendorRegistration   │
+│              │     │  VendorService       │     │                      │     │  Consumer            │
+│              │     │  VendorRepository    │     │                      │     │                      │
+└──────────────┘     │  (status: pending)   │     │                      │     │ ┌──────────────────┐ │
+                     │                      │     │                      │     │ │  TenantService   │ │
+                     └──────────────────────┘     │                      │     │ ├──────────────────┤ │
+                                                    │                      │     │ │ create(tenant)   │ │
+                     identity.vendor.v1 ◄──────────┘                      │     │ │ createUser()     │ │
+                     (link tenantId/userId)                                │     │ │ assign(vendor) │ │
+                     ┌──────────────────────┐     └──────────────────────┘     │ └────────┬─────────┘ │
+                     │  VendorService       │◄─────────────────────────────────┘              │         │
+                     │  linkIdentity()      │     ┌──────────────────────┐                    ▼         │
+                     │  (update vendor)     │     │   Identity Service   │     ┌──────────────────┐ │
+                     └──────────┬───────────┘     │                      │     │  Tenant Entity   │ │
+                                │                 │  Tenant              │     │  UserAccount     │ │
+                     ┌──────────▼───────────┐     │                      │     │  Membership      │ │
+                     │   supply.vendors     │     └──────────────────────┘     │  (roles: vendor) │ │
+                     │   tenant_id          │                                    └──────────────────┘ │
+                     │   user_id            │
+                     │   legal_name, ...    │
+                     └──────────────────────┘
+```
+
+### Event-Driven Registration Flow
+
+```
+┌─────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Front  │     │ vendor-svc   │     │   Kafka      │     │ identity-svc │     │  Databases   │
+│  End   │     │              │     │              │     │              │     │              │
+└────┬────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+     │                 │                    │                     │                     │
+     │ POST /vendors   │                    │                     │                     │
+     │ {email,pass,...}│                    │                     │                     │
+     │────────────────►│                    │                     │                     │
+     │                 │                    │                     │                     │
+     │                 │ 1. Save Vendor     │                     │                     │
+     │                 │    (status=pending)│                     │                     │
+     │                 │ 2. Publish Event   │                     │                     │
+     │                 │───────────────────►│                     │                     │
+     │                 │                    │                     │                     │
+     │                 │                    │ vendor.registered.v1│                     │
+     │                 │                    │────────────────────►│                     │
+     │                 │                    │                     │                     │
+     │                 │                    │                     │ 3. Create Tenant    │
+     │                 │                    │                     │────────────────────►│
+     │                 │                    │                     │ 4. Create User      │
+     │                 │                    │                     │────────────────────►│
+     │                 │                    │                     │ 5. Create Membership│
+     │                 │                    │                     │ 6. assign(vendor)   │
+     │                 │                    │                     │────────────────────►│
+     │                 │                    │                     │                     │
+     │                 │                    │  identity.vendor.v1 │                     │
+     │                 │                    │────────────────────►│                     │
+     │                 │                    │                     │                     │
+     │                 │ 7. linkIdentity()  │                     │                     │
+     │                 │────────────────────│                     │                     │
+     │                 │                    │                     │                     │
+     │ 201 Created     │                    │                     │                     │
+     │ ◄──────────────│                     │                     │                     │
+```
+
+### Step-by-Step Flow
+
+#### 1. Frontend sends registration request to vendor-service
+
+**Endpoint:** `POST /vendors` (vendor-service, port 8085)
+
+The request body includes:
+
+- `email`, `password` → for login credentials
+- `legalName`, `contactName`, `phone`, `categories` → vendor info
+- `tenantName`, `region`, `address`, `city`, `country` → tenant/context info
+
+#### 2. vendor-service saves vendor record (status: "pending")
+
+**File:** `services/vendor-service-java/src/main/java/io/cerp/vendor/service/VendorService.java`
+
+```java
+// Vendor is saved FIRST without tenantId/userId
+Vendor vendor = vendorRepository.save(vendor);
+```
+
+#### 3. vendor-service publishes Kafka event to create identity
+
+**Topic:** `vendor.registered.v1`
+
+The event contains all registration data including email, password, tenant info.
+
+#### 4. identity-service consumes the event
+
+**File:** `services/identity-service-java/src/main/java/io/cerp/identity/events/VendorRegistrationConsumer.java`
+
+Creates 3 records in order:
+
+1. **Tenant** → saved to `tenants` table
+2. **UserAccount** → saved to `user_accounts` table (login credentials)
+3. **Membership** → saved to `memberships` table with roles=["vendor"]
+
+```java
+Tenant tenant = tenantService.create(event.getTenantName(), event.getRegion());
+UserAccount user = userService.create(event.getEmail(), event.getLegalName());
+membershipService.assign(tenant.getId(), user.getId(), List.of("vendor"), scopes);
+```
+
+#### 5. identity-service publishes "identity created" event
+
+**Topic:** `identity.vendor.v1`
+
+```json
+{
+  "type": "identity.vendor.identity_created",
+  "data": {
+    "vendorId": "uuid-of-vendor",
+    "tenantId": "uuid-of-created-tenant",
+    "userId": "uuid-of-created-user"
+  }
+}
+```
+
+#### 6. vendor-service consumes the event and links identity
+
+**File:** `services/vendor-service-java/src/main/java/io/cerp/vendor/events/VendorIdentityCreatedConsumer.java`
+
+Updates the vendor record with the new tenantId and userId:
+
+```java
+vendorService.linkIdentity(vendorId, tenantId, userId);
+```
+
+### a- Where does login information get saved?
+
+Login credentials are saved in the **identity-service** database, specifically in four interconnected tables:
+
+| Entity        | Table         | Schema     | What's Stored                                                     |
+| ------------- | ------------- | ---------- | ----------------------------------------------------------------- |
+| `UserAccount` | `users`       | `identity` | email, name, status, password_hash (BCrypt), createdAt, updatedAt |
+| `Tenant`      | `tenants`     | `identity` | company/organization name, region, createdAt                      |
+| `Membership`  | `memberships` | `identity` | links user → tenant with roles & scopes (JSON)                    |
+
+Additionally, vendor-specific business data (legalName, phone, address, categories, etc.) is stored in the **vendor-service** database:
+
+| Entity   | Table     | Schema   | What's Stored                                                                                  |
+| -------- | --------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `Vendor` | `vendors` | `supply` | legalName, contactName, phone, website, address, city, country, status, taxProfile, categories |
+
+**Authentication flow:**
+
+The system supports username-based login via the `POST /auth/login` endpoint. Authentication works as follows:
+
+1. Client sends `username` (or email) and `password` to the login endpoint
+2. The identity-service looks up the user by name (username) first, then by email as fallback
+3. Password is verified against the BCrypt-hashed `password_hash` stored in the users table
+4. On success, a JWT token is returned containing user id, email, and roles
+
+**Development seed data:**
+
+For local development and testing, the identity-service automatically seeds a demo vendor account on startup:
+
+| Field    | Value                  |
+| -------- | ---------------------- |
+| Username | `Metal`                |
+| Email    | `metal@cerp.dev`       |
+| Password | `secret`               |
+| Role     | `vendor`               |
+| Tenant   | `MTRD` (Metal Trading) |
+
+Seed data is configured in `SeedDataConfig.java` and creates the tenant, user, and membership records if they don't already exist.
+
+**Key files for login/identity storage and authentication:**
+
+- `services/identity-service-java/.../domain/UserAccount.java`
+- `services/identity-service-java/.../domain/Tenant.java`
+- `services/identity-service-java/.../domain/Membership.java`
+- `services/identity-service-java/.../service/UserService.java`
+- `services/identity-service-java/.../service/TenantService.java`
+- `services/identity-service-java/.../service/MembershipService.java`
+- `services/identity-service-java/.../api/AuthController.java` — login endpoint implementation
+- `services/identity-service-java/.../config/SeedDataConfig.java` — development seed data
+- `services/identity-service-java/.../config/SecurityConfig.java` — BCrypt password encoder + security rules
+- `services/core-api-java/.../auth/AuthController.java` — API gateway that forwards login to identity-service
+
+### b- How does the system recognize if it is a vendor account?
+
+Vendor accounts are identified through **two mechanisms**:
+
+#### 1. Membership Roles (Primary)
+
+The `memberships` table has a `roles` column (text[]) that stores an array like `["vendor"]`. When a user is assigned this role, the system knows they're a vendor.
+
+```json
+// Membership record example
+{
+  "tenantId": "uuid-of-tenant",
+  "userId": "uuid-of-user",
+  "roles": ["vendor"],
+  "scopes": { "vendorId": "uuid-of-vendor-record", "selfService": true }
+}
+```
+
+Role is set in `VendorRegistrationConsumer.java`:
+
+```java
+List<String> roles = List.of("vendor");
+membershipService.assign(tenant.getId(), user.getId(), roles, scopes);
+```
+
+#### 2. Vendor Record (Business Context)
+
+The `vendors` table in the `supply` schema has a direct link to the user via `user_id` and `tenant_id` columns. This is the authoritative source for vendor-specific business data and enables vendor-specific workflows (marketplace participation, invoicing, etc.).
+
+### Registration Flow (Direct - Legacy Alternative)
+
+For environments without Kafka/events enabled, a synchronous flow is also supported:
+
+```
+Client → register/vendor/page.tsx (form)
+    │
+    ├─► POST /api/auth/register-vendor (Next.js API route)
+    │   │
+    │   ├─► POST /api/identity/tenants  → creates Tenant
+    │   ├─► POST /api/identity/users    → creates UserAccount
+    │   ├─► POST /api/identity/memberships  → assigns role=["vendor"]
+    │   └─► POST /api/vendors           → creates Vendor record
+    │
+    └─► Redirect to /register/vendor/success
+```
+
+### API Endpoints
+
+| Method | Endpoint                    | Service          | Description                        |
+| ------ | --------------------------- | ---------------- | ---------------------------------- |
+| POST   | `/vendors`                  | vendor-service   | Register new vendor (event-driven) |
+| POST   | `/api/identity/tenants`     | identity-service | Creates tenant/organization        |
+| POST   | `/api/identity/users`       | identity-service | Creates user account               |
+| POST   | `/api/identity/memberships` | identity-service | Assigns roles to user-tenant link  |
+
+### Backend Services
+
+| Service          | Package            | Responsibility                                                    |
+| ---------------- | ------------------ | ----------------------------------------------------------------- |
+| identity-service | `io.cerp.identity` | Tenant, User, Membership management; consumes vendor registration |
+| vendor-service   | `io.cerp.vendor`   | Vendor entity, repository, service, controller; publishes events  |
+
+### Kafka Topics
+
+| Topic                  | Direction         | Description                               |
+| ---------------------- | ----------------- | ----------------------------------------- |
+| `vendor.registered.v1` | vendor → identity | Triggers identity creation for new vendor |
+| `identity.vendor.v1`   | identity → vendor | Signals completed identity creation       |
+
+### Database Schemas
+
+#### Identity Service (PostgreSQL)
+
+```sql
+-- Tenants
+CREATE TABLE identity.tenants (
+    id uuid PRIMARY KEY,
+    name text NOT NULL,
+    region text,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Users
+CREATE TABLE identity.users (
+    id uuid PRIMARY KEY,
+    email text NOT NULL UNIQUE,
+    name text,
+    status text NOT NULL DEFAULT 'active',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz
+);
+
+-- Memberships (links user to tenant with roles)
+CREATE TABLE identity.memberships (
+    id uuid PRIMARY KEY,
+    tenant_id uuid NOT NULL REFERENCES identity.tenants(id),
+    user_id uuid NOT NULL REFERENCES identity.users(id),
+    roles text[] NOT NULL DEFAULT '{}',
+    scopes jsonb NOT NULL DEFAULT '{}',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
+#### Vendor Service (PostgreSQL, supply schema)
+
+```sql
+CREATE TABLE supply.vendors (
+    id uuid PRIMARY KEY,
+    tenant_id uuid,
+    user_id uuid,
+    legal_name text NOT NULL,
+    contact_name text,
+    phone text,
+    website text,
+    address text,
+    city text,
+    country text,
+    status text NOT NULL DEFAULT 'pending',
+    tax_profile jsonb,
+    categories text[] NOT NULL DEFAULT '{}',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz
+);
+```
+
+### Key Implementation Files
+
+| File                                                                         | Service  | Purpose                                                                                 |
+| ---------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
+| `services/vendor-service-java/.../controller/VendorController.java`          | vendor   | REST API for vendor CRUD; POST /vendors                                                 |
+| `services/vendor-service-java/.../service/VendorService.java`                | vendor   | register() → saves vendor + publishes Kafka event; linkIdentity() → updates tenant/user |
+| `services/vendor-service-java/.../events/VendorIdentityCreatedConsumer.java` | vendor   | Consumes identity.created events, links vendor                                          |
+| `services/identity-service-java/.../events/VendorRegistrationConsumer.java`  | identity | Consumes vendor.registered events, creates tenant/user/membership                       |
+| `services/identity-service-java/.../events/IdentityEventPublisher.java`      | identity | publishVendorIdentityCreated() → emits event                                            |
+| `services/vendor-service-java/src/main/resources/application.yml`            | vendor   | Kafka consumer config, topic names                                                      |
+
+### Status Flow
+
+Vendor registration follows this status lifecycle:
+
+```
+pending → approved → active
+    ↓         ↓
+rejected  (inactive)
+```
+
+- **pending**: Initial state after registration, awaiting admin review
+- **approved**: Admin has reviewed and approved the vendor
+- **rejected**: Admin has rejected the registration with reason
+
+### Configuration
+
+Vendor registration is controlled by feature flags and configuration:
+
+| Config Key                       | Default                | Description                              |
+| -------------------------------- | ---------------------- | ---------------------------------------- |
+| `app.events.enabled`             | `false`                | Enable/disable event-driven registration |
+| `app.topics.vendor-registration` | `vendor.registered.v1` | Kafka topic for vendor registration      |
+| `app.topics.vendor-identity`     | `identity.vendor.v1`   | Kafka topic for identity created events  |
+| `app.kafka.consumer.group-id`    | `vendor-service`       | Kafka consumer group for vendor events   |
+
+### Integration with Marketplace
+
+Once approved, vendor accounts gain access to:
+
+- Marketplace bidding (credit economy)
+- Tender participation (open/invited)
+- Invoice generation on confirmed deliveries
+- Commission tracking and cap enforcement
+
+## 23. Repository Strategy and Engineering Governance
 
 Strategy
 
@@ -1295,7 +1728,7 @@ Migration plan (incremental)
 5. Decommission workspace links
    - Validate contract tests across repos; ensure compatible API/SDK versions and event schemas.
 
-## 23. Construction Workflows
+## 24. Construction Workflows
 
 Design goal
 

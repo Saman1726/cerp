@@ -1,4 +1,3 @@
-import { cookies, headers } from 'next/headers';
 import { API_URL, PROJECT_SERVICE_URL } from './env';
 import { SESSION_COOKIE } from './session-cookies';
 
@@ -48,28 +47,53 @@ function normalizedPathFor(path: string): string {
   return path;
 }
 
-// Server-only: relies on next/headers, so this can only be called from
-// Server Components, Route Handlers, or Server Actions - by design, all
-// authenticated data-fetching for this scaffold stays server-side.
+// Helper to parse document.cookie into a key-value map
+function getCookieMap(): Record<string, string> {
+  const cookieMap: Record<string, string> = {};
+  if (typeof document !== 'undefined') {
+    document.cookie.split(';').forEach((cookie) => {
+      const separatorIndex = cookie.indexOf('=');
+      if (separatorIndex === -1) return;
+      const cookieKey = cookie.slice(0, separatorIndex).trim();
+      const cookieValue = cookie.slice(separatorIndex + 1);
+      if (cookieKey) {
+        cookieMap[cookieKey] = cookieValue;
+      }
+    });
+  }
+  return cookieMap;
+}
+
+// Client-compatible: uses document.cookie for browser-side cookie access.
+// This allows the API client to be used in Client Components.
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const store = await cookies();
-  const requestHeaders = await headers();
+  const cookieMap = getCookieMap();
   const headersInit = new Headers(init?.headers);
   headersInit.set('Content-Type', 'application/json');
 
-  const token = store.get(SESSION_COOKIE)?.value;
+  // Decode cookie values (document.cookie stores URL-encoded values)
+  const decodeValue = (value: string): string => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    };
+  };
+
+  const rawToken = cookieMap[SESSION_COOKIE];
+  const token = rawToken ? decodeValue(rawToken) : undefined;
   if (token) headersInit.set('Authorization', `Bearer ${token}`);
 
   const isProjectService = isProjectServicePath(path);
   let tenantId: string | undefined;
 
-  // Project service requires X-Tenant-Id header - read from incoming request
-  // headers first, fall back to cookie value if available, then default.
+  // Project service requires X-Tenant-Id header - fall back to cookie value if available, then default.
   if (isProjectService) {
-    tenantId =
-      requestHeaders.get('X-Tenant-Id') ||
-      store.get('x-tenant-id')?.value ||
-      'default';
+    const rawTenantId = cookieMap['x-tenant-id'];
+    tenantId = rawTenantId ? decodeValue(rawTenantId) : undefined;
+    if (!tenantId) {
+      tenantId = 'default';
+    }
     headersInit.set('X-Tenant-Id', tenantId);
   }
 

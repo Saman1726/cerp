@@ -25,7 +25,10 @@ public class UserController {
         this.userService = userService;
     }
 
-    public static record CreateUserRequest(@NotBlank @Email String email, @NotBlank String name) {
+    public static record CreateUserRequest(
+            @NotBlank @Email String email,
+            @NotBlank String name,
+            String password) {
     }
 
     public static record UserResponse(
@@ -44,7 +47,12 @@ public class UserController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public UserResponse create(@Valid @RequestBody CreateUserRequest body) {
-        UserAccount created = userService.create(body.email(), body.name());
+        UserAccount created;
+        if (body.password() != null && !body.password().isBlank()) {
+            created = userService.createWithPassword(body.email(), body.name(), body.password());
+        } else {
+            created = userService.create(body.email(), body.name());
+        }
         return toResponse(created);
     }
 

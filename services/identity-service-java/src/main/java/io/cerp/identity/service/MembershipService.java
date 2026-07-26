@@ -34,7 +34,11 @@ public class MembershipService {
     public Membership assign(UUID tenantId, UUID userId, List<String> roles, Map<String, Object> scopes) {
         Membership m = membershipRepository
             .findByTenantIdAndUserId(tenantId, userId)
-            .map(existing -> existing.setRoles(roles).setScopes(scopes))
+            .map(existing -> {
+                existing.setRoles(roles);
+                existing.setScopes(scopes);
+                return existing;
+            })
             .orElseGet(() -> new Membership(null, tenantId, userId, roles, scopes));
 
         Membership saved = membershipRepository.save(m);
@@ -57,5 +61,15 @@ public class MembershipService {
     @Transactional(readOnly = true)
     public List<Membership> listByUser(UUID userId) {
         return membershipRepository.findByUserId(userId);
+    }
+
+    public void delete(UUID id) {
+        membershipRepository.deleteById(id);
+    }
+
+    public void deleteByTenantAndUser(UUID tenantId, UUID userId) {
+        membershipRepository.findByTenantIdAndUserId(tenantId, userId).ifPresent(m -> {
+            membershipRepository.delete(m);
+        });
     }
 }

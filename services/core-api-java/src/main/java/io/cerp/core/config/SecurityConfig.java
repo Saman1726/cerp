@@ -7,6 +7,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.web.client.RestTemplate;
 
 @Configuration
 @EnableWebSecurity
@@ -24,6 +25,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/partners/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/partner-login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/login", "/auth/refresh").permitAll()
+                // Registration endpoints (used by register-vendor API route)
+                .requestMatchers("/identity/tenants").permitAll()
+                .requestMatchers("/identity/users").permitAll()
+                .requestMatchers("/identity/memberships").permitAll()
+                .requestMatchers("/vendors").permitAll()
                 .requestMatchers(HttpMethod.GET, "/properties/**", "/work-orders/**", "/purchase-orders/**", "/construction-sites/**", "/api/projects/v1/**",
                     "/api/v1/**")
                 .permitAll()
@@ -35,5 +41,10 @@ public class SecurityConfig {
             .httpBasic(Customizer.withDefaults());
 
         return http.build();
+    }
+
+    @Bean
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
     }
 }

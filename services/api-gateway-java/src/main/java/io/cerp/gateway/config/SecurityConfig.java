@@ -62,10 +62,12 @@ public class SecurityConfig {
                                 // OpenAPI docs (when available)
                                 .pathMatchers("/api-docs/**", "/swagger-ui/**").permitAll()
 
-                                // Identity service – registration/public endpoints
-                                .pathMatchers("/api/identity/tenants").hasAuthority("tenant:manage")
-                                .pathMatchers("/api/identity/users").hasAuthority("user:manage")
-                                .pathMatchers("/api/identity/memberships").hasAuthority("membership:manage")
+                                // Identity service – registration/public endpoints (no auth required)
+                                .pathMatchers("/api/identity/tenants").permitAll()
+                                .pathMatchers("/api/identity/users").permitAll()
+                                .pathMatchers("/api/identity/memberships").permitAll()
+                                // Identity service – authenticated endpoints
+                                .pathMatchers("/api/identity/**").authenticated()
 
                                 // Organization service
                                 .pathMatchers("/api/orgs/**").hasAuthority("org:manage")
@@ -82,7 +84,9 @@ public class SecurityConfig {
                                 // Procurement
                                 .pathMatchers("/api/procurement/**").hasAuthority("procurement:manage")
 
-                                // Vendor
+                                // Vendor – registration endpoint (no auth required)
+                                .pathMatchers("/api/vendors").permitAll()
+                                // Vendor – authenticated endpoints
                                 .pathMatchers("/api/vendors/**").hasAnyAuthority("vendor:manage", "vendor:read")
 
                                 // Catalog

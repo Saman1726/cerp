@@ -1,21 +1,50 @@
 package io.cerp.vendor.service;
 
-import io.cerp.vendor.dto.AddRatingRequest;
-import io.cerp.vendor.dto.CreateVendorRequest;
-import io.cerp.vendor.dto.UpdateVendorRequest;
-import io.cerp.vendor.dto.VendorResponse;
+import io.cerp.vendor.entity.Vendor;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Vendor service interface. Implementations handle vendor CRUD and registration workflows.
+ */
 public interface VendorService {
 
-    VendorResponse createVendor(CreateVendorRequest req);
+        // Legacy methods (for backward compatibility with existing model/repo)
+        Vendor create(UUID tenantId, UUID userId, String legalName, String contactName,
+                        String phone, String website, String address, String city,
+                        String country, List<String> categories);
 
-    VendorResponse updateVendor(UUID id, UpdateVendorRequest req);
+        Optional<Vendor> findById(UUID id);
 
-    VendorResponse addRating(UUID vendorId, AddRatingRequest req);
+        Optional<Vendor> findByTenantId(UUID tenantId);
 
-    VendorResponse getVendor(UUID id);
+        List<Vendor> findAll();
 
-    List<VendorResponse> listVendors(String category, String name, String city);
+        List<Vendor> findByStatus(String status);
+
+        List<Vendor> findByCategoriesContains(String category);
+
+        Vendor updateStatus(UUID id, String status);
+
+        // New event-driven registration methods
+        /**
+         * Register a new external vendor. Creates a pending vendor record and publishes a Kafka event for identity-service to create login credentials (tenant, user,
+         * membership with role="vendor").
+         */
+        Vendor register(String email, String password, String legalName, String contactName,
+                        String phone, String website, String address, String city,
+                        String country, String region, String tenantName, List<String> categories);
+
+        /**
+         * Register a new external vendor with explicit tenantId and userId.
+         */
+        Vendor register(String email, String password, String legalName, String contactName,
+                        String phone, String website, String address, String city,
+                        String country, String region, String tenantName, UUID tenantId, UUID userId, List<String> categories);
+
+        /**
+         * After identity creation, link the vendor record with tenantId and userId. Called by VendorIdentityCreatedConsumer when identity-service completes.
+         */
+        Vendor linkIdentity(UUID vendorId, UUID tenantId, UUID userId);
 }

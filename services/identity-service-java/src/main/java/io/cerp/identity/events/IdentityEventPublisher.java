@@ -14,6 +14,7 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 @ConditionalOnProperty(prefix = "app.events", name = "enabled", havingValue = "true")
@@ -25,6 +26,7 @@ public class IdentityEventPublisher {
     private static final String TENANT_TOPIC = "identity.tenant.v1";
     private static final String USER_TOPIC = "identity.user.v1";
     private static final String MEMBERSHIP_TOPIC = "identity.membership.v1";
+    private static final String VENDOR_TOPIC = "identity.vendor.v1";
 
     @Autowired
     public IdentityEventPublisher(ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate) {
@@ -61,8 +63,20 @@ public class IdentityEventPublisher {
         data.put("roles", membership.getRoles() != null ? membership.getRoles() : List.of());
         data.put("scopes", membership.getScopes() != null ? membership.getScopes() : Map.of());
         envelope.put("data", data);
-        // Partition by userId for membership stream
         send(MEMBERSHIP_TOPIC, membership.getUserId().toString(), envelope);
+    }
+
+    /**
+     * Publish event when vendor identity is created, so vendor-service can link tenantId/userId.
+     */
+    public void publishVendorIdentityCreated(UUID vendorId, UUID tenantId, UUID userId) {
+        Map<String, Object> envelope = baseEnvelope("identity.vendor.identity_created", "v1");
+        Map<String, Object> data = new HashMap<>();
+        data.put("vendorId", vendorId.toString());
+        data.put("tenantId", tenantId.toString());
+        data.put("userId", userId.toString());
+        envelope.put("data", data);
+        send(VENDOR_TOPIC, vendorId.toString(), envelope);
     }
 
     private Map<String, Object> baseEnvelope(String type, String version) {

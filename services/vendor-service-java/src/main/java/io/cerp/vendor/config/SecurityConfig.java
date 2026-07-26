@@ -23,6 +23,9 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").permitAll()
                 // OpenAPI/Swagger docs
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // Registration endpoint (used by register-vendor API route) - must be public
+                .requestMatchers(HttpMethod.POST, "/vendors").permitAll()
+                .requestMatchers("/vendors/health").permitAll()
                 // allow simple GETs for initial smoke tests (optional)
                 .requestMatchers(HttpMethod.GET, "/vendors/**").authenticated()
                 // everything else requires auth
@@ -30,7 +33,10 @@ public class SecurityConfig {
             // Validate JWTs issued by Keycloak via issuer-uri configured in application.yml
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
 
-        // Bind tenant context after JWT resolution
+        // Skip tenant context extraction for public endpoints
+        tenantRequestFilter.setExcludePatterns(java.util.List.of("/vendors", "/vendors/health", "/actuator/**", "/v3/api-docs/**", "/swagger-ui/**"));
+
+        // Bind tenant context after JWT resolution (tenant filter now handles exclusions internally)
         http.addFilterAfter(tenantRequestFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();

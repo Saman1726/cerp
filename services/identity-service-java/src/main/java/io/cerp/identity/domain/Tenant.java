@@ -20,6 +20,9 @@ public class Tenant {
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "region")
+    private String region;
+
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
@@ -61,6 +64,15 @@ public class Tenant {
 
     public Tenant setName(String name) {
         this.name = name;
+        return this;
+    }
+
+    public String getRegion() {
+        return region;
+    }
+
+    public Tenant setRegion(String region) {
+        this.region = region;
         return this;
     }
 

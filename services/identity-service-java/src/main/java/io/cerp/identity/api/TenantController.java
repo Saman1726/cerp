@@ -24,21 +24,27 @@ public class TenantController {
         this.tenantService = tenantService;
     }
 
-    public static record CreateTenantRequest(@NotBlank String name) {
+    public static record CreateTenantRequest(@NotBlank String name, String region) {
     }
 
-    public static record TenantResponse(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public static record TenantResponse(UUID id, String name, String region, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 
     private static TenantResponse toResponse(Tenant t) {
-        return new TenantResponse(t.getId(), t.getName(), t.getCreatedAt(), t.getUpdatedAt());
+        return new TenantResponse(t.getId(), t.getName(), t.getRegion(), t.getCreatedAt(), t.getUpdatedAt());
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public TenantResponse create(@Valid @RequestBody CreateTenantRequest body) {
-        Tenant created = tenantService.create(body.name());
+        Tenant created = tenantService.create(body.name(), body.region);
         return toResponse(created);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        tenantService.delete(id);
     }
 
     @GetMapping("/{id}")

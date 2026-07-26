@@ -6,35 +6,68 @@ import io.cerp.core.partyregistry.PartnerSystemClient;
 import io.cerp.core.partyregistry.PartyRegistryEntry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.List;
+import java.util.*;
 
 /**
- * Auth endpoints for the web app. - POST /auth/login accepts username + password only (no partnerCode) - POST /auth/refresh issues new tokens from a refresh token
+ * Auth endpoints for the web app. - POST /auth/login accepts username + password - Tries identity-service /auth/login first, falls back to partner-system - POST
+ * /auth/refresh issues new tokens from a refresh token
  *
- * For bootstrap/demo: - We discover the correct partner by iterating known partner codes from Partner System and attempting a login until one succeeds. - Tokens are
- * unsigned "dev" JWTs carrying exp/sub/role for UX middleware. API does not verify them.
+ * For bootstrap/demo: - If identity-service fails, we discover the correct partner by iterating known partner codes from Partner System and attempting a login until one
+ * succeeds. - Tokens are unsigned "dev" JWTs carrying exp/sub/role for UX middleware. API does not verify them.
  */
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
 
     private final PartnerSystemClient partnerClient;
+    private final RestTemplate restTemplate;
+    private final String identityServiceUrl;
 
-    public AuthController(PartnerSystemClient partnerClient) {
+    public AuthController(PartnerSystemClient partnerClient,
+            RestTemplate restTemplate,
+            @Value("${cerp.identity-service.url:http://localhost:8090}") String identityServiceUrl) {
         this.partnerClient = partnerClient;
+        this.restTemplate = restTemplate;
+        this.identityServiceUrl = identityServiceUrl;
     }
 
     @PostMapping("/login")
     @ResponseStatus(HttpStatus.OK)
     public LoginResponse login(@Valid @RequestBody LoginRequest req) {
-        // Discover partnerCode by trying each known partner with the provided username/password.
+        // Strategy 1: Try identity-service first (for users registered via identity-service)
+        try {
+            ResponseEntity<IdentityLoginResponse> resp = restTemplate.postForEntity(
+                identityServiceUrl + "/auth/login",
+                new IdentityLoginRequest(req.username(), req.password()),
+                IdentityLoginResponse.class);
+
+            if (resp.getStatusCode() == HttpStatus.OK && resp.getBody() != null) {
+                IdentityLoginResponse.IdentityUser identityUser = resp.getBody().user();
+                List<String> roles = identityUser.roles();
+                String primaryRole = roles != null && !roles.isEmpty() ? roles.get(0) : "user";
+                String userId = identityUser.id();
+                String email = identityUser.email();
+
+                long nowSec = Instant.now().getEpochSecond();
+                String accessToken = makeDevJwt(req.username(), primaryRole, nowSec + 60L * 30L);
+                String refreshToken = makeDevJwt(req.username(), primaryRole, nowSec + 60L * 60L * 24L * 7L);
+
+                return new LoginResponse(accessToken, refreshToken, new AuthUser(userId, email, primaryRole));
+            }
+        } catch (Exception e) {
+            // identity-service not available or error, fall through to partner-system
+        }
+
+        // Strategy 2: Discover partnerCode by trying each known partner with the provided username/password.
         List<PartyRegistryEntry> partners = partnerClient.findAll();
         PartnerLoginResult matched = null;
         for (PartyRegistryEntry p : partners) {
@@ -127,6 +160,24 @@ public class AuthController {
         if (to < 0)
             return null;
         return json.substring(from, to);
+    }
+
+    // ----- Identity-service request/response DTOs -----
+
+    private record IdentityLoginRequest(String username, String password) {
+    }
+
+    private record IdentityLoginResponse(
+            String accessToken,
+            String refreshToken,
+            IdentityUser user) {
+
+        private record IdentityUser(
+                String id,
+                String email,
+                String name,
+                List<String> roles) {
+        }
     }
 
     // ----- DTOs matching packages/shared-types/src/auth.ts -----

@@ -6,9 +6,9 @@ spring:
     name: vendor-service-java
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/cerp}
-    username: ${DB_USER:cerp}
-    password: ${DB_PASSWORD:cerp}
+    url: ${DB_URL:jdbc:postgresql://supply-postgres:5432/supply_db}
+    username: ${DB_USER:-cerp}
+    password: ${DB_PASSWORD:-cerp_dev_password}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
@@ -29,6 +29,7 @@ spring:
     locations: classpath:db/migration
     # Use default schema "public" unless overridden
     baseline-on-migrate: true
+    out-of-order: true
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
@@ -76,6 +77,13 @@ logging:
 app:
   topics:
     vendor: supply.vendor.v1
+    vendor-registration: vendor.registered.v1
+    vendor-identity: identity.vendor.v1
   security:
     # Name of header to optionally cross-validate tenant id from requests
     tenant-header: X-Tenant-Id
+  kafka:
+    consumer:
+      group-id: vendor-service
+  events:
+    enabled: ${EVENTS_ENABLED:false}

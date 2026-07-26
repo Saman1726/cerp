@@ -9,98 +9,102 @@ import { Button } from '@cerp/core-web/components/ui/button';
 import { Input } from '@cerp/core-web/components/ui/input';
 import { Label } from '@cerp/core-web/components/ui/label';
 
-const VENDOR_CATEGORIES = [
-  'Construction Materials',
-  'Equipment Rental',
-  'Labor Services',
-  'Engineering Consulting',
-  'Logistics & Transport',
-  'Electrical & HVAC',
-  'Plumbing',
-  'Finishing & Interior',
-  'IT & Software',
-  'Other',
-];
+interface RegisterState {
+  error?: string;
+  success?: string;
+}
 
 export default function VendorRegisterPage() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const [state, setState] = useState<RegisterState>({});
   const [formData, setFormData] = useState({
-    vendorName: '',
-    businessRegistrationNumber: '',
+    companyName: '',
+    contactName: '',
     email: '',
     username: '',
     password: '',
     confirmPassword: '',
-    categories: [] as string[],
+    phone: '',
+    website: '',
+    category: '',
+    address: '',
     city: '',
-    description: '',
+    country: '',
   });
-
-  const handleCategoryToggle = (category: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      categories: prev.categories.includes(category)
-        ? prev.categories.filter((c) => c !== category)
-        : [...prev.categories, category],
-    }));
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setState({});
     setPending(true);
 
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match');
+      setState({ error: 'Passwords do not match' });
       setPending(false);
       return;
     }
 
-    if (formData.categories.length === 0) {
-      alert('Please select at least one vendor category');
+    if (formData.password.length < 6) {
+      setState({ error: 'Password must be at least 6 characters' });
       setPending(false);
       return;
     }
 
-    // TODO: Implement actual registration API call
-    console.log('Vendor registration:', formData);
+    try {
+      // Step 1: Register user account via identity service
+      const response = await fetch('/api/auth/register-vendor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          vendorData: {
+            legalName: formData.companyName,
+            contactName: formData.contactName,
+            phone: formData.phone,
+            website: formData.website,
+            categories: formData.category ? [formData.category] : [],
+            address: formData.address,
+            city: formData.city,
+            country: formData.country,
+          },
+        }),
+      });
 
-    // Simulate API call
-    setTimeout(() => {
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Registration failed');
+      }
+
+      // Registration successful - redirect to login
+      router.push('/register/vendor/success');
+    } catch (err) {
+      setState({ error: err instanceof Error ? err.message : 'Registration failed. Please try again.' });
+    } finally {
       setPending(false);
-      router.push('/login');
-    }, 1000);
+    }
   };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle className="text-xl">Register as Vendor</CardTitle>
-          <CardDescription>Create your vendor account</CardDescription>
+          <CardDescription>Join the procurement network as a vendor</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* Account Information */}
             <div className="grid gap-2">
-              <Label htmlFor="vendorName">Vendor Name</Label>
+              <Label htmlFor="username">Username</Label>
               <Input
-                id="vendorName"
-                name="vendorName"
+                id="username"
+                name="username"
                 type="text"
                 required
-                value={formData.vendorName}
-                onChange={(e) => setFormData({ ...formData, vendorName: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="businessRegistrationNumber">Business Registration Number</Label>
-              <Input
-                id="businessRegistrationNumber"
-                name="businessRegistrationNumber"
-                type="text"
-                required
-                value={formData.businessRegistrationNumber}
-                onChange={(e) => setFormData({ ...formData, businessRegistrationNumber: e.target.value })}
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
             </div>
             <div className="grid gap-2">
@@ -112,17 +116,6 @@ export default function VendorRegisterPage() {
                 required
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                name="username"
-                type="text"
-                required
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
             </div>
             <div className="grid gap-2">
@@ -149,48 +142,105 @@ export default function VendorRegisterPage() {
                 onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
               />
             </div>
+
+            {/* Company Information */}
             <div className="grid gap-2">
-              <Label htmlFor="categories">Categories</Label>
-              <div className="flex flex-wrap gap-2">
-                {VENDOR_CATEGORIES.map((category) => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => handleCategoryToggle(category)}
-                    className={`rounded-full px-3 py-1 text-sm transition-colors ${
-                      formData.categories.includes(category)
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
-                  >
-                    {category}
-                  </button>
-                ))}
+              <Label htmlFor="companyName">Company Legal Name</Label>
+              <Input
+                id="companyName"
+                name="companyName"
+                type="text"
+                required
+                value={formData.companyName}
+                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contactName">Contact Person Name</Label>
+              <Input
+                id="contactName"
+                name="contactName"
+                type="text"
+                value={formData.contactName}
+                onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="category">Vendor Category</Label>
+              <Input
+                id="category"
+                name="category"
+                type="text"
+                placeholder="e.g., Construction Materials, Electronics"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              />
+            </div>
+
+            {/* Contact Information */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="website">Website</Label>
+                <Input
+                  id="website"
+                  name="website"
+                  type="url"
+                  placeholder="https://example.com"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                />
               </div>
             </div>
+
+            {/* Address */}
             <div className="grid gap-2">
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="address">Address</Label>
               <Input
-                id="city"
-                name="city"
+                id="address"
+                name="address"
                 type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <textarea
-                id="description"
-                name="description"
-                rows={3}
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="city">City</Label>
+                <Input
+                  id="city"
+                  name="city"
+                  type="text"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="country">Country</Label>
+                <Input
+                  id="country"
+                  name="country"
+                  type="text"
+                  placeholder="e.g., Germany"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                />
+              </div>
             </div>
+
+            {state.error ? <p className="text-sm text-destructive">{state.error}</p> : null}
+
             <Button type="submit" disabled={pending} className="mt-2">
-              {pending ? 'Creating account...' : 'Create account'}
+              {pending ? 'Creating vendor account...' : 'Create vendor account'}
             </Button>
           </form>
           <div className="mt-4 flex items-center gap-2 text-sm">

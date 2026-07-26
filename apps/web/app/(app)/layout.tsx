@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
-import { getSession, clearSession } from '@cerp/core-web/lib/session';
+import { getSession } from '@cerp/core-web/lib/session';
 import { AppShell } from '@cerp/core-web/shell';
 import { branding } from '@/branding.config';
 import { navItems } from '@/nav.config';
@@ -11,14 +11,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     redirect('/login');
   }
 
-  async function logout() {
-    'use server';
-    await clearSession();
-    redirect('/login');
-  }
-
   return (
-    <AppShell branding={branding} navItems={navItems} logoutAction={logout}>
+    <AppShell branding={branding} navItems={navItems}>
       {children}
     </AppShell>
   );

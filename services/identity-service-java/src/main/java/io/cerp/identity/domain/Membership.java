@@ -28,11 +28,12 @@ public class Membership {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    // JSONB columns (Hibernate 6)
+    // Roles stored as PostgreSQL JSONB
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "roles", nullable = false, columnDefinition = "jsonb")
     private List<String> roles;
 
+    // Scopes stored as JSONB (Hibernate 6)
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "scopes", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> scopes;
@@ -100,6 +101,11 @@ public class Membership {
 
     public Membership setRoles(List<String> roles) {
         this.roles = roles;
+        return this;
+    }
+
+    public Membership setRoles(String... roleArray) {
+        this.roles = roleArray != null ? List.of(roleArray) : List.of();
         return this;
     }
 

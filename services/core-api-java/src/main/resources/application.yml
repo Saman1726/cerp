@@ -53,5 +53,6 @@ logging:
     org.springframework: INFO
     org.hibernate.SQL: INFO
 
-partner-system:
-  base-url: ${PARTNER_SYSTEM_URL:http://localhost:3020}
+cerp:
+  identity-service:
+    url: ${IDENTITY_SERVICE_URL:http://localhost:8090}

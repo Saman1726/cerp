@@ -23,6 +23,9 @@ public class UserAccount {
     @Column(name = "name")
     private String name;
 
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "status", nullable = false)
     private String status = "active";
 
@@ -82,6 +85,15 @@ public class UserAccount {
 
     public UserAccount setName(String name) {
         this.name = name;
+        return this;
+    }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public UserAccount setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
         return this;
     }
 

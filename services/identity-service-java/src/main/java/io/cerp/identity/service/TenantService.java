@@ -25,13 +25,22 @@ public class TenantService {
         this.eventPublisher = eventPublisher;
     }
 
-    public Tenant create(String name) {
+    public Tenant create(String name, String region) {
         Tenant t = new Tenant(UUID.randomUUID(), name);
+        t.setRegion(region);
         Tenant saved = tenantRepository.save(t);
         if (eventPublisher != null) {
             eventPublisher.publishTenantCreated(saved);
         }
         return saved;
+    }
+
+    public void delete(UUID id) {
+        Optional<Tenant> tenant = tenantRepository.findById(id);
+        if (tenant.isPresent()) {
+            // Cascade delete is handled by ON DELETE CASCADE in memberships
+            tenantRepository.delete(tenant.get());
+        }
     }
 
     @Transactional(readOnly = true)
