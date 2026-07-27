@@ -8,3 +8,4 @@ export * from './dropdown-menu';
 export * from './separator';
 export * from './badge';
 export * from './modal';
+export * from './textarea';
