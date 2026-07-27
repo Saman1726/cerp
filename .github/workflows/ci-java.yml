@@ -21,11 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       core_api: ${{ steps.filter.outputs.core_api }}
-      partner: ${{ steps.filter.outputs.partner }}
+      project: ${{ steps.filter.outputs.project }}
       procurement: ${{ steps.filter.outputs.procurement }}
       vendor: ${{ steps.filter.outputs.vendor }}
       catalog: ${{ steps.filter.outputs.catalog }}
       identity: ${{ steps.filter.outputs.identity }}
+      workflow: ${{ steps.filter.outputs.workflow }}
       gateway: ${{ steps.filter.outputs.gateway }}
     steps:
       - name: Checkout
@@ -40,8 +41,8 @@ jobs:
           filters: |
             core_api:
               - 'services/core-api-java/**'
-            partner:
-              - 'services/partner-system-java/**'
+            project:
+              - 'services/project-service-java/**'
             procurement:
               - 'services/procurement-service-java/**'
             vendor:
@@ -72,10 +73,10 @@ jobs:
         working-directory: services/core-api-java
         run: mvn -B -ntp -DskipTests=false verify
 
-  build-partner-system:
-    name: Build services/partner-system-java
+  build-project:
+    name: Build services/project-service-java
     needs: changes
-    if: needs.changes.outputs.partner == 'true'
+    if: needs.changes.outputs.project == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +89,7 @@ jobs:
           cache: 'maven'
 
       - name: Build and test
-        working-directory: services/partner-system-java
+        working-directory: services/project-service-java
         run: mvn -B -ntp -DskipTests=false verify
 
   build-procurement:
@@ -165,6 +166,25 @@ jobs:
 
       - name: Build and test
         working-directory: services/identity-service-java
+        run: mvn -B -ntp -DskipTests=false verify
+
+  build-workflow:
+    name: Build services/workflow-service-java
+    needs: changes
+    if: needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Build and test
+        working-directory: services/workflow-service-java
         run: mvn -B -ntp -DskipTests=false verify
 
   build-gateway:

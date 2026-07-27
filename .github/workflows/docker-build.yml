@@ -28,10 +28,30 @@ jobs:
             context: services/core-api-java
             file: services/core-api-java/Dockerfile
             image: ghcr.io/saman1726/cerp-api-java
-          - name: partner-system-java
-            context: services/partner-system-java
-            file: services/partner-system-java/Dockerfile
-            image: ghcr.io/saman1726/cerp-partner-system-java
+          - name: identity-service-java
+            context: services/identity-service-java
+            file: services/identity-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-identity-service-java
+          - name: catalog-service-java
+            context: services/catalog-service-java
+            file: services/catalog-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-catalog-service-java
+          - name: vendor-service-java
+            context: services/vendor-service-java
+            file: services/vendor-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-vendor-service-java
+          - name: project-service-java
+            context: services/project-service-java
+            file: services/project-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-project-service-java
+          - name: workflow-service-java
+            context: services/workflow-service-java
+            file: services/workflow-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-workflow-service-java
+          - name: procurement-service-java
+            context: services/procurement-service-java
+            file: services/procurement-service-java/Dockerfile
+            image: ghcr.io/saman1726/cerp-procurement-service-java
     steps:
       - uses: actions/checkout@v4
 
