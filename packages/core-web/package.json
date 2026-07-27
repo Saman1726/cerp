@@ -29,6 +29,7 @@
     "./components/ui/card": "./src/components/ui/card.tsx",
     "./components/ui/avatar": "./src/components/ui/avatar.tsx",
     "./components/ui/table": "./src/components/ui/table.tsx",
+    "./components/ui/textarea": "./src/components/ui/textarea.tsx",
     "./styles.css": "./src/styles/base.css"
   },
   "scripts": {

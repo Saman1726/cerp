@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import {
   Building2,
   Mail,
@@ -197,7 +197,7 @@ export default function OrganisationSettingsPage() {
                 <Building2 className="h-5 w-5" />
                 Basic Information
               </CardTitle>
-              <CardDescription>Your organisation's core details.</CardDescription>
+              <CardDescription>Your organisation{'\''}s core details.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -230,7 +230,7 @@ export default function OrganisationSettingsPage() {
                   id="description"
                   placeholder="Brief description of your company"
                   value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) => handleInputChange('description', e.target.value)}
                   rows={3}
                 />
               </div>
@@ -330,7 +330,7 @@ export default function OrganisationSettingsPage() {
                 <MapPin className="h-5 w-5" />
                 Address
               </CardTitle>
-              <CardDescription>Your organisation's physical address.</CardDescription>
+              <CardDescription>Your organisation{'\''}s physical address.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">

@@ -215,7 +215,7 @@ export default function VendorProfilePage() {
                 <Building2 className="h-5 w-5" />
                 Business Information
               </CardTitle>
-              <CardDescription>Your company's legal and business details.</CardDescription>
+              <CardDescription>Your company{'\''}s legal and business details.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">

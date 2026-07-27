@@ -11,29 +11,6 @@ import type {
   WorkOrder,
   ProjectUserAssignment,
 } from '@cerp/shared-types';
-import { SESSION_COOKIE } from '@cerp/core-web/lib/session-cookies';
-
-// Get the current user's info from the JWT token stored in the cookie
-// Returns the user's email (sub) which is used as userId for project filtering
-async function getCurrentUserEmail(): Promise<string | null> {
-  try {
-    const { cookies } = await import('next/headers');
-    const store = await cookies();
-    const token = store.get(SESSION_COOKIE)?.value;
-    if (!token) return null;
-
-    // Parse the JWT token to extract the user's email as identifier
-    // Token format: header.payload.signature (base64url encoded)
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-
-    const payload = Buffer.from(parts[1] ?? '', 'base64').toString('utf-8');
-    const parsed = JSON.parse(payload);
-    return parsed.sub || null;
-  } catch {
-    return null;
-  }
-}
 
 // ── Project Actions ──
 
