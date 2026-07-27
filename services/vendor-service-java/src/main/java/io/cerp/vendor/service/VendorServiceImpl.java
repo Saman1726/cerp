@@ -58,6 +58,7 @@ public class VendorServiceImpl implements VendorService {
         vendor.setCountry(country);
         vendor.setCategories(categories != null ? categories : List.of());
         vendor.setStatus("pending");
+        vendor.onCreate();
         return vendorRepository.save(vendor);
     }
 
