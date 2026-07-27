@@ -64,14 +64,16 @@ public class GatewayRouteConfig {
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
             // ── Identity Service ──
+            // Matches /api/identity/** (for identity operations) and /api/user/** (for user profile ops)
             .route("identity-service", r -> r
-                .path("/api/identity/**")
+                .path("/api/identity/**", "/api/user/**")
                 .filters(f -> f.stripPrefix(1))
                 .uri(identityServiceUrl))
 
             // ── Organization Service ──
+            // Matches both /api/orgs/** and /api/organisation/** (alias for frontend compatibility)
             .route("organization-service", r -> r
-                .path("/api/orgs/**")
+                .path("/api/orgs/**", "/api/organisation/**")
                 .filters(f -> f.stripPrefix(1))
                 .uri(organizationServiceUrl))
 

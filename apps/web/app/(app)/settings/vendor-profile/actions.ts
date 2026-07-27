@@ -59,53 +59,163 @@ export interface CategoryGroupData {
 }
 
 /**
- * Fetch the current user's vendor profile.
+ * Fetch the current vendor's profile from Vendor Service.
  */
 export async function getVendorProfile(): Promise<ApiResponse<VendorProfileData>> {
+  const startTime = Date.now();
+  console.log('[VendorProfile] === getVendorProfile() called ===');
+  console.log('[VendorProfile] Current timestamp:', new Date().toISOString());
+  console.log('[VendorProfile] VENDOR_SERVICE_URL env:', process.env.VENDOR_SERVICE_URL || '(not set, using default)');
+
   try {
+    console.log('[VendorProfile] Step 1: Reading cookie store...');
     const cookieStore = await cookies();
-    const token = cookieStore.get('session_token')?.value;
+    console.log('[VendorProfile] Step 2: Cookie store obtained');
+
+    // Read all cookies for debugging
+    const allCookies = await cookieStore.getAll();
+    console.log('[VendorProfile] All cookies:', allCookies.map(c => ({ name: c.name, value: c.value ? c.value.substring(0, 30) + '...' : 'empty' })).join('; '));
+
+    const token = cookieStore.get('cerp_session')?.value;
+    console.log('[VendorProfile] Step 3: cerp_session token present:', !!token);
+    if (token) {
+      console.log('[VendorProfile] Step 3a: Token length:', token.length);
+      // Decode JWT payload for debugging (format: header.payload.signature)
+      const parts = token.split('.');
+      if (parts.length === 3 && parts[1]) {
+        try {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+          console.log('[VendorProfile] Step 3b: JWT payload:', JSON.stringify(payload, null, 2));
+        } catch (e) {
+          console.log('[VendorProfile] Step 3b: Could not decode JWT payload:', e);
+        }
+      }
+    } else {
+      // Also check for refresh cookie
+      const refreshToken = cookieStore.get('cerp_refresh')?.value;
+      console.log('[VendorProfile] Step 3c: No cerp_session! cerp_refresh present:', !!refreshToken);
+    }
 
     if (!token) {
+      console.log('[VendorProfile] Step 4: NO TOKEN - returning Unauthorized');
       return { success: false, error: 'Unauthorized' };
     }
 
-    const response = await fetch(
-      `${process.env.CERP_API_URL || 'http://localhost:8080'}/api/vendors/profile`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store',
-      }
-    );
+    // Build the URL with debugging
+    const baseUrl = process.env.VENDOR_SERVICE_URL || 'http://localhost:8085';
+    const targetUrl = `${baseUrl}/vendors/profile`;
+    console.log('[VendorProfile] Step 4: Full target URL:', targetUrl);
 
-    if (!response.ok) {
-      return { success: false, error: `Failed to fetch profile: ${response.status}` };
+    // Prepare headers
+    const requestHeaders: Record<string, string> = {
+      Authorization: `Bearer ${token.substring(0, 20)}...[token masked]...`,
+      'Content-Type': 'application/json',
+    };
+    console.log('[VendorProfile] Step 5: Request headers (masked):', JSON.stringify(requestHeaders));
+
+    // Log the full token for debugging (comment out in production!)
+    console.log('[VendorProfile] Step 5a: FULL token value:', token);
+
+    console.log('[VendorProfile] Step 6: Making fetch() request...');
+    // Decode JWT to extract tenant info if available
+    let tenantId: string | undefined;
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3 && parts[1]) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+        tenantId = payload.tenantId || payload.tenant_id || payload.tid;
+        console.log('[VendorProfile] Step 5b: Extracted tenantId from JWT:', tenantId);
+        console.log('[VendorProfile] Step 5b-full: JWT payload roles:', payload.roles || payload.role);
+      }
+    } catch (e) {
+      console.log('[VendorProfile] Step 5b: Could not extract tenantId from JWT:', e);
     }
 
-    const data = await response.json();
+    // If no tenantId from JWT, use default vendor tenant for dev mode
+    // TODO: Remove this fallback once identity service issues tenantId in JWT
+    const VENDOR_TENANT_ID = process.env.VENDOR_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+    if (!tenantId) {
+      tenantId = VENDOR_TENANT_ID;
+      console.log('[VendorProfile] Step 5b: No tenantId in JWT, using default vendor tenant:', tenantId);
+    }
+
+    // Build headers with X-Tenant-Id
+    const fetchHeaders: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Tenant-Id': tenantId,
+    };
+    console.log('[VendorProfile] Step 5c: Added X-Tenant-Id header:', tenantId);
+
+    // Call Vendor Service directly on port 8085 - use POST endpoint
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: fetchHeaders,
+      cache: 'no-store',
+    });
+    console.log('[VendorProfile] Step 7: fetch() completed');
+    console.log('[VendorProfile] Step 7a: Response status:', response.status);
+    console.log('[VendorProfile] Step 7b: Response status text:', response.statusText);
+    console.log('[VendorProfile] Step 7c: Response headers:', Object.fromEntries(response.headers.entries()));
+    console.log('[VendorProfile] Step 7d: Response ok:', response.ok);
+    console.log('[VendorProfile] Step 7e: Response redirected:', response.redirected);
+
+    if (!response.ok) {
+      console.log('[VendorProfile] Step 8: Response NOT OK! Status:', response.status);
+      // Try to get error body
+      try {
+        const errorBody = await response.text();
+        console.log('[VendorProfile] Step 8a: Error response body:', errorBody);
+      } catch (e) {
+        console.log('[VendorProfile] Step 8a: Could not read error body:', e);
+      }
+      return { success: false, error: `Failed to fetch Vendor profile: ${response.status}` };
+    }
+
+    console.log('[VendorProfile] Step 9: Response OK! Parsing JSON...');
+    const responseText = await response.text();
+    console.log('[VendorProfile] Step 9a: Raw response text length:', responseText.length);
+    console.log('[VendorProfile] Step 9b: Raw response text (first 500 chars):', responseText.substring(0, 500));
+
+    const data = JSON.parse(responseText);
+    console.log('[VendorProfile] Step 10: Parsed JSON data');
+    console.log('[VendorProfile] Step 10a: Data keys:', Object.keys(data));
+    console.log('[VendorProfile] Step 10b: Data success:', data.success);
+    console.log('[VendorProfile] Step 10c: Data error:', data.error);
+    if (data.data) {
+      console.log('[VendorProfile] Step 10d: Data.data keys:', Object.keys(data.data));
+      console.log('[VendorProfile] Step 10e: Data.data.categories count:', data.data.categories?.length || 0);
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log('[VendorProfile] === getVendorProfile() completed in', elapsed, 'ms ===');
+    console.log('[VendorProfile] Returning:', JSON.stringify({ success: true, data: data }));
     return { success: true, data };
-  } catch {
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    console.error('[VendorProfile] === EXCEPTION in getVendorProfile() after', elapsed, 'ms ===');
+    console.error('[VendorProfile] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('[VendorProfile] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[VendorProfile] Error stack:', error instanceof Error ? error.stack : 'N/A');
     return { success: false, error: 'Failed to fetch vendor profile' };
   }
 }
 
 /**
- * Fetch all available categories grouped by category group.
+ * Fetch all available categories from Vendor Service.
  */
 export async function getCategories(): Promise<ApiResponse<CategoryData[]>> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('session_token')?.value;
+    const token = cookieStore.get('cerp_session')?.value;
 
     if (!token) {
       return { success: false, error: 'Unauthorized' };
     }
 
+    // Call Vendor Service directly on port 8085
     const response = await fetch(
-      `${process.env.CERP_API_URL || 'http://localhost:8080'}/api/vendors/categories`,
+      `${process.env.VENDOR_SERVICE_URL || 'http://localhost:8085'}/vendors/categories`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -127,7 +237,7 @@ export async function getCategories(): Promise<ApiResponse<CategoryData[]>> {
 }
 
 /**
- * Update the current user's vendor profile.
+ * Update the current vendor's profile.
  */
 export async function updateVendorProfile(data: {
   legalName?: string;
@@ -145,14 +255,15 @@ export async function updateVendorProfile(data: {
 }): Promise<ApiResponse<VendorProfileData>> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('session_token')?.value;
+    const token = cookieStore.get('cerp_session')?.value;
 
     if (!token) {
       return { success: false, error: 'Unauthorized' };
     }
 
+    // Call Vendor Service directly on port 8085
     const response = await fetch(
-      `${process.env.CERP_API_URL || 'http://localhost:8080'}/api/vendors/profile`,
+      `${process.env.VENDOR_SERVICE_URL || 'http://localhost:8085'}/vendors/profile`,
       {
         method: 'PATCH',
         headers: {

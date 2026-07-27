@@ -66,21 +66,29 @@ public class AuthController {
             roles,
             resourceAccess);
 
+        // Get user's tenant ID from membership; if none but user has vendor role, default to vendor tenant
+        UUID tenantId = userService.getUserTenantId(user.getId()).orElse(null);
+        if (tenantId == null && roles.contains("vendor")) {
+            tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        }
+
         // Issue a simple dev token (unsigned JWT for now, will be replaced with Keycloak tokens later)
         long nowSec = System.currentTimeMillis() / 1000;
-        String accessToken = makeDevJwt(user.getEmail(), roles, nowSec + 60L * 30L); // 30 min
-        String refreshToken = makeDevJwt(user.getEmail(), roles, nowSec + 60L * 60L * 24L * 7L); // 7 days
+        String accessToken = makeDevJwt(user.getEmail(), roles, tenantId, nowSec + 60L * 30L); // 30 min
+        String refreshToken = makeDevJwt(user.getEmail(), roles, tenantId, nowSec + 60L * 60L * 24L * 7L); // 7 days
 
         return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, userInfo));
     }
 
     // ----- Helper: simple unsigned JWT maker for dev -----
 
-    private static String makeDevJwt(String sub, List<String> roles, long expSeconds) {
+    private static String makeDevJwt(String sub, List<String> roles, UUID tenantId, long expSeconds) {
         String header = base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String roleStr = String.join(",", roles);
+        String tenantIdJson = tenantId != null ? ",\"tenantId\":\"" + tenantId.toString() + "\"" : "";
         String payload =
-                base64Url(("{\"sub\":\"" + sub + "\",\"roles\":\"" + roleStr + "\",\"exp\":" + expSeconds + "}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                base64Url(("{\"sub\":\"" + sub + "\",\"roles\":\"" + roleStr + "\"" + tenantIdJson + ",\"exp\":" + expSeconds + "}")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return header + "." + payload + ".dev";
     }
 

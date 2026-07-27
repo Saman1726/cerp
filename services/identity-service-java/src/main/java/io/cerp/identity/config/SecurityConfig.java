@@ -2,6 +2,7 @@ package io.cerp.identity.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -26,11 +27,35 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * This chain handles /users/profile endpoints specifically. It does NOT validate JWTs against Keycloak - the controller extracts user ID from the Bearer token
+     * payload directly (for locally generated tokens). Order 1 ensures this chain is evaluated BEFORE publicApiFilterChain.
+     */
     @Bean
+    @Order(1)
+    public SecurityFilterChain userProfileFilterChain(
+            HttpSecurity http,
+            TenantRequestFilter tenantRequestFilter) throws Exception {
+        http
+            .securityMatcher("/users/profile")
+            .csrf(csrf -> csrf.disable())
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.GET, "/users/profile").permitAll()
+                .requestMatchers(HttpMethod.PATCH, "/users/profile").permitAll())
+            // No oauth2ResourceServer - we skip JWT validation for profile endpoints
+            .addFilterBefore(tenantRequestFilter, BearerTokenAuthenticationFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     public SecurityFilterChain publicApiFilterChain(
             HttpSecurity http,
             TenantRequestFilter tenantRequestFilter) throws Exception {
         // This chain handles public endpoints (registration, login)
+        // NOTE: /users/profile is handled by userProfileFilterChain (Order 1) above
         http
             .securityMatcher("/tenants", "/users", "/memberships", "/auth/login", "/auth/*")
             .csrf(csrf -> csrf.disable())
@@ -39,7 +64,11 @@ public class SecurityConfig {
                 // Registration endpoints - must be public
                 .requestMatchers("/tenants").permitAll()
                 .requestMatchers("/users").permitAll()
-                .requestMatchers("/memberships").permitAll()
+                .requestMatchers(HttpMethod.POST, "/users").permitAll()
+                // GET /users (without path segments) - list/get by email
+                .requestMatchers(HttpMethod.GET, "/users").permitAll()
+                // GET /users/{id} - authenticated
+                .requestMatchers(HttpMethod.GET, "/users/**").authenticated()
                 // DELETE endpoints for cleanup
                 .requestMatchers(HttpMethod.DELETE, "/tenants/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/users/**").permitAll()
@@ -55,6 +84,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @Order(3)
     public SecurityFilterChain defaultFilterChain(HttpSecurity http) throws Exception {
         // Default chain for all other endpoints
         http

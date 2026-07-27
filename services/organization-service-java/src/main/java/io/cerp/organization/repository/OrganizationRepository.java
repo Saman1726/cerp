@@ -25,6 +25,11 @@ public interface OrganizationRepository extends JpaRepository<Organization, UUID
     List<Organization> findByTenantId(String tenantId);
 
     /**
+     * Find the active organization for a tenant.
+     */
+    Optional<Organization> findFirstByTenantIdAndStatus(String tenantId, Organization.OrganizationStatus status);
+
+    /**
      * Find by tenant ID and status.
      */
     List<Organization> findByTenantIdAndStatus(String tenantId, Organization.OrganizationStatus status);

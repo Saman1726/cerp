@@ -1,74 +1,59 @@
-import { Settings, User, Building2, Store } from 'lucide-react';
-import { ComingSoon } from '@cerp/core-web/components';
-import { PageHeader } from '@cerp/core-web/shell';
-import Link from 'next/link';
-import { Card, CardContent } from '@cerp/core-web/components/ui/card';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 
-export default function SettingsPage() {
-  return (
-    <div>
-      <PageHeader title="Settings" description="Organisation, team, and account settings." />
+/**
+ * Decode a JWT token payload and extract the user role.
+ * JWT format: header.payload.signature (base64url-encoded JSON)
+ */
+function decodeJwtRole(token: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
 
-      {/* Quick Links */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href="/settings/organisation" className="block">
-          <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 pt-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Organisation</p>
-                <p className="text-xs text-muted-foreground">Company settings</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
+    const payload = parts[1] ?? '';
+    if (!payload) return null;
 
-        <Link href="/settings/profile" className="block">
-          <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 pt-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
-                <User className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">My Profile</p>
-                <p className="text-xs text-muted-foreground">Personal info</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = Buffer.from(base64, 'base64').toString('utf-8');
+    const parsed = JSON.parse(jsonPayload) as Record<string, unknown>;
 
-        <Link href="/settings/vendor-profile" className="block">
-          <Card className="transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 pt-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
-                <Store className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Vendor Profile</p>
-                <p className="text-xs text-muted-foreground">Business categories</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-medium text-muted-foreground">Sections</h2>
-        <ul className="list-disc pl-6">
-          <li>
-            <Link href="/settings/organisation" className="text-primary underline underline-offset-4">
-              Organisation
-            </Link>
-          </li>
-        </ul>
-      </div>
-      <ComingSoon
-        icon={Settings}
-        title="Settings module coming soon"
-        description="Team management, billing, and organisation preferences will live here."
-      />
-    </div>
-  );
+    if (parsed && typeof parsed === 'object') {
+      if (
+        parsed.user &&
+        typeof parsed.user === 'object' &&
+        'role' in parsed.user
+      ) {
+        return (parsed.user as { role: string }).role;
+      }
+      if ('role' in parsed) {
+        return (parsed as { role: string }).role;
+      }
+    }
+  } catch {
+    // If decoding fails, return null
+  }
+  return null;
 }
+
+export default async function SettingsPage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('cerp_session')?.value;
+
+  let targetPath = '/settings/profile';
+
+  if (token) {
+    const role = decodeJwtRole(token);
+    if (role === 'vendor') {
+      targetPath = '/settings/vendor-profile';
+    } else if (role === 'company') {
+      targetPath = '/settings/organisation';
+    }
+  }
+
+  redirect(targetPath);
+}
+
+export const metadata = {
+  title: 'Settings',
+  description: 'Organisation, team, and account settings.',
+};

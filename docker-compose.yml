@@ -198,6 +198,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001
+      HOSTNAME: 0.0.0.0
       # Server-side URL for API proxy routes (uses Docker DNS to reach services)
       VENDOR_SERVICE_URL: http://vendor-service-java:8085
       # These URLs are embedded in the browser bundle, so use host.docker.internal
@@ -215,7 +216,8 @@ services:
       - /app/apps/web/node_modules
       - /app/packages/core-web/node_modules
       - /app/packages/shared-types/node_modules
-    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm --filter web run dev"
+    # Exclude .env.local so Docker's NEXT_PUBLIC_* env vars take precedence
+    command: sh -c "rm -f apps/web/.env.local && corepack enable && pnpm install --frozen-lockfile && pnpm --filter web run dev"
     profiles:
       - legacy
 

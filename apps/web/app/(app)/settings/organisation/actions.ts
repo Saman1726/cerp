@@ -35,7 +35,8 @@ export interface CompanyProfileData {
 export async function getCompanyProfile(): Promise<ApiResponse<CompanyProfileData>> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('session_token')?.value;
+    // Cookie name is 'cerp_session' as defined in session-cookies.ts
+    const token = cookieStore.get('cerp_session')?.value;
 
     if (!token) {
       return { success: false, error: 'Unauthorized' };
@@ -83,7 +84,8 @@ export async function updateCompanyProfile(data: {
 }): Promise<ApiResponse<CompanyProfileData>> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get('session_token')?.value;
+    // Cookie name is 'cerp_session' as defined in session-cookies.ts
+    const token = cookieStore.get('cerp_session')?.value;
 
     if (!token) {
       return { success: false, error: 'Unauthorized' };

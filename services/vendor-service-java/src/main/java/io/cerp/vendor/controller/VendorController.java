@@ -2,14 +2,17 @@ package io.cerp.vendor.controller;
 
 import io.cerp.vendor.entity.Vendor;
 import io.cerp.vendor.service.VendorService;
+import io.cerp.vendor.security.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -127,6 +130,176 @@ public class VendorController {
     public VendorResponse updateStatus(@PathVariable UUID id, @RequestBody UpdateStatusRequest request) {
         Vendor vendor = vendorService.updateStatus(id, request.status());
         return toResponse(vendor);
+    }
+
+    /**
+     * Get the current vendor's profile based on the tenant ID from the request context. The tenantId is extracted by TenantRequestFilter from the X-Tenant-Id header.
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<VendorProfileResponse> getVendorProfile() {
+        UUID tenantId = TenantContext.get().orElse(null);
+        if (tenantId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+
+        if (vendor == null) {
+            // Return empty profile - vendor hasn't created a profile yet
+            vendor = new Vendor();
+            vendor.setTenantId(tenantId);
+            return ResponseEntity.ok(toProfileResponse(vendor));
+        }
+        return ResponseEntity.ok(toProfileResponse(vendor));
+    }
+
+    @PostMapping("/profile")
+    public ResponseEntity<VendorProfileResponse> postVendorProfile() {
+        // Same logic as GET /profile - return the current vendor's profile
+        UUID tenantId = TenantContext.get().orElse(null);
+        if (tenantId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+
+        if (vendor == null) {
+            // Return empty profile - vendor hasn't created a profile yet
+            vendor = new Vendor();
+            vendor.setTenantId(tenantId);
+            return ResponseEntity.ok(toProfileResponse(vendor));
+        }
+        return ResponseEntity.ok(toProfileResponse(vendor));
+    }
+
+    /**
+     * Update the current vendor's profile.
+     */
+    @PatchMapping("/profile")
+    public ResponseEntity<VendorProfileResponse> updateVendorProfile(
+            @RequestBody UpdateVendorProfileRequest request) {
+        UUID tenantId = TenantContext.get().orElse(null);
+
+        if (tenantId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+
+        if (vendor == null) {
+            // Create new vendor profile
+            vendor = new Vendor();
+            vendor.setTenantId(tenantId);
+            vendor.setLegalName(request.legalName() != null ? request.legalName() : "New Vendor");
+            vendor.setCategories(List.of());
+        }
+
+        // Update fields - map frontend field names to Vendor entity fields
+        if (request.legalName() != null)
+            vendor.setLegalName(request.legalName());
+        if (request.contactPerson() != null)
+            vendor.setContactName(request.contactPerson());
+        if (request.contactPhone() != null)
+            vendor.setPhone(request.contactPhone());
+        if (request.website() != null)
+            vendor.setWebsite(request.website());
+        if (request.addressLine1() != null)
+            vendor.setAddress(request.addressLine1());
+        if (request.city() != null)
+            vendor.setCity(request.city());
+        if (request.countryCode() != null)
+            vendor.setCountry(request.countryCode());
+
+        vendor = vendorService.updateStatus(vendor.getId(), vendor.getStatus());
+        return ResponseEntity.ok(toProfileResponse(vendor));
+    }
+
+    private VendorProfileResponse toProfileResponse(Vendor v) {
+        return new VendorProfileResponse(
+            v.getId() != null ? v.getId().toString() : null,
+            v.getId() != null ? v.getId().toString() : UUID.randomUUID().toString(),
+            v.getLegalName(),
+            getCompanyName(v),
+            v.getContactName(),
+            null, // contactEmail - not stored in Vendor entity yet
+            v.getPhone(),
+            v.getWebsite(),
+            getAddressLine1(v),
+            getAddressLine2(v),
+            null, // postalCode - not stored yet
+            v.getCity(),
+            v.getCountry(),
+            v.getTaxProfile(),
+            getCategoriesForProfile(v),
+            v.getStatus() != null ? v.getStatus() : "pending",
+            null, // ratingAvg - not stored yet
+            v.getCreatedAt(),
+            v.getUpdatedAt());
+    }
+
+    private String getCompanyName(Vendor v) {
+        // For now, return legalName as fallback
+        return v.getLegalName();
+    }
+
+    private String getAddressLine1(Vendor v) {
+        return v.getAddress();
+    }
+
+    private String getAddressLine2(Vendor v) {
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> getCategoriesForProfile(Vendor v) {
+        List<String> cats = v.getCategories();
+        if (cats == null || cats.isEmpty()) {
+            return List.of();
+        }
+        return cats.stream().map(cat -> {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            m.put("categoryId", cat);
+            m.put("categoryName", cat);
+            m.put("categoryCode", cat);
+            return m;
+        }).toList();
+    }
+
+    public record UpdateVendorProfileRequest(
+            String legalName,
+            String companyName,
+            String contactPerson,
+            String contactEmail,
+            String contactPhone,
+            String website,
+            String addressLine1,
+            String addressLine2,
+            String postalCode,
+            String city,
+            String countryCode,
+            List<String> categoryIds) {
+    }
+
+    public record VendorProfileResponse(
+            String id,
+            String vendorId,
+            String legalName,
+            String companyName,
+            String contactPerson,
+            String contactEmail,
+            String contactPhone,
+            String website,
+            String addressLine1,
+            String addressLine2,
+            String postalCode,
+            String city,
+            String countryCode,
+            Object taxProfile,
+            List<Map<String, Object>> categories,
+            String status,
+            Double ratingAvg,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
     }
 
     public record UpdateStatusRequest(@NotBlank String status) {

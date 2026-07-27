@@ -134,25 +134,33 @@ export function CategorySelector({
           <Card key={group.id} className="overflow-hidden">
             <CardContent className="p-0">
               {/* Group header */}
-              <button
-                type="button"
+              <div
                 className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
                 onClick={() => toggleExpandGroup(group.id)}
-                disabled={disabled}
               >
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center justify-center w-5 h-5 border rounded-sm transition-colors"
+                  <span
+                    role="checkbox"
+                    aria-checked={isGroupSelected(group)}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        toggleGroup(group.id);
+                      }
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleGroup(group.id);
                     }}
-                    disabled={disabled}
+                    className={`flex items-center justify-center w-5 h-5 border rounded-sm transition-colors cursor-pointer ${
+                      disabled ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                   >
                     {isGroupSelected(group) && <Check className="h-3 w-3" />}
                     {isPartiallySelected(group) && <div className="h-3 w-3 bg-muted-foreground rounded-sm" />}
-                  </button>
+                  </span>
                   <span className="font-medium text-sm">{group.name}</span>
                 </div>
                 {expandedGroups[group.id] ? (
@@ -160,7 +168,7 @@ export function CategorySelector({
                 ) : (
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 )}
-              </button>
+              </div>
 
               {/* Categories in group */}
               {expandedGroups[group.id] && (

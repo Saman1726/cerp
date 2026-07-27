@@ -1,5 +1,6 @@
 package io.cerp.identity.service;
 
+import io.cerp.identity.domain.Membership;
 import io.cerp.identity.domain.UserAccount;
 import io.cerp.identity.events.IdentityEventPublisher;
 import io.cerp.identity.repo.MembershipRepository;
@@ -105,6 +106,17 @@ public class UserService {
             .toList();
     }
 
+    /**
+     * Get the user's primary tenant ID from their first membership.
+     */
+    @Transactional(readOnly = true)
+    public Optional<UUID> getUserTenantId(UUID userId) {
+        return membershipRepository.findByUserId(userId)
+            .stream()
+            .findFirst()
+            .map(Membership::getTenantId);
+    }
+
     @Transactional(readOnly = true)
     public Optional<UserAccount> findById(UUID id) {
         return userRepository.findById(id);
@@ -118,5 +130,12 @@ public class UserService {
     @Transactional(readOnly = true)
     public List<UserAccount> findAll() {
         return userRepository.findAll();
+    }
+
+    /**
+     * Save (create or update) a user account.
+     */
+    public UserAccount save(UserAccount user) {
+        return userRepository.save(user);
     }
 }

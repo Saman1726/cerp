@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { User, Phone, Save, Loader2, CheckCircle2, XCircle, Upload } from 'lucide-react';
+import { User, Save, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { PageHeader } from '@cerp/core-web/shell';
 import { Input } from '@cerp/core-web/components/ui/input';
 import { Label } from '@cerp/core-web/components/ui/label';
 import { Button } from '@cerp/core-web/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@cerp/core-web/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@cerp/core-web/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@cerp/core-web/components/ui/avatar';
 import { Separator } from '@cerp/core-web/components/ui/separator';
 import type { UserProfileData } from './actions';
 import { getUserProfile, updateUserProfile } from './actions';
@@ -18,11 +18,9 @@ export default function UserProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [saveMessage, setSaveMessage] = useState('');
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
-    phone: '',
   });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -37,7 +35,6 @@ export default function UserProfilePage() {
           setProfile(p);
           setFormData({
             name: p.name || '',
-            phone: p.phone || '',
           });
         } else {
           setSaveStatus('error');
@@ -104,51 +101,6 @@ export default function UserProfilePage() {
       setSaveMessage('An unexpected error occurred');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploadingAvatar(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const token = (await import('next/headers')).cookies().then(c => c.get('session_token')?.value);
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_CERP_API_URL || 'http://localhost:8080'}/api/user/avatar`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to upload avatar');
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        setProfile((prev) => prev ? { ...prev, avatarUrl: result.data?.url } : null);
-        setSaveStatus('success');
-        setSaveMessage('Avatar updated successfully');
-        setTimeout(() => {
-          setSaveStatus('idle');
-          setSaveMessage('');
-        }, 3000);
-      }
-    } catch {
-      setSaveStatus('error');
-      setSaveMessage('Failed to upload avatar');
-    } finally {
-      setUploadingAvatar(false);
     }
   };
 
@@ -227,22 +179,6 @@ export default function UserProfilePage() {
                   <p className="text-sm text-destructive">{formErrors.name}</p>
                 )}
               </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Phone
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+1 (555) 000-0000"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                />
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -250,30 +186,36 @@ export default function UserProfilePage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Profile Photo</CardTitle>
+              <CardTitle>Account Info</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-4">
               <Avatar className="h-24 w-24">
-                <AvatarImage src={profile?.avatarUrl ?? undefined} alt={profile?.name ?? ''} />
-                <AvatarFallback>{profile ? getInitials(profile.name) : 'U'}</AvatarFallback>
+                <AvatarFallback className="text-2xl">{profile ? getInitials(profile.name) : 'U'}</AvatarFallback>
               </Avatar>
 
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  onChange={handleAvatarUpload}
-                  disabled={uploadingAvatar}
-                />
-                <Button type="button" variant="outline" size="sm" disabled={uploadingAvatar}>
-                  {uploadingAvatar ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  {uploadingAvatar ? 'Uploading...' : 'Upload'}
-                </Button>
+              <Separator className="w-full" />
+
+              <div className="space-y-2 text-sm w-full">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status:</span>
+                  <span>{profile?.status ?? 'active'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Created:</span>
+                  <span>
+                    {profile?.createdAt
+                      ? new Date(profile.createdAt).toLocaleDateString()
+                      : '—'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last updated:</span>
+                  <span>
+                    {profile?.updatedAt
+                      ? new Date(profile.updatedAt).toLocaleDateString()
+                      : '—'}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
