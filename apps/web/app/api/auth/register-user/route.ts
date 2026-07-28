@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
 
 interface UserRegistrationRequest {
   username: string;
@@ -46,10 +47,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const identityServiceUrl = process.env.IDENTITY_SERVICE_URL || 'http://localhost:8090';
-
     // Step 1: Check if user with this email already exists
-    const existingUsersRes = await fetch(`${identityServiceUrl}/users`, {
+    const existingUsersRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
       method: 'GET',
     });
 
@@ -74,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       region: '',
     };
 
-    const tenantRes = await fetch(`${identityServiceUrl}/tenants`, {
+    const tenantRes = await fetch(`${IDENTITY_SERVICE_URL}/tenants`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tenantPayload),
@@ -98,7 +97,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         password,
       };
 
-      const userRes = await fetch(`${identityServiceUrl}/users`, {
+      const userRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userPayload),
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (!userRes.ok) {
         const errorData = await userRes.json().catch(() => ({}));
         // Clean up tenant if user creation fails
-        await fetch(`${identityServiceUrl}/tenants/${tenant.id}`, {
+        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
           method: 'DELETE',
         }).catch(() => null);
         return NextResponse.json(
@@ -129,7 +128,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           },
         };
 
-        const membershipRes = await fetch(`${identityServiceUrl}/memberships`, {
+        const membershipRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(membershipPayload),
@@ -138,10 +137,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (!membershipRes.ok) {
           const errorData = await membershipRes.json().catch(() => ({}));
           // Clean up user and tenant if membership creation fails
-          await fetch(`${identityServiceUrl}/users/${user.id}`, {
+          await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
             method: 'DELETE',
           }).catch(() => null);
-          await fetch(`${identityServiceUrl}/tenants/${tenant.id}`, {
+          await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
             method: 'DELETE',
           }).catch(() => null);
           return NextResponse.json(
@@ -161,10 +160,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           { status: 201 }
         );
       } catch (error) {
-        await fetch(`${identityServiceUrl}/users/${user.id}`, {
+        await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
           method: 'DELETE',
         }).catch(() => null);
-        await fetch(`${identityServiceUrl}/tenants/${tenant.id}`, {
+        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
           method: 'DELETE',
         }).catch(() => null);
         throw error;

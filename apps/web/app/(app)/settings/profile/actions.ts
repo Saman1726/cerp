@@ -1,6 +1,7 @@
 'use server';
 
 import { cookies } from 'next/headers';
+import { IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -29,9 +30,9 @@ export async function getUserProfile(): Promise<ApiResponse<UserProfileData>> {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call Identity Service directly on port 8090
+    // Call Identity Service
     const response = await fetch(
-      `${process.env.IDENTITY_SERVICE_URL || 'http://localhost:8090'}/users/profile`,
+      `${IDENTITY_SERVICE_URL}/users/profile`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -66,9 +67,9 @@ export async function updateUserProfile(data: {
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Call Identity Service directly on port 8090
+    // Call Identity Service
     const response = await fetch(
-      `${process.env.IDENTITY_SERVICE_URL || 'http://localhost:8090'}/users/profile`,
+      `${IDENTITY_SERVICE_URL}/users/profile`,
       {
         method: 'PATCH',
         headers: {

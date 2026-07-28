@@ -91,26 +91,18 @@ public class UserController {
     }
 
     /**
-     * Get the current user's profile by extracting user ID from Authorization header.
+     * Get the current user's profile by extracting user ID from Authorization header. Accepts either a UUID or an email address as the user identifier.
      */
     @GetMapping("/profile")
     public UserProfileResponse getProfile(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        String userId = extractUserIdFromToken(authHeader);
+        String userIdOrEmail = extractUserIdFromToken(authHeader);
 
-        if (userId == null || userId.isBlank()) {
+        if (userIdOrEmail == null || userIdOrEmail.isBlank()) {
             throw new UnauthorizedException("No authorization header");
         }
 
-        UUID userUuid;
-        try {
-            userUuid = UUID.fromString(userId);
-        } catch (IllegalArgumentException e) {
-            throw new UnauthorizedException("Invalid user ID format");
-        }
-
-        UserAccount user = userService.findById(userUuid)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userUuid));
+        UserAccount user = resolveUserByIdOrEmail(userIdOrEmail);
 
         return new UserProfileResponse(
             user.getId(),
@@ -122,27 +114,19 @@ public class UserController {
     }
 
     /**
-     * Update the current user's profile.
+     * Update the current user's profile. Accepts either a UUID or an email address as the user identifier.
      */
     @PatchMapping("/profile")
     public UserProfileResponse updateProfile(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @Valid @RequestBody UpdateProfileRequest update) {
-        String userId = extractUserIdFromToken(authHeader);
+        String userIdOrEmail = extractUserIdFromToken(authHeader);
 
-        if (userId == null || userId.isBlank()) {
+        if (userIdOrEmail == null || userIdOrEmail.isBlank()) {
             throw new UnauthorizedException("No authorization header");
         }
 
-        UUID userUuid;
-        try {
-            userUuid = UUID.fromString(userId);
-        } catch (IllegalArgumentException e) {
-            throw new UnauthorizedException("Invalid user ID format");
-        }
-
-        UserAccount user = userService.findById(userUuid)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userUuid));
+        UserAccount user = resolveUserByIdOrEmail(userIdOrEmail);
 
         if (update.name() != null && !update.name().isBlank()) {
             user.setName(update.name());
@@ -156,6 +140,21 @@ public class UserController {
             user.getStatus(),
             user.getCreatedAt(),
             user.getUpdatedAt());
+    }
+
+    /**
+     * Resolve a user by trying UUID first, then falling back to email lookup.
+     */
+    private UserAccount resolveUserByIdOrEmail(String identifier) {
+        try {
+            UUID userUuid = UUID.fromString(identifier);
+            return userService.findById(userUuid)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userUuid));
+        } catch (IllegalArgumentException e) {
+            // Not a UUID format, try as email
+            return userService.findByEmail(identifier)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + identifier));
+        }
     }
 
     /**

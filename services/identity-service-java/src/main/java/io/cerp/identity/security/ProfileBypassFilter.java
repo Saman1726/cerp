@@ -19,6 +19,10 @@ import java.util.UUID;
 /**
  * This filter intercepts /users/profile requests BEFORE Spring Security's OAuth2 JWT validation. It uses FilterRegistrationBean with a low order to run at the servlet
  * filter level before the Spring Security filter chain.
+ *
+ * The filter resolves the user ID from the token. If the token contains a UUID (e.g., from proper JWT tokens), it sets up TenantContext and passes through. If the token
+ * contains a non-UUID value (e.g., an email address from locally generated tokens), the filter passes through without setting TenantContext, allowing the UserController
+ * to handle the email-to-user resolution.
  */
 @Component
 public class ProfileBypassFilter extends OncePerRequestFilter {
@@ -51,28 +55,27 @@ public class ProfileBypassFilter extends OncePerRequestFilter {
             return;
         }
 
-        Optional<UUID> userUuid;
-        try {
-            userUuid = Optional.of(UUID.fromString(userId));
-        } catch (IllegalArgumentException e) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setHeader("Content-Type", "application/json");
-            response.getWriter().write("{\"error\":\"Invalid user ID format\"}");
-            return;
-        }
+        // Try to resolve as UUID first
+        Optional<UUID> userUuid = tryParseUuid(userId);
 
-        // Store tenant ID so the request can proceed through the filter chain
-        TenantContext.set(userUuid.get());
-
-        try {
+        if (userUuid.isPresent()) {
+            // UUID format: set tenant context and proceed
+            TenantContext.set(userUuid.get());
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                TenantContext.clear();
+            }
+        } else {
+            // Non-UUID format (e.g., email): pass through without TenantContext
+            // The UserController will handle email-to-user resolution
+            log.debug("ProfileBypassFilter: non-UUID user identifier '{}', passing through to controller", userId);
             filterChain.doFilter(request, response);
-        } finally {
-            TenantContext.clear();
         }
     }
 
     /**
-     * Extract user ID from Bearer JWT token payload without signature verification. Looks for "sub", "userId", "id", or "user_id" claims.
+     * Extract user ID from Bearer JWT token payload without signature verification. Returns the raw value (can be UUID or email) for downstream resolution.
      */
     private String extractUserIdFromToken(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -98,22 +101,15 @@ public class ProfileBypassFilter extends OncePerRequestFilter {
             // First try field names that should contain UUIDs
             for (String fieldName : new String[] { "userId", "user_id", "id" }) {
                 if (node.has(fieldName)) {
-                    String value = node.get(fieldName).asText();
-                    if (isValidUuid(value)) {
-                        return value;
-                    }
+                    return node.get(fieldName).asText();
                 }
             }
-            // Then try "sub" - only use if it's a valid UUID
+            // Then try "sub" - return as-is (can be email or UUID)
             if (node.has("sub")) {
-                String value = node.get("sub").asText();
-                if (isValidUuid(value)) {
-                    return value;
-                }
+                return node.get("sub").asText();
             }
         } catch (Exception e) {
             log.warn("extractUserIdFromToken: exception={}", e.getMessage());
-            return null;
         }
         return null;
     }
@@ -127,6 +123,17 @@ public class ProfileBypassFilter extends OncePerRequestFilter {
             return true;
         } catch (IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    private Optional<UUID> tryParseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
         }
     }
 }
