@@ -30,6 +30,8 @@ spring:
     # Use default schema "public" unless overridden
     baseline-on-migrate: true
     out-of-order: true
+    # Unique history table per service to avoid conflicts when sharing supply_db
+    table: flyway_schema_history_vendor
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}

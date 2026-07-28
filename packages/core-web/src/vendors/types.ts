@@ -7,6 +7,7 @@ export interface Vendor {
   categories: string[];
   city?: string;
   ratingAvg?: number;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

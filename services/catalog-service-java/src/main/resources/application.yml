@@ -30,6 +30,8 @@ spring:
     baseline-on-migrate: true
     validate-on-migrate: false
     out-of-order: true
+    # Unique history table per service to avoid conflicts when sharing supply_db
+    table: flyway_schema_history_catalog
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}

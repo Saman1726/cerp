@@ -115,6 +115,7 @@ services:
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
       DEV_MODE: "true"
+      IDENTITY_SERVICE_URL: http://identity-service-java:8090
     ports:
       - '8085:8085'
 

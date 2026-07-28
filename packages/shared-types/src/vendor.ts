@@ -76,6 +76,7 @@ export interface Vendor {
   categoriesLink: VendorCategoryLink[];
   city?: string;
   ratingAvg?: number;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

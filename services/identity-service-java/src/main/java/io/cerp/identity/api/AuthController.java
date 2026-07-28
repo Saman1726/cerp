@@ -74,8 +74,8 @@ public class AuthController {
 
         // Issue a simple dev token (unsigned JWT for now, will be replaced with Keycloak tokens later)
         long nowSec = System.currentTimeMillis() / 1000;
-        String accessToken = makeDevJwt(user.getEmail(), roles, tenantId, nowSec + 60L * 30L); // 30 min
-        String refreshToken = makeDevJwt(user.getEmail(), roles, tenantId, nowSec + 60L * 60L * 24L * 7L); // 7 days
+        String accessToken = makeDevJwt(user.getId().toString(), roles, tenantId, nowSec + 60L * 30L); // 30 min
+        String refreshToken = makeDevJwt(user.getId().toString(), roles, tenantId, nowSec + 60L * 60L * 24L * 7L); // 7 days
 
         return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, userInfo));
     }
