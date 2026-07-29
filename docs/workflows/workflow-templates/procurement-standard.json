@@ -1,0 +1,159 @@
+{
+  "templateId": "uuid-001",
+  "code": "PROCUREMENT_STANDARD",
+  "name": "Standard Procurement Workflow",
+  "description": "Default procurement flow for standard materials",
+  "version": 1,
+  "status": "Active",
+  "steps": [
+    {
+      "stepId": "uuid-001-1",
+      "order": 1,
+      "code": "CREATE_REQUEST",
+      "name": "Create Procurement Request",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["projectId", "materialId", "quantity", "justification"],
+      "requiredEvidence": ["cost_justification"],
+      "slaHours": 24,
+      "nextSteps": ["SUBMIT_FOR_APPROVAL"]
+    },
+    {
+      "stepId": "uuid-001-2",
+      "order": 2,
+      "code": "SUBMIT_FOR_APPROVAL",
+      "name": "Submit for Approval",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "autoForward": true,
+      "nextSteps": ["APPROVAL_REVIEW"]
+    },
+    {
+      "stepId": "uuid-001-3",
+      "order": 3,
+      "code": "APPROVAL_REVIEW",
+      "name": "Budget Approval Review",
+      "type": "approval",
+      "assigneeRole": "Finance Approver",
+      "requiredFields": ["budgetCode", "costCenter"],
+      "slaHours": 48,
+      "onApprove": ["APPROVED", "CREATE_COMMITMENT"],
+      "onReject": ["REJECTED", "RETURN_TO_REQUESTER"],
+      "nextSteps": ["APPROVED", "REJECTED"]
+    },
+    {
+      "stepId": "uuid-001-4",
+      "order": 4,
+      "code": "START_TENDER",
+      "name": "Start Tender Process",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "optional": true,
+      "slaHours": 72,
+      "nextSteps": ["TENDER_OPEN", "SKIP_TENDER"]
+    },
+    {
+      "stepId": "uuid-001-5",
+      "order": 5,
+      "code": "ISSUE_PO",
+      "name": "Issue Purchase Order",
+      "type": "action",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["vendorId", "deliveryDate", "deliveryLocation"],
+      "slaHours": 24,
+      "nextSteps": ["PO_ISSUED", "DELIVERY_SCHEDULED"]
+    },
+    {
+      "stepId": "uuid-001-6",
+      "order": 6,
+      "code": "CONFIRM_DELIVERY",
+      "name": "Confirm Delivery",
+      "type": "task",
+      "assigneeRole": "Site Engineer",
+      "requiredFields": ["confirmedQuantities", "evidence", "geotag"],
+      "slaHours": 48,
+      "nextSteps": ["DELIVERY_CONFIRMED", "DISCREPANCY_RAISED"]
+    }
+  ],
+  "conditions": [
+    {
+      "name": "high_value_approval",
+      "expression": "totalAmount > 50000",
+      "then": ["require_executive_approval", "add_legal_review"],
+      "else": "pm_approval_only"
+    },
+    {
+      "name": "critical_material",
+      "expression": "category IN ('steel', 'concrete')",
+      "then": ["require_two_quotes", "add_quality_check"],
+      "else": "standard_procurement"
+    }
+  ],
+  "compensations": [
+    {
+      "event": "RequestCancelled",
+      "actions": [
+        {
+          "service": "Financials",
+          "action": "ReleaseBudgetLock",
+          "parameters": {
+            "requestId": "{{requestId}}"
+          }
+        },
+        {
+          "service": "Workflow",
+          "action": "CancelTasks",
+          "parameters": {
+            "requestId": "{{requestId}}"
+          }
+        }
+      ]
+    },
+    {
+      "event": "POCancelled",
+      "actions": [
+        {
+          "service": "Financials",
+          "action": "ReleaseCommitment",
+          "parameters": {
+            "poId": "{{poId}}"
+          }
+        },
+        {
+          "service": "Marketplace",
+          "action": "RefundCredits",
+          "parameters": {
+            "vendorId": "{{vendorId}}"
+          }
+        }
+      ]
+    }
+  ],
+  "kpis": [
+    {
+      "code": "PROCUREMENT_CYCLE_TIME",
+      "measurement": "median(POApproved.timestamp - ProcurementRequestCreated.timestamp)",
+      "steps": [1, 2, 3],
+      "target": "-40% by month 6",
+      "baseline": "14 days"
+    },
+    {
+      "code": "ON_TIME_DELIVERY_RATE",
+      "measurement": "count(DeliveryConfirmed within 24h of ETA) / total deliveries",
+      "steps": [5, 6],
+      "target": "+30% by month 6",
+      "baseline": "75%"
+    }
+  ],
+  "metadata": {
+    "createdBy": "uuid-admin-001",
+    "createdAt": "2026-01-15T00:00:00Z",
+    "updatedAt": "2026-01-15T00:00:00Z",
+    "applicableCategories": ["steel", "concrete", "electrical", "plumbing"],
+    "applicableRegions": ["EMEA", "APAC", "AMERICAS"],
+    "applicableAmountRange": {
+      "min": 0,
+      "max": 100000
+    }
+  }
+}

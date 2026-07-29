@@ -1,5 +1,7 @@
 package io.cerp.workflow.event;
 
+import java.util.Map;
+
 /**
  * Domain event emitted when a draft workflow template is activated. Status transition: DRAFT → ACTIVE.
  */
@@ -9,7 +11,17 @@ public class WorkflowTemplateActivated extends WorkflowEvent {
     private final Integer templateVersion;
 
     public WorkflowTemplateActivated(String code, Integer templateVersion) {
-        super("WorkflowTemplateActivated", code);
+        super(WorkflowEvent.builder()
+            .eventType("WorkflowTemplateActivated")
+            .sagaType("WorkflowTemplate")
+            .sagaId(null)
+            .aggregateId(null)
+            .aggregateType("WorkflowTemplate")
+            .tenantId(null)
+            .userId(null)
+            .data(Map.of(
+                "code", code,
+                "templateVersion", templateVersion)));
         this.code = code;
         this.templateVersion = templateVersion;
     }

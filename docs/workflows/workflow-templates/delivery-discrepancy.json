@@ -1,0 +1,130 @@
+{
+  "templateId": "uuid-002",
+  "code": "DELIVERY_DISCREPANCY",
+  "name": "Material Delivery and Discrepancy Resolution",
+  "description": "Workflow for receiving materials and handling discrepancies",
+  "version": 1,
+  "status": "Active",
+  "steps": [
+    {
+      "stepId": "uuid-002-1",
+      "order": 1,
+      "code": "SCHEDULE_DELIVERY",
+      "name": "Schedule Delivery",
+      "type": "task",
+      "assigneeRole": "Vendor",
+      "requiredFields": ["poId", "eta", "asn"],
+      "slaHours": 24,
+      "nextSteps": ["DELIVERY_SCHEDULED"]
+    },
+    {
+      "stepId": "uuid-002-2",
+      "order": 2,
+      "code": "DISPATCH_SHIPMENT",
+      "name": "Dispatch Shipment",
+      "type": "task",
+      "assigneeRole": "Vendor",
+      "slaHours": 1,
+      "nextSteps": ["SHIPMENT_DISPATCHED"]
+    },
+    {
+      "stepId": "uuid-002-3",
+      "order": 3,
+      "code": "CONFIRM_RECEIPT",
+      "name": "Confirm Site Receipt",
+      "type": "task",
+      "assigneeRole": "Site Engineer",
+      "requiredFields": ["confirmedQuantities", "photos", "signature", "geotag"],
+      "requiredEvidence": ["photos", "signature"],
+      "slaHours": 48,
+      "nextSteps": ["DELIVERY_CONFIRMED", "DISCREPANCY_RAISED"]
+    },
+    {
+      "stepId": "uuid-002-4",
+      "order": 4,
+      "code": "UPDATE_INVENTORY",
+      "name": "Update Inventory",
+      "type": "action",
+      "assigneeRole": "System",
+      "autoForward": true,
+      "nextSteps": ["STOCK_UPDATED"]
+    },
+    {
+      "stepId": "uuid-002-5",
+      "order": 5,
+      "code": "RESOLVE_DISCREPANCY",
+      "name": "Resolve Discrepancy",
+      "type": "approval",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["discrepancyType", "resolution", "creditNoteAmount"],
+      "slaHours": 120,
+      "onApprove": ["DISCREPANCY_RESOLVED", "ISSUE_CREDIT_NOTE"],
+      "onReject": ["DISCREPANCY_ESCALATED"],
+      "nextSteps": ["DISCREPANCY_RESOLVED", "DISCREPANCY_ESCALATED"]
+    }
+  ],
+  "conditions": [
+    {
+      "name": "shortage_threshold",
+      "expression": "discrepancyType == 'SHORT' AND shortageAmount > 10%",
+      "then": ["require_vendor_response", "notify_purchasing_manager"],
+      "else": "standard_resolution"
+    },
+    {
+      "name": "damage_severity",
+      "expression": "damagePercentage > 50",
+      "then": ["full_return", "emergency_reorder"],
+      "else": "partial_credit"
+    }
+  ],
+  "compensations": [
+    {
+      "event": "DiscrepancyResolved",
+      "actions": [
+        {
+          "service": "Financials",
+          "action": "IssueCreditNote",
+          "parameters": {
+            "deliveryId": "{{deliveryId}}",
+            "amount": "{{creditNoteAmount}}"
+          }
+        }
+      ]
+    },
+    {
+      "event": "DeliveryCancelled",
+      "actions": [
+        {
+          "service": "Procurement",
+          "action": "CancelDeliveryOrder",
+          "parameters": {
+            "deliveryId": "{{deliveryId}}"
+          }
+        }
+      ]
+    }
+  ],
+  "kpis": [
+    {
+      "code": "ON_TIME_DELIVERY_CONFIRMATION",
+      "measurement": "count(DeliveryConfirmed within 24h of ETA) / total deliveries",
+      "steps": [3],
+      "target": "+30% by month 6",
+      "baseline": "75%"
+    },
+    {
+      "code": "DISCREPANCY_RESOLUTION_TIME",
+      "measurement": "median(DiscrepancyResolved.timestamp - DiscrepancyRaised.timestamp)",
+      "steps": [5],
+      "target": "<5 days",
+      "baseline": "8 days"
+    }
+  ],
+  "metadata": {
+    "createdBy": "uuid-admin-001",
+    "createdAt": "2026-01-15T00:00:00Z",
+    "updatedAt": "2026-01-15T00:00:00Z",
+    "applicableCategories": ["all"],
+    "applicableRegions": ["EMEA", "APAC", "AMERICAS"]
+  }
+}

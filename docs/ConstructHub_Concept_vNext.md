@@ -305,75 +305,937 @@ Why
 
 How
 
-- Orchestrate via sagas (process managers) and event-driven interactions. Each step emits events with timestamps for measurement. Mobile-first steps include offline support and media evidence.
+- Orchestrate via orchestrator-based sagas for complex cross-context workflows and event choreography for simpler flows. Each step emits events with timestamps for measurement. Mobile-first steps include offline support and media evidence.
 
-Key workflows (actors, steps, events, SLAs)
+### 7.1 Orchestration Architecture
 
-1. Procurement → Delivery → Financials
+#### 7.1.1 Saga Pattern Overview
 
-- Actors: Project Manager, Approvers, Vendor, Site Engineer, Finance.
-- Preconditions: Budget available; materials defined in catalog; vendor is onboarded.
-- Steps
-  1. Create Request: Command ProcurementRequest.Create -> Event ProcurementRequestCreated.
-  2. Approve: Workflow task -> RequestApproved.
-  3. Tender/Bid (optional): TenderOpened -> BidSubmitted* -> TenderAwarded (links AwardedBid to request).
-  4. PO Issue: PurchaseOrder.Issue -> POIssued.
-  5. Shipment/ASN: Delivery.Prepare -> ShipmentDispatched/ASNCreated.
-  6. Site Receipt: Delivery.Confirm (mobile, photos/signature) -> DeliveryConfirmed; discrepancies -> DiscrepancyRaised.
-  7. Inventory Update: StockReceived/StockAdjusted.
-  8. Financial Update: CommitmentRecorded; InvoiceIssued -> InvoiceApproved.
-  9. Commission: CommissionAccrued upon DeliveryConfirmed (if marketplace category and pre-cap); cap logic applied per project/category.
-- Postconditions: Inventory and commitments up to date; audit trail complete; exceptions queued.
-- SLAs/Controls: Approvals within 48h; delivery confirmation within 24h of ETA; auto-escalations; tamper-evident evidence hashes.
+**Decision**: Use **orchestrator-based sagas** for complex cross-context workflows (Procurement, Delivery, Financials) and **event choreography** for simpler flows (User Assignment).
 
-2. Material Delivery and Discrepancy Resolution
+Rationale:
 
-- Actors: Vendor, Site Engineer, PM, Finance.
-- Steps
-  1. Schedule: DeliveryScheduled.
-  2. Confirm: DeliveryConfirmed (capturing quantities, photos, geotag/time).
-  3. Discrepancy: DiscrepancyRaised (short/over/damage) -> TaskCreated for resolution.
-  4. Resolve: DiscrepancyResolved -> StockAdjusted; optional CreditNoteIssued.
-- SLAs: Discrepancies triaged <24h; resolved <5 business days.
+- Complex workflows have multiple branches, compensations, and SLA gates → orchestrator provides central visibility
+- Simple flows are linear and self-contained → choreography is lighter weight
+- All sagas use the **transactional outbox pattern** for event publishing
 
-3. Marketplace Bidding (Materials/Services)
+```mermaid
+graph TB
+    subgraph Choreography["Event Choreography (Simple Flows)"]
+        C1[User Assignment] -->|MembershipCreated| C2[Auth Projection]
+        C2 -->|ClaimsUpdated| C3[Session Tokens]
+    end
 
-- Actors: PM, Vendors/Subcontractors.
-- Steps
-  1. Tender Creation: TenderOpened (open/invited; category/region; bid units for services).
-  2. Participation: CreditLedgerDebited when supplier places BidSubmitted; GoldenBid flag for premium visibility.
-  3. Evaluation/Award: TenderEvaluated -> TenderAwarded; non-awarded credit refunds if constructor cancels.
-  4. Logistics Link: AwardedBidLinked to PO; commission only on DeliveryConfirmed or MilestoneVerified.
-- SLAs: Tender open period configurable; evaluation target <7 days.
+    subgraph Orchestration["Orchestrator-Based Saga (Complex Flows)"]
+        O1[Saga Orchestrator<br/>Workflow Service] -->|Command| O2[Procurement Service]
+        O1 -->|Command| O3[Delivery Service]
+        O1 -->|Command| O4[Financials Service]
+        O2 -->|Event| O1
+        O3 -->|Event| O1
+        O4 -->|Event| O1
+        O1 -->|Compensate| O2
+        O1 -->|Compensate| O3
+    end
 
-4. Subcontractor Progress → Payment
+    C1 -.->|Simpler| "Phase 1: Identity, User Assignment"
+    O1 -.->|Complex| "Phase 2-3: Procurement, Delivery, Financials"
+```
 
-- Actors: Subcontractor PM, Site Engineer, Finance.
-- Steps
-  1. Claim: ProgressClaimSubmitted with measurements/evidence.
-  2. Verify: MilestoneVerified by site; discrepancies -> ReworkRequested.
-  3. Invoice: InvoiceIssued based on verified quantities and agreed rates -> InvoiceApproved.
-- SLAs: Verification <3 days; payment per contract terms; variation orders <5 days.
+#### 7.1.2 State Machine Design Principles
 
-5. User Assignment and Access Provisioning
+Each workflow aggregate has an explicit state machine with invariants enforced at the command handler level:
 
-- Actors: Org Admin, Project Admin.
-- Steps
-  1. Membership: MembershipCreated; assign RoleAssigned with project/subproject scope.
-  2. Permissions: Authorization projections updated; session tokens reflect new claims.
-- Controls: Least privilege by default; periodic access reviews.
+| Aggregate          | States                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| ProcurementRequest | Draft → PendingApproval → Approved → Tendered → PO_Issued → Partially_Delivered → Fully_Delivered → Closed → Cancelled |
+| PurchaseOrder      | Draft → Approved → Issued → In_Fulfillment → Partially_Received → Fully_Received → Closed → Cancelled                  |
+| Delivery           | Scheduled → In_Transit → Arrived → Being_Unloaded → Confirmed → Discrepancy_Raised → Resolved → Closed                 |
+| Tender             | Draft → Open → Under_Evaluation → Awarded → Closed → Cancelled                                                         |
+| ProgressClaim      | Draft → Submitted → Under_Review → Verified → Invoice_Issued → Approved → Paid → Rejected                              |
 
-6. Document Lifecycle
+**Invariant Rules**:
 
-- Actors: Any role, Reviewers.
-- Steps
-  1. Upload: DocumentUploaded with metadata; virus scan and content hashing.
-  2. Review/Approve: ReviewRequested -> ReviewApproved/Rejected; new versions -> DocumentVersioned.
-  3. Linkage: Documents linked to entities (request, PO, delivery, claim) for full traceability.
-  4. Retention: RetentionApplied per policy; legal hold supported.
-- SLAs: Review within configured windows; immutable audit of all actions.
-- Edge cases and exceptions: superseded drawings auto-archived with cross-links; emergency releases allowed with post-facto review; redaction workflows for sensitive PII.
-- Automation hooks: OCR/AI extraction populates metadata; automatic reviewer assignment by discipline; reminders/escalations on SLA breach.
+- ProcurementRequest: Cannot issue PO unless status is Approved or Tendered
+- PurchaseOrder: Cannot receive delivery unless status is In_Fulfillment or Partially_Received
+- Delivery: Cannot confirm without evidence (photos/signature) unless auto-confirm SLA exceeded
+- Tender: Cannot award unless status is Under_Evaluation and evaluation window has closed
+- ProgressClaim: Cannot invoice unless status is Verified
+
+#### 7.1.3 Command Handler Contracts
+
+Standard command contract format for each step:
+
+```
+Command: {Aggregate}.{Action}
+Handler Service: {service-name}
+Permissions: {role requirement}
+Validation: {preconditions}
+Effects: {state changes, events emitted}
+Idempotency Key: {optional}
+SLA: {target response time}
+```
+
+#### 7.1.4 Error Handling and Compensation Strategies
+
+| Error Type                   | Strategy                             | Example                           |
+| ---------------------------- | ------------------------------------ | --------------------------------- |
+| Validation failure           | Reject with error message            | Invalid quantity, missing budget  |
+| External service unavailable | Retry with backoff + circuit breaker | ERP sync fails                    |
+| Business invariant violation | Compensating transaction             | PO issued but vendor not approved |
+| SLA breach                   | Escalation task + notification       | Approval >48h                     |
+| Manual intervention required | Dead-letter queue + operator task    | Discrepancy >5 days unresolved    |
+
+**Retry Policy**: Exponential backoff with jitter, max 5 retries, 1s → 2s → 4s → 8s → 16s intervals.
+
+**Circuit Breaker**: Open after 5 consecutive failures, half-open after 30s timeout, reset on successful call.
+
+#### 7.1.5 KPI Measurement Points
+
+Map each workflow step to Section 3 KPIs:
+
+| Workflow Step                               | KPI Metric                         | Data Source      |
+| ------------------------------------------- | ---------------------------------- | ---------------- |
+| ProcurementRequestCreated → RequestApproved | Procurement Cycle Time             | Event timestamps |
+| DeliveryScheduled → DeliveryConfirmed       | On-time Delivery Confirmation Rate | Event timestamps |
+| TenderOpened → TenderAwarded                | Time-to-Award                      | Event timestamps |
+| ProgressClaimSubmitted → MilestoneVerified  | Verification Lead Time             | Event timestamps |
+
+**Measurement Pattern**: Each event includes `occurredAt` timestamp. KPI projections compute percentiles from event streams using windowed aggregations (hourly, daily, weekly).
+
+#### 7.1.6 Cross-Workflow Integration
+
+Integration points between workflows:
+
+```
+Procurement Workflow ──POIssued──▶ Delivery Workflow
+Procurement Workflow ──POIssued──▶ Financials (CommitmentRecorded)
+Delivery Workflow ──DeliveryConfirmed──▶ Financials (InvoiceIssued)
+Delivery Workflow ──DeliveryConfirmed──▶ Marketplace (CommissionAccrued)
+Delivery Workflow ──DiscrepancyRaised──▶ Dispute Resolution Workflow
+Progress Workflow ──MilestoneVerified──▶ Financials (InvoiceIssued)
+```
+
+**Correlation**: All cross-workflow events share the same `correlationId` to trace end-to-end flow across service boundaries.
+
+---
+
+### 7.2 Procurement → Delivery → Financials Workflow
+
+**Purpose**: End-to-end procurement lifecycle from material request through delivery confirmation and financial settlement.
+
+**Actors**: Project Manager (creates request, issues PO), Approvers/Finance (approves budget), Vendor (fulfills order), Site Engineer (confirms delivery), Finance (processes invoice).
+
+**Preconditions**: Budget available; materials defined in catalog; vendor is onboarded and approved.
+
+**Postconditions**: Inventory and commitments up to date; audit trail complete; exceptions queued.
+
+**Duration**: Typically 2–14 business days depending on material availability and approval chain.
+
+#### 7.2.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant PM as Project Manager
+    participant GW as API Gateway
+    participant PS as Project Service
+    participant Proc as Procurement Service
+    participant WF as Workflow Service
+    participant Fin as Financials Service
+    participant Mktp as Marketplace Service
+    participant Del as Delivery Service
+    participant Inv as Inventory Service
+
+    PM->>GW: POST /procurement-requests
+    GW->>PS: VerifyProjectAccess(tenantId, projectId)
+    PS-->>GW: OK
+    GW->>Proc: CreateProcurementRequest
+    Proc->>Proc: Validate(BudgetAvailable, CatalogItemExists)
+    Proc->>Proc: Emit ProcurementRequestCreated
+    Proc-->>GW: 201 Created({requestId, status: "Draft"})
+
+    PM->>GW: POST /procurement-requests/{id}/submit
+    GW->>Proc: SubmitForApproval(requestId)
+    Proc->>Proc: Validate(AllLineItemsPopulated, EvidenceAttached)
+    Proc->>WF: CreateApprovalTask(requestId, approverRole)
+    Proc->>Proc: Emit ProcurementRequestSubmittedForApproval
+    Proc-->>GW: 200 OK
+
+    Appr->>GW: POST /workflow/tasks/{taskId}/approve
+    GW->>WF: ApproveTask(taskId, userId)
+    WF->>WF: Validate(Role, SLA)
+    WF->>Proc: ExecuteApproval(requestId, "Approved")
+    Proc->>Proc: Emit RequestApproved
+    Proc->>Fin: CommitmentRecorded(requestId, amount)
+    Fin->>Fin: LockBudget(requestId, amount)
+    Fin-->>Proc: BudgetLocked
+    Proc-->>WF: ApprovalComplete
+    WF-->>GW: 200 OK
+    GW-->>Appr: {status: "Approved"}
+
+    Note over Proc,Fin: Optional: Tender/Bid phase
+
+    PM->>GW: POST /procurement-requests/{id}/issue-po
+    GW->>Proc: IssuePO(requestId)
+    Proc->>Proc: Validate(Approved, VendorApproved)
+    Proc->>Mktp: CheckVendorApproval(vendorId)
+    Mktp-->>Proc: OK
+    Proc->>Proc: Emit POIssued
+    Proc->>Del: CreateDeliveryOrder(requestId, poId)
+    Del->>Del: Emit DeliveryScheduled
+    Proc-->>GW: 201 Created({poId, status: "Issued"})
+
+    Vendor->>GW: POST /deliveries/{deliveryId}/dispatch
+    GW->>Del: DispatchDelivery(deliveryId)
+    Del->>Del: Emit ShipmentDispatched
+    Del-->>GW: 200 OK
+
+    SiteEng->>GW: POST /deliveries/{deliveryId}/confirm (mobile)
+    GW->>Del: ConfirmDelivery(deliveryId, evidence)
+    Del->>Del: Validate(ETA, Quantity)
+    Del->>Del: Emit DeliveryConfirmed
+    Del->>Inv: StockReceived(deliveryId, quantities)
+    Inv->>Inv: UpdateStock(deliveryId, quantities)
+    Inv-->>Del: StockUpdated
+
+    alt Discrepancy Detected
+        Del->>Del: Emit DiscrepancyRaised
+        Del->>WF: CreateDiscrepancyTask(deliveryId)
+        Note over Del,WF: Discrepancy Resolution Flow
+    end
+
+    Del->>Fin: InvoiceIssued(deliveryId, confirmedAmount)
+    Fin->>Fin: Validate(POMatch, QuantityMatch)
+    Fin->>Fin: Emit InvoiceApproved
+
+    alt Marketplace Category
+        Del->>Mktp: CommissionAccrued(poId, amount)
+        Mktp->>Mktp: CheckCommissionCap(projectId, category)
+        Mktp-->>Del: CommissionApplied
+    end
+
+    Del-->>GW: 200 OK({deliveryId, status: "Confirmed"})
+    GW-->>SiteEng: {confirmation, quantities, evidenceUrl}
+```
+
+#### 7.2.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> PendingApproval: SubmitForApproval
+    PendingApproval --> Approved: ApprovalComplete
+    PendingApproval --> Draft: ApprovalRejected
+    Approved --> Tendered: StartTender
+    Tendered --> PO_Issued: AwardAndIssuePO
+    PO_Issued --> In_Fulfillment: VendorAcknowledges
+    In_Fulfillment --> Partially_Received: ReceivePartialDelivery
+    Partially_Received --> In_Fulfillment: ContinueFulfillment
+    Partially_Received --> Fully_Delivered: ReceiveRemaining
+    In_Fulfillment --> Fully_Received: ReceiveAll
+    Fully_Delivered --> Closed: Close
+    [*] --> Cancelled: Cancel
+    Cancelled --> [*]
+
+    note right of Draft
+        Step 1: Create Request
+        Handler: ProcurementService
+        SLA: 24h to submit
+    end note
+
+    note right of PendingApproval
+        Step 2: Approval Review
+        Handler: WorkflowService
+        SLA: 48h
+    end note
+
+    note right of PO_Issued
+        Step 4: PO to Vendor
+        Handler: ProcurementService
+    end note
+
+    note right of Fully_Delivered
+        Step 6-8: Delivery + Finance
+        Handler: Delivery + Financials
+    end note
+```
+
+#### 7.2.3 Step-by-Step Command/Event Specification
+
+| Step | Command                                | Handler Service     | Preconditions                                                  | Events Emitted                                              | Downstream Effects                                    |
+| ---- | -------------------------------------- | ------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------- |
+| 1    | `ProcurementRequest.Create`            | Procurement Service | Project exists, budget available, materials in catalog         | `ProcurementRequestCreated`                                 | Create approval task, lock budget placeholder         |
+| 2    | `ProcurementRequest.SubmitForApproval` | Procurement Service | All line items populated, evidence attached                    | `ProcurementRequestSubmittedForApproval`                    | Create approval workflow task                         |
+| 3    | `ApprovalTask.Approve` / `Reject`      | Workflow Service    | User has Approval role, SLA not breached                       | `RequestApproved` / `RequestRejected`                       | Release/rollback budget lock, create commitment       |
+| 4    | `ProcurementRequest.StartTender`       | Procurement Service | Request is Approved, materials require competitive bidding     | `TenderOpened`                                              | Create tender in Marketplace Service                  |
+| 5    | `Tender.Award`                         | Procurement Service | Tender is Under_Evaluation, award decision made                | `TenderAwarded`, `AwardedBidLinked`                         | Link selected bid to request                          |
+| 6    | `PurchaseOrder.Issue`                  | Procurement Service | Request is Approved or Tendered, vendor is approved            | `POIssued`                                                  | Create delivery order, emit commitment recorded       |
+| 7    | `Delivery.Prepare` / `Dispatch`        | Delivery Service    | PO exists, vendor acknowledges                                 | `DeliveryScheduled`, `ShipmentDispatched`, `ASNCreated`     | Notify site engineer of ETA                           |
+| 8    | `Delivery.Confirm` (mobile)            | Delivery Service    | Delivery is Scheduled or In_Transit, evidence provided         | `DeliveryConfirmed`, `DiscrepancyRaised` (if any)           | Update inventory, notify financials                   |
+| 9    | `Financials.ValidateInvoice`           | Financials Service  | DeliveryConfirmed exists, PO exists                            | `InvoiceValidated`, `InvoiceApproved`                       | Release commitment to actual, update budget vs actual |
+| 10   | `Marketplace.AccrueCommission`         | Marketplace Service | DeliveryConfirmed, PO is marketplace category, cap not reached | `CommissionAccrued`, `CommissionCapReached` (if applicable) | Update commission ledger, notify vendor account       |
+
+#### 7.2.4 Error Scenarios and Compensation Flows
+
+| Scenario                              | Trigger                                     | Detection                                               | Response                               | Compensation                                                           |
+| ------------------------------------- | ------------------------------------------- | ------------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
+| Budget exceeded                       | Command validation fails                    | BudgetService.Check() returns insufficient              | Reject with error code BUDGET_001      | None (no state change)                                                 |
+| Approval timeout                      | SLA breach detected by scheduler            | WorkflowService.SLADetected()                           | Escalate to PM, notify Finance         | None (workflow remains pending)                                        |
+| PO cancelled after POIssued           | `PurchaseOrder.Cancel` command              | Business rule check                                     | Emit `POCancelled`                     | Release commitment, refund credits if bidding started, cancel delivery |
+| Delivery not confirmed within 48h     | Scheduler checks DeliveryScheduled + 48h    | NotificationService.SLADetected()                       | Create discrepancy task, notify vendor | None                                                                   |
+| Vendor not approved at PO time        | `PurchaseOrder.Issue` validation            | MarketplaceService.CheckVendorStatus() returns inactive | Reject with VENDOR_001                 | None                                                                   |
+| Invoice mismatch (PO vs delivery qty) | `Financials.ValidateInvoice`                | 3-way match fails                                       | Reject with INVOICE_MISMATCH_001       | Queue for manual resolution                                            |
+| Discrepancy unresolved >5 days        | Scheduler checks DiscrepancyRaised + 5 days | WorkflowService.SLADetected()                           | Escalate to PM, freeze related payment | Create manual adjustment task                                          |
+
+#### 7.2.5 KPI Mapping
+
+| KPI (from Section 3)          | Measurement Formula                                                              | Workflow Steps | Target          |
+| ----------------------------- | -------------------------------------------------------------------------------- | -------------- | --------------- |
+| Procurement Cycle Time        | median(`POIssued.occurredAt` - `ProcurementRequestCreated.occurredAt`)           | Steps 1–6      | -40% by month 6 |
+| On-time Delivery Confirmation | count(`DeliveryConfirmed` within 24h of `ShipmentDispatched.occurredAt`) / total | Steps 7–8      | +30% by month 6 |
+| Approval SLA Compliance       | count(`RequestApproved` within 48h of submission) / total submissions            | Step 3         | ≥90%            |
+| Invoice Match Rate            | count(auto-approved invoices) / total invoices                                   | Step 9         | ≥85%            |
+| Commission Accuracy           | count(correct commission calculations) / total commissions                       | Step 10        | ≥99%            |
+
+---
+
+### 7.3 Material Delivery and Discrepancy Resolution Workflow
+
+**Purpose**: Manage material delivery from scheduling through site receipt with explicit discrepancy handling.
+
+**Actors**: Vendor (dispatches, provides ASN), Site Engineer (confirms receipt, raises discrepancies), PM (resolves disputes), Finance (handles credit notes).
+
+**Preconditions**: PurchaseOrder exists with Issued status; DeliveryScheduled event emitted.
+
+**Postconditions**: Inventory reflects confirmed quantities; discrepancies resolved or queued; financials updated with confirmed amounts.
+
+**Duration**: Delivery confirmation within 24h; discrepancy resolution within 5 business days.
+
+#### 7.3.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Vendor
+    participant GW as API Gateway
+    participant Del as Delivery Service
+    participant Inv as Inventory Service
+    participant WF as Workflow Service
+    participant Fin as Financials Service
+
+    Vendor->>GW: POST /deliveries/{id}/schedule
+    GW->>Del: ScheduleDelivery(deliveryId, eta, asn)
+    Del->>Del: Validate(POExists, VendorApproved)
+    Del->>Del: Emit DeliveryScheduled
+    Del-->>GW: 201 Created
+
+    Vendor->>GW: POST /deliveries/{id}/dispatch
+    GW->>Del: DispatchDelivery(deliveryId)
+    Del->>Del: Emit ShipmentDispatched
+    Del-->>GW: 200 OK
+
+    SiteEng->>GW: POST /deliveries/{id}/confirm (mobile)
+    GW->>Del: ConfirmDelivery(deliveryId, quantities, photos, signature, geotag)
+    Del->>Del: Validate(POExists, ETAWithinWindow)
+    Del->>Del: Emit DeliveryConfirmed
+
+    alt Quantity/Quality Discrepancy
+        Del->>Del: Emit DiscrepancyRaised(shortage=qty, damage=true, type=SHORT/DAMAGE)
+        Del->>WF: CreateDiscrepancyTask(deliveryId, vendorId, discrepancyType)
+        WF->>WF: AssignTo(PM, escalationSLA=5days)
+        WF-->>Del: TaskCreated(taskId)
+        Note over Del,Fin: Discrepancy Resolution Phase
+    else No Discrepancy
+        Note over Del: Clean delivery
+    end
+
+    Del->>Inv: StockReceived(deliveryId, confirmedQuantities)
+    Inv->>Inv: UpdateStockLedger(deliveryId, quantities)
+    Inv->>Inv: Emit StockReceived
+    Inv-->>Del: StockUpdated
+
+    alt Credit Note Needed
+        Del->>Fin: CreditNoteRequested(deliveryId, discrepancyAmount)
+        Fin->>Fin: ValidateDiscrepancy(deliveryId)
+        Fin->>Fin: Emit CreditNoteIssued
+        Fin-->>Del: CreditNoteApplied
+    end
+
+    Del->>Del: Emit DiscrepancyResolved
+    Del-->>GW: 200 OK({deliveryId, status: "Confirmed"})
+    GW-->>SiteEng: {confirmation, evidenceUrl, reference}
+```
+
+#### 7.3.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Scheduled
+    Scheduled --> In_Transit: ShipmentDispatched
+    In_Transit --> Arrived: VehicleArrivedSite
+    Arrived --> Being_Unloaded: UnloadingStarted
+    Being_Unloaded --> Confirmed: DeliveryConfirmed
+    Being_Unloaded --> Discrepancy_Raised: DiscrepancyDetected
+    Discrepancy_Raised --> Resolved: DiscrepancyResolved
+    Discrepancy_Raised --> Confirmed: PartialAcceptance
+    Resolved --> Confirmed: ResolutionComplete
+    Confirmed --> Closed: FinancialsSettled
+    [*] --> Cancelled: CancelBeforeArrival
+    Cancelled --> [*]
+
+    note right of Discrepancy_Raised
+        SLA: 24h triage
+            5 days resolution
+        Types: SHORT, OVER, DAMAGE, WRONG_ITEM
+    end note
+```
+
+#### 7.3.3 Step Specification
+
+| Step | Command                      | Handler Service    | Preconditions                            | Events Emitted                           | Downstream Effects                            |
+| ---- | ---------------------------- | ------------------ | ---------------------------------------- | ---------------------------------------- | --------------------------------------------- |
+| 1    | `Delivery.Schedule`          | Delivery Service   | PO exists, vendor approved               | `DeliveryScheduled`                      | Notify site engineer, update project timeline |
+| 2    | `Delivery.Dispatch`          | Delivery Service   | Delivery is Scheduled                    | `ShipmentDispatched`, `ASNCreated`       | Track in transit, update ETA                  |
+| 3    | `Delivery.Confirm` (mobile)  | Delivery Service   | Delivery is Arrived or Being_Unloaded    | `DeliveryConfirmed`, `DiscrepancyRaised` | Update inventory, notify financials           |
+| 4    | `Discrepancy.Resolve`        | Delivery Service   | Discrepancy is Raised, evidence received | `DiscrepancyResolved`                    | Adjust inventory, request credit note         |
+| 5    | `Financials.IssueCreditNote` | Financials Service | DiscrepancyResolved, PO reference exists | `CreditNoteIssued`                       | Reduce payable, update vendor balance         |
+
+#### 7.3.4 Error Scenarios and Compensation Flows
+
+| Scenario                            | Trigger                                 | Detection                                     | Response                          | Compensation                                        |
+| ----------------------------------- | --------------------------------------- | --------------------------------------------- | --------------------------------- | --------------------------------------------------- |
+| Delivery outside ETA window (>24h)  | `Delivery.Confirm` validation           | `arrivedAt - scheduledETA > 24h`              | Confirm with late flag, notify PM | None (delivery accepted, SLA breach logged)         |
+| Evidence missing on confirmation    | `Delivery.Confirm` validation           | photos=null AND signature=null                | Reject with DELIVERY_001          | None                                                |
+| Discrepancy >5 days unresolved      | Scheduler checks DiscrepancyRaised + 5d | WorkflowService.SLADetected()                 | Escalate to PM, freeze payment    | Create manual adjustment task                       |
+| Vendor disputes discrepancy finding | `Discrepancy.Appeal` command            | PM review                                     | Re-open discrepancy, new review   | None                                                |
+| Stock update fails after confirm    | `InventoryService.StockReceived` fails  | External service unavailable, retry exhausted | Queue for retry, alert ops        | Rollback DeliveryConfirmed → Arrived (compensation) |
+
+#### 7.3.5 KPI Mapping
+
+| KPI (from Section 3)          | Measurement Formula                                                       | Workflow Steps | Target           |
+| ----------------------------- | ------------------------------------------------------------------------- | -------------- | ---------------- |
+| On-time Delivery Confirmation | count(`DeliveryConfirmed` within 24h of ETA) / total deliveries           | Steps 1–3      | +30% by month 6  |
+| Discrepancy Resolution Time   | median(`DiscrepancyResolved.occurredAt` - `DiscrepancyRaised.occurredAt`) | Steps 3–4      | <5 business days |
+| First-Time Acceptance Rate    | count(DeliveryConfirmed without discrepancy) / total deliveries           | Step 3         | ≥80%             |
+| Evidence Capture Completeness | count(confirmations with photos+signature) / total confirmations          | Step 3         | ≥95%             |
+
+---
+
+### 7.4 Marketplace Bidding Workflow
+
+**Purpose**: Manage competitive bidding for materials and services with credit economy, commission logic, and fair evaluation.
+
+**Actors**: Project Manager (creates tender), Vendors/Subcontractors (submit bids), PM/Evaluators (evaluate and award).
+
+**Preconditions**: ProcurementRequest is Approved or Tendered; vendor is on approved list (for invited tenders) or meets prequalification criteria (for open tenders).
+
+**Postconditions**: Awarded bid linked to PurchaseOrder; commission accrued upon delivery confirmation; non-awarded credits refunded.
+
+**Duration**: Typically 7–14 business days from tender opening to award.
+
+#### 7.4.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant PM
+    participant GW as API Gateway
+    participant Proc as Procurement Service
+    participant Mktp as Marketplace Service
+    participant Fin as Financials Service
+    participant Del as Delivery Service
+
+    PM->>GW: POST /tenders (open/invited, category, requirements)
+    GW->>Proc: VerifyProjectAccess(tenantId, projectId)
+    GW->>Mktp: CreateTender
+    Mktp->>Mktp: Validate(Category, Region, Requirements)
+    Mktp->>Mktp: Emit TenderOpened
+    alt Open Tender
+        Mktp->>Mktp: PublishToMarketplace(category, region)
+    else Invited Tender
+        Mktp->>Mktp: SendInvitations(vendorIds)
+    end
+    Mktp-->>GW: 201 Created({tenderId, status: "Open"})
+
+    Vendor->>GW: POST /tenders/{tenderId}/bids
+    GW->>Mktp: SubmitBid(tenderId, vendorId, pricing, leadTime, attachments)
+    Mktp->>Mktp: DebitCreditLedger(vendorId, bidCreditCost)
+    Mktp->>Mktp: ValidateBid(pricing, units, compliance)
+    Mktp->>Mktp: Emit BidSubmitted
+    Mktp-->>GW: 201 Created({bidId, creditsDebited})
+
+    Note over Mktp: Tender Closing Period
+
+    PM->>GW: POST /tenders/{tenderId}/close-evaluation
+    GW->>Mktp: CloseEvaluation(tenderId)
+    Mktp->>Mktp: Emit TenderEvaluated
+    Mktp->>Mktp: ScoreBids(price, leadTime, rating, completeness)
+    Mktp->>Mktp: RecommendWinner(scoredBids)
+
+    PM->>GW: POST /tenders/{tenderId}/award (select winner)
+    GW->>Mktp: AwardTender(tenderId, winningBidId)
+    Mktp->>Mktp: Emit TenderAwarded
+    Mktp->>Mktp: RefundCredits(nonWinningVendorIds)
+    Mktp->>Proc: LinkAwardToRequest(tenderId, procurementRequestId)
+    Proc->>Proc: Emit AwardedBidLinked
+    Proc->>Del: CreateDeliveryOrder(procurementRequestId)
+    Note over Mktp,Proc: Commission not yet accrued - waits for DeliveryConfirmed
+    Mktp-->>GW: 200 OK({awardId, commissionRate, capAmount})
+```
+
+#### 7.4.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Open: PublishTender
+    Open --> Under_Evaluation: CloseEvaluation
+    Under_Evaluation --> Awarded: SelectWinner
+    Under_Evaluation --> Open: ReopenTender
+    Awarded --> Closed: POIssued
+    [*] --> Cancelled: CancelTender
+    Cancelled --> [*]
+
+    note right of Open
+        Credit economy active:
+        - BidSubmitted debits credits
+        - GoldenBid for premium placement
+        - Refunds on system cancellation
+    end note
+```
+
+#### 7.4.3 Step Specification
+
+| Step | Command                  | Handler Service     | Preconditions                                | Events Emitted                                 | Downstream Effects                                      |
+| ---- | ------------------------ | ------------------- | -------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------- |
+| 1    | `Tender.Create`          | Marketplace Service | Project exists, procurement request approved | `TenderOpened`                                 | Publish to marketplace or send invitations              |
+| 2    | `Bid.Submit`             | Marketplace Service | Tender is Open, vendor has credits           | `BidSubmitted`, `CreditLedgerDebited`          | Lock bid, debit credits                                 |
+| 3    | `Tender.CloseEvaluation` | Marketplace Service | Tender open period elapsed                   | `TenderEvaluated`                              | Begin scoring                                           |
+| 4    | `Tender.Award`           | Marketplace Service | Evaluation complete, PM selects winner       | `TenderAwarded`, `CommissionAccrued` (pending) | Refund non-winning credits, link to PO, create delivery |
+| 5    | `Commission.CapCheck`    | Marketplace Service | PO issued, marketplace category              | `CommissionCapReached` (if applicable)         | Update cap counter                                      |
+
+#### 7.4.4 Error Scenarios and Compensation Flows
+
+| Scenario                              | Trigger                                | Detection                                     | Response                              | Compensation                          |
+| ------------------------------------- | -------------------------------------- | --------------------------------------------- | ------------------------------------- | ------------------------------------- |
+| Insufficient credits for bid          | `Bid.Submit` validation                | CreditLedger.Check() returns insufficient     | Reject with CREDIT_001                | None                                  |
+| Tender cancelled after bids submitted | `Tender.Cancel` command                | Business rule check                           | Emit `TenderCancelled`                | Refund all bid credits to suppliers   |
+| Evaluation exceeds SLA (>7 days)      | Scheduler checks TenderOpened + 7 days | WorkflowService.SLADetected()                 | Escalate to PM, auto-close evaluation | None                                  |
+| Awarded vendor declines to fulfill    | `Vendor.DeclineAward` notification     | Vendor Service                                | Re-open tender, select next bid       | None                                  |
+| Commission cap reached mid-project    | `Commission.CapCheck`                  | CapAmount reached for vendor/project/category | Emit `CommissionCapReached`           | Subsequent deliveries commission-free |
+
+#### 7.4.5 KPI Mapping
+
+| KPI (from Section 3)   | Measurement Formula                                              | Workflow Steps | Target           |
+| ---------------------- | ---------------------------------------------------------------- | -------------- | ---------------- |
+| Time-to-Award          | median(`TenderAwarded.occurredAt` - `TenderOpened.occurredAt`)   | Steps 1–4      | <7 business days |
+| Bidders per Tender     | count(bids per tender) average                                   | Step 2         | ≥3               |
+| Credit Refund Accuracy | count(correct refunds) / total refunds                           | Step 4         | ≥99%             |
+| On-Platform Retention  | count(AwardedBidLinked → DeliveryConfirmed) / total awarded bids | Steps 4–5      | ≥95%             |
+
+---
+
+### 7.5 Subcontractor Progress → Payment Workflow
+
+**Purpose**: Manage subcontractor progress claims from submission through verification to invoicing and payment.
+
+**Actors**: Subcontractor PM (submits claim), Site Engineer (verifies progress), Finance (approves invoice and processes payment).
+
+**Preconditions**: Subcontractor has active contract/work package; scope and rates defined; measurement units agreed.
+
+**Postconditions**: Verified quantities linked to approved invoice; payment scheduled per contract terms; audit trail complete.
+
+**Duration**: Verification within 3 business days; payment per contract terms (typically 15–30 days post-approval).
+
+#### 7.5.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant SubPM as Subcontractor PM
+    participant SiteEng as Site Engineer
+    participant GW as API Gateway
+    participant Prog as Progress Service
+    participant WF as Workflow Service
+    participant Fin as Financials Service
+
+    SubPM->>GW: POST /progress-claims (workPackageId, measurements, evidence)
+    GW->>Prog: VerifySubcontractorAccess(tenantId, workPackageId)
+    GW->>Prog: SubmitProgressClaim
+    Prog->>Prog: Validate(WorkPackageExists, RatesDefined)
+    Prog->>Prog: Emit ProgressClaimSubmitted
+    Prog-->>GW: 201 Created({claimId, status: "Submitted"})
+
+    SiteEng->>GW: POST /progress-claims/{claimId}/verify (mobile)
+    GW->>Prog: VerifyProgress(claimId, verifiedQuantities, photos, notes)
+    Prog->>Prog: Validate(claimId, SubcontractorActive)
+    Prog->>WF: CreateVerificationTask(claimId, siteEngineerRole)
+    Prog->>Prog: Emit MilestoneVerified
+    Prog->>Fin: InvoiceIssued(claimId, verifiedAmount, rates)
+    Fin->>Fin: Validate(RateCardMatch, BudgetAvailable)
+    Fin->>Fin: Emit InvoiceApproved
+
+    alt Verification Discrepancy
+        Prog->>Prog: Emit ReworkRequested(quantityDifference)
+        Prog->>WF: CreateReworkTask(claimId, subcontractorId)
+        Note over Prog,Fin: Subcontractor addresses discrepancies
+    end
+
+    Fin->>Fin: SchedulePayment(claimId, contractTerms)
+    Fin-->>GW: 200 OK({invoiceId, paymentDate})
+    GW-->>SiteEng: {verification, status: "Verified"}
+```
+
+#### 7.5.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Submitted: SubmitClaim
+    Submitted --> Under_Review: AssignReviewer
+    Under_Review --> Verified: MilestoneVerified
+    Under_Review --> Rework_Requested: DiscrepancyFound
+    Rework_Requested --> Submitted: ResubmitClaim
+    Verified --> Invoice_Issued: GenerateInvoice
+    Invoice_Issued --> Approved: FinanceApproves
+    Approved --> Paid: PaymentProcessed
+    [*] --> Rejected: RejectClaim
+    Rejected --> [*]
+```
+
+#### 7.5.3 Step Specification
+
+| Step | Command                         | Handler Service    | Preconditions                              | Events Emitted                         | Downstream Effects                           |
+| ---- | ------------------------------- | ------------------ | ------------------------------------------ | -------------------------------------- | -------------------------------------------- |
+| 1    | `ProgressClaim.Submit`          | Progress Service   | Work package active, measurements complete | `ProgressClaimSubmitted`               | Create verification task                     |
+| 2    | `ProgressClaim.Verify` (mobile) | Progress Service   | Claim is Under_Review, evidence received   | `MilestoneVerified`, `ReworkRequested` | Calculate verified amount, notify financials |
+| 3    | `Financials.IssueInvoice`       | Financials Service | MilestoneVerified, rate card exists        | `InvoiceIssued`, `InvoiceApproved`     | Schedule payment, update commitments         |
+
+#### 7.5.4 Error Scenarios and Compensation Flows
+
+| Scenario                                  | Trigger                              | Detection                           | Response                          | Compensation                   |
+| ----------------------------------------- | ------------------------------------ | ----------------------------------- | --------------------------------- | ------------------------------ |
+| Claim submitted for inactive work package | `ProgressClaim.Submit` validation    | WorkPackageService returns inactive | Reject with WORKPACKAGE_001       | None                           |
+| Verification SLA breach (>3 days)         | Scheduler checks Submitted + 3 days  | WorkflowService.SLADetected()       | Escalate to PM                    | None                           |
+| Rate card mismatch                        | `Financials.IssueInvoice` validation | RateCardService returns no match    | Reject with RATE_001              | Queue for manual rate approval |
+| Payment processing failure                | `Financials.ProcessPayment`          | Payment gateway unavailable         | Retry with backoff, alert finance | None                           |
+
+#### 7.5.5 KPI Mapping
+
+| KPI (from Section 3)     | Measurement Formula                                                          | Workflow Steps | Target           |
+| ------------------------ | ---------------------------------------------------------------------------- | -------------- | ---------------- |
+| Verification Lead Time   | median(`MilestoneVerified.occurredAt` - `ProgressClaimSubmitted.occurredAt`) | Steps 1–2      | <3 business days |
+| First-Pass Approval Rate | count(Verified on first review) / total claims                               | Step 2         | ≥75%             |
+| Payment Timeliness       | count(Paid within contract terms) / total approved invoices                  | Step 3         | ≥95%             |
+
+---
+
+### 7.6 User Assignment and Access Provisioning Workflow
+
+**Purpose**: Provision user access to organizations and projects with role-based permissions.
+
+**Actors**: Org Admin (manages organization), Project Admin (manages project team).
+
+**Preconditions**: Organization exists; user account exists (or invitation sent).
+
+**Postconditions**: User has assigned role with scoped permissions; auth projections updated; session tokens reflect new claims.
+
+**Duration**: Typically immediate upon approval.
+
+#### 7.6.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Admin as Org/Admin
+    participant GW as API Gateway
+    participant Id as Identity Service
+    participant WF as Workflow Service
+
+    Admin->>GW: POST /memberships {userId, tenantId, roles[], scopes}
+    GW->>Id: VerifyOrgAdmin(tenantId, userId)
+    GW->>Id: CreateMembership
+    Id->>Id: Validate(OrgExists, UserExists, ValidRoles)
+    Id->>Id: Emit MembershipCreated
+    Id->>Id: Emit RoleAssigned(userId, tenantId, roles)
+    Id->>WF: CreatePeriodicReviewTask(tenantId)
+    Id-->>GW: 201 Created({membershipId, roles})
+    GW-->>Admin: {membershipId, scopes}
+
+    Note over Id: Projection updates authz_projection
+    Note over Id: Session tokens refreshed with new claims
+```
+
+#### 7.6.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Inactive
+    Inactive --> Active: MembershipCreated
+    Active --> Active: RoleUpdated
+    Active --> Suspended: AccessReviewFailed
+    Suspended --> Active: ReviewPassed
+    Active --> Revoked: Revoked
+    Revoked --> [*]
+```
+
+#### 7.6.3 Step Specification
+
+| Step | Command                  | Handler Service  | Preconditions                        | Events Emitted                      | Downstream Effects                     |
+| ---- | ------------------------ | ---------------- | ------------------------------------ | ----------------------------------- | -------------------------------------- |
+| 1    | `Membership.Create`      | Identity Service | Org exists, user exists, valid role  | `MembershipCreated`, `RoleAssigned` | Update authz projection, notify user   |
+| 2    | `Membership.UpdateRoles` | Identity Service | Membership exists, updater has admin | `RoleUpdated`                       | Update authz projection                |
+| 3    | `Membership.Revoke`      | Identity Service | Membership exists, updater has admin | `RoleRevoked`, `MembershipRevoked`  | Invalidate sessions, update projection |
+
+#### 7.6.4 Error Scenarios
+
+| Scenario                          | Trigger                        | Detection                           | Response                      | Compensation |
+| --------------------------------- | ------------------------------ | ----------------------------------- | ----------------------------- | ------------ |
+| User already has membership       | `Membership.Create` validation | Duplicate check fails               | Reject with MEMBERSHIP_001    | None         |
+| Invalid role for scope            | `Membership.Create` validation | Role not allowed for tenant/project | Reject with ROLE_001          | None         |
+| Admin revokes self (lockout risk) | `Membership.Revoke` validation | Last admin check                    | Reject with ADMIN_LOCKOUT_001 | None         |
+
+---
+
+### 7.7 Document Lifecycle Workflow
+
+**Purpose**: Manage document upload, review, approval, and retention with full traceability.
+
+**Actors**: Any authenticated role (uploads), designated Reviewers (approve/reject), System (retention enforcement).
+
+**Preconditions**: Document store (S3) available; tenant/project context established.
+
+**Postconditions**: Document stored with metadata; review status recorded; linkage to related entities; retention policy applied.
+
+**Duration**: Upload immediate; review within configurable window (typically 3–7 days); retention per policy (typically 5–7 years).
+
+#### 7.7.1 Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant GW as API Gateway
+    participant DMS as DMS Service
+    participant S3 as Object Storage
+    participant WF as Workflow Service
+
+    User->>GW: POST /documents {filename, projectId, entityRef}
+    GW->>DMS: CreateDocumentMetadata
+    DMS->>DMS: Validate(TenantAccess, ValidEntityRef)
+    DMS->>S3: GeneratePresignedUploadUrl
+    DMS->>DMS: Emit DocumentCreated
+    DMS-->>GW: 201 Created({documentId, uploadUrl})
+
+    User->>GW: PUT {uploadUrl} (file content)
+    GW->>S3: StoreObject(tenant/project/documentId)
+    S3-->>GW: 200 OK
+
+    GW->>DMS: NotifyUploadComplete(documentId)
+    DMS->>DMS: ContentHash + VirusScan
+    DMS->>DMS: Emit DocumentUploaded
+
+    DMS->>WF: CreateReviewTask(documentId, reviewers)
+    WF->>WF: AssignReviewers(discipline, roles)
+
+    Reviewer->>GW: POST /documents/{id}/review {approved: true, notes}
+    GW->>DMS: ReviewDocument(documentId, decision)
+    DMS->>DMS: Emit DocumentReviewed(approved/rejected)
+    DMS-->>GW: 200 OK
+
+    Note over DMS: New version → DocumentVersioned
+    Note over DMS: Link to entity → DocumentLinked
+    Note over DMS: Retention policy → RetentionApplied
+```
+
+#### 7.7.2 State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uploading
+    Uploading --> Uploaded: UploadComplete
+    Uploaded --> UnderReview: ReviewRequested
+    UnderReview --> Approved: ReviewApproved
+    UnderReview --> Rejected: ReviewRejected
+    Rejected --> Uploaded: Resubmit
+    Approved --> Archived: RetentionApplied
+    Approved --> Superseded: NewVersionUploaded
+    Superseded --> Archived: ArchiveOldVersion
+    Archived --> [*]: RetentionExpiry
+```
+
+#### 7.7.3 Step Specification
+
+| Step | Command                   | Handler Service | Preconditions                             | Events Emitted      | Downstream Effects                       |
+| ---- | ------------------------- | --------------- | ----------------------------------------- | ------------------- | ---------------------------------------- |
+| 1    | `Document.CreateMetadata` | DMS Service     | Tenant access, valid project/entity ref   | `DocumentCreated`   | Create storage slot, generate upload URL |
+| 2    | `Document.CompleteUpload` | DMS Service     | Upload URL valid, content verified        | `DocumentUploaded`  | Content hash, virus scan, create review  |
+| 3    | `Document.Review`         | DMS Service     | Document is UnderReview                   | `DocumentReviewed`  | Update status, notify requester          |
+| 4    | `Document.LinkToEntity`   | DMS Service     | Document exists                           | `DocumentLinked`    | Update document index                    |
+| 5    | `Document.NewVersion`     | DMS Service     | Document exists, uploader has write       | `DocumentVersioned` | Archive old version, trigger new review  |
+| 6    | `Retention.Apply`         | DMS Service     | Document Approved, retention date reached | `RetentionApplied`  | Archive or delete per policy             |
+
+#### 7.7.4 Error Scenarios
+
+| Scenario                  | Trigger                              | Detection                         | Response                        | Compensation            |
+| ------------------------- | ------------------------------------ | --------------------------------- | ------------------------------- | ----------------------- |
+| Upload exceeds size limit | `Document.CreateMetadata` validation | File size > configured max        | Reject with DOCUMENT_001        | None                    |
+| Virus detected            | Virus scan on upload complete        | Security scanner positive         | Quarantine file, alert security | Delete quarantined file |
+| Review SLA breach         | Scheduler checks UnderReview + SLA   | WorkflowService.SLADetected()     | Escalate to doc owner           | None                    |
+| Duplicate file detected   | Content hash on upload               | Hash match with existing document | Alert uploader, allow override  | None                    |
+
+---
+
+### 7.8 Additional Workflows (Phase 2+)
+
+These workflows are documented at a higher level since they are not Phase 1 priorities. They follow the same detailed template as 7.2–7.7 but with less implementation detail.
+
+#### 7.8.1 Vendor Onboarding → Approval → Marketplace Activation
+
+**Flow**:
+
+```
+Vendor Registration → KYC/KYB Review → Compliance Check → Admin Approval → Vendor Approved → Marketplace Invited → First Bid Submitted
+```
+
+**Key events**: `VendorRegistered`, `KYCSubmitted`, `VendorApproved`, `VendorRejected`, `MarketplaceActivated`, `FirstBidSubmitted`
+
+**Services**: Vendor Service, Identity Service, Marketplace Service
+
+**Duration**: Typically 5–10 business days from registration to first bid.
+
+#### 7.8.2 Dispute Resolution Workflow
+
+**Flow**:
+
+```
+DisputeRaised → EvidenceAttached → Mediation → Resolution → Close
+```
+
+**Key events**: `DisputeRaised`, `EvidenceAttached`, `MediationScheduled`, `DisputeResolved`, `CreditNoteIssued`
+
+**Services**: Delivery Service (source), Dispute Service (new), Financials Service
+
+**Duration**: Typically 10–30 business days from dispute to resolution.
+
+#### 7.8.3 Financial Close Process
+
+**Flow**:
+
+```
+PeriodStart → AccrualsRecorded → CommitmentsReviewed → InvoicesMatched → Reconciliation → Close
+```
+
+**Key events**: `PeriodStarted`, `AccrualRecorded`, `CommitmentReviewed`, `InvoiceMatched`, `ReconciliationComplete`, `PeriodClosed`
+
+**Services**: Financials Service, ERP Integration
+
+**Duration**: Typically 5 business days per close period.
+
+#### 7.8.4 Material Request → Catalog Search → Quotation → PO
+
+**Flow**:
+
+```
+MaterialRequestCreated → CatalogSearch → QuotationRequested → QuotationReceived → Comparison → POIssued
+```
+
+**Key events**: `MaterialRequestCreated`, `CatalogItemFound`, `QuotationRequested`, `QuotationReceived`, `POIssued`
+
+**Services**: Procurement Service, Catalog Service, Vendor Service
+
+**Duration**: Typically 2–5 business days for standard materials.
+
+---
+
+### 7.9 Workflow Configuration Model
+
+#### 7.9.1 Template Structure
+
+Workflows are configurable per tenant/project through template definitions:
+
+```json
+{
+  "templateId": "uuid",
+  "code": "PROCUREMENT_STANDARD",
+  "name": "Standard Procurement Workflow",
+  "description": "Default procurement flow for standard materials",
+  "version": 1,
+  "status": "Active",
+  "steps": [
+    {
+      "stepId": "uuid",
+      "order": 1,
+      "code": "CREATE_REQUEST",
+      "name": "Create Procurement Request",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["projectId", "materialId", "quantity", "justification"],
+      "requiredEvidence": ["cost_justification"],
+      "slaHours": 24,
+      "nextSteps": ["SUBMIT_FOR_APPROVAL"]
+    },
+    {
+      "stepId": "uuid",
+      "order": 2,
+      "code": "SUBMIT_FOR_APPROVAL",
+      "name": "Submit for Approval",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "autoForward": true,
+      "nextSteps": ["APPROVAL_REVIEW"]
+    },
+    {
+      "stepId": "uuid",
+      "order": 3,
+      "code": "APPROVAL_REVIEW",
+      "name": "Budget Approval Review",
+      "type": "approval",
+      "assigneeRole": "Finance Approver",
+      "requiredFields": ["budgetCode", "costCenter"],
+      "slaHours": 48,
+      "onApprove": ["APPROVED", "CREATE_COMMITMENT"],
+      "onReject": ["REJECTED", "RETURN_TO_REQUESTER"],
+      "nextSteps": ["APPROVED", "REJECTED"]
+    }
+  ],
+  "conditions": [
+    {
+      "name": "high_value_approval",
+      "expression": "totalAmount > 50000",
+      "then": "require_executive_approval",
+      "else": "pm_approval_only"
+    }
+  ],
+  "metadata": {
+    "createdBy": "uuid",
+    "createdAt": "2026-01-15T00:00:00Z",
+    "updatedAt": "2026-01-15T00:00:00Z",
+    "applicableCategories": ["steel", "concrete", "electrical"],
+    "applicableRegions": ["EMEA", "APAC"]
+  }
+}
+```
+
+#### 7.9.2 Dynamic Step Insertion
+
+- **Admin override**: PM or higher can insert steps at runtime (e.g., "Legal Review" for contracts >$100k)
+- **Event-triggered**: System auto-inserts steps based on conditions (e.g., if `totalAmount > 100000`, insert `ExecutiveApproval` step)
+- **Audit trail**: All insertions/deletions logged as `WorkflowStepInserted` / `WorkflowStepRemoved` events
+
+#### 7.9.3 Role-Based Assignment
+
+- Steps can target **roles** (not specific users) → Workflow Service resolves to active users at execution time
+- **Delegation**: Role holder can delegate to another user (delegation logged)
+- **Fallback**: If no user available within SLA, escalate to next role in hierarchy
+
+#### 7.9.4 Conditional Branching
+
+Conditions expressed as JSON path expressions:
+
+```json
+{
+  "condition": "totalAmount > 50000 AND category == 'steel'",
+  "then": ["ExecutiveApproval", "LegalReview"],
+  "else": ["PMApproval"]
+}
+```
+
+Evaluated at runtime by Workflow Service using a lightweight expression engine (e.g., Aviator, MVEL).
 
 ## 8. Domain-Driven Design Overview
 

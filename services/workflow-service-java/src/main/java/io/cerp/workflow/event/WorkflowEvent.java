@@ -1,96 +1,188 @@
 package io.cerp.workflow.event;
 
-import java.time.LocalDateTime;
-
-import io.cerp.workflow.service.TenantService;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * Base envelope for all Workflow domain events.
+ * Immutable event emitted by workflow state transitions or saga steps.
  *
  * <p>
- * Per Section 9 (Data and Event Design): Events are immutable facts with IDs, timestamps, tenant, correlation/causation IDs, and version.
+ * Workflow events are published to the transactional outbox and subsequently to the message broker (Kafka). They form the backbone of event choreography between bounded
+ * contexts.
+ *
+ * <p>
+ * Event naming follows the convention: {Aggregate}{Action}PastTense (e.g., ProcurementRequestCreated, ApprovalComplete, DeliveryConfirmed)
+ *
+ * @see <a href="https://microservices.io/patterns/data/transactional-outbox.html">Transactional Outbox Pattern</a>
  */
-public abstract class WorkflowEvent {
+public class WorkflowEvent {
 
-    private String eventType;
-    private String version;
-    private LocalDateTime occurredAt;
-    private String tenantId;
-    private String aggregateType;
-    private String aggregateId;
-    private String aggregateVersion;
-    private String correlationId;
-    private String causationId;
-    private String actor;
+    private final UUID eventId;
+    private final String eventType;
+    private final String sagaType;
+    private final String sagaId;
+    private final UUID aggregateId;
+    private final String aggregateType;
+    private final String tenantId;
+    private final String userId;
+    private final Map<String, Object> data;
+    private final Map<String, String> metadata;
+    private final Instant occurredAt;
+    private final int version;
 
-    protected WorkflowEvent() {
+    protected WorkflowEvent(Builder builder) {
+        this.eventId = builder.eventId != null ? builder.eventId : UUID.randomUUID();
+        this.eventType = builder.eventType;
+        this.sagaType = builder.sagaType;
+        this.sagaId = builder.sagaId;
+        this.aggregateId = builder.aggregateId;
+        this.aggregateType = builder.aggregateType;
+        this.tenantId = builder.tenantId;
+        this.userId = builder.userId;
+        this.data = builder.data != null ? Map.copyOf(builder.data) : Map.of();
+        this.metadata = builder.metadata != null ? Map.copyOf(builder.metadata) : Map.of();
+        this.occurredAt = builder.occurredAt != null ? builder.occurredAt : Instant.now();
+        this.version = builder.version;
     }
 
-    protected WorkflowEvent(String eventType, String templateId) {
-        this.eventType = eventType;
-        this.version = "1.0";
-        this.occurredAt = LocalDateTime.now();
-        this.tenantId = "default";
-        this.aggregateType = "WorkflowTemplate";
-        this.aggregateId = templateId;
-        this.aggregateVersion = "1";
-        this.correlationId = java.util.UUID.randomUUID().toString();
-        this.causationId = java.util.UUID.randomUUID().toString();
-    }
-
-    protected WorkflowEvent(String eventType, String tenantId, String aggregateType, String aggregateId) {
-        this.eventType = eventType;
-        this.version = "1.0";
-        this.occurredAt = LocalDateTime.now();
-        this.tenantId = tenantId;
-        this.aggregateType = aggregateType;
-        this.aggregateId = aggregateId;
-        this.aggregateVersion = "1";
-        this.correlationId = java.util.UUID.randomUUID().toString();
-        this.causationId = java.util.UUID.randomUUID().toString();
+    public UUID getEventId() {
+        return eventId;
     }
 
     public String getEventType() {
         return eventType;
     }
 
-    public String getVersion() {
-        return version;
+    public String getSagaType() {
+        return sagaType;
     }
 
-    public LocalDateTime getOccurredAt() {
-        return occurredAt;
+    public String getSagaId() {
+        return sagaId;
     }
 
-    public String getTenantId() {
-        return tenantId;
+    public UUID getAggregateId() {
+        return aggregateId;
     }
 
     public String getAggregateType() {
         return aggregateType;
     }
 
-    public String getAggregateId() {
-        return aggregateId;
+    public String getTenantId() {
+        return tenantId;
     }
 
-    public String getAggregateVersion() {
-        return aggregateVersion;
+    public String getUserId() {
+        return userId;
     }
 
-    public String getCorrelationId() {
-        return correlationId;
+    public Map<String, Object> getData() {
+        return data;
     }
 
-    public String getCausationId() {
-        return causationId;
+    public Map<String, String> getMetadata() {
+        return metadata;
     }
 
-    public String getActor() {
-        return actor;
+    public Instant getOccurredAt() {
+        return occurredAt;
     }
 
-    public void setActor(String actor) {
-        this.actor = actor;
+    public int getVersion() {
+        return version;
+    }
+
+    /**
+     * Create a new builder for WorkflowEvent.
+     */
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /**
+     * Builder for WorkflowEvent.
+     */
+    public static class Builder {
+        private UUID eventId;
+        private String eventType;
+        private String sagaType;
+        private String sagaId;
+        private UUID aggregateId;
+        private String aggregateType;
+        private String tenantId;
+        private String userId;
+        private Map<String, Object> data;
+        private Map<String, String> metadata;
+        private Instant occurredAt;
+        private int version = 1;
+
+        public Builder eventId(UUID eventId) {
+            this.eventId = eventId;
+            return this;
+        }
+
+        public Builder eventType(String eventType) {
+            this.eventType = eventType;
+            return this;
+        }
+
+        public Builder sagaType(String sagaType) {
+            this.sagaType = sagaType;
+            return this;
+        }
+
+        public Builder sagaId(String sagaId) {
+            this.sagaId = sagaId;
+            return this;
+        }
+
+        public Builder aggregateId(UUID aggregateId) {
+            this.aggregateId = aggregateId;
+            return this;
+        }
+
+        public Builder aggregateType(String aggregateType) {
+            this.aggregateType = aggregateType;
+            return this;
+        }
+
+        public Builder tenantId(String tenantId) {
+            this.tenantId = tenantId;
+            return this;
+        }
+
+        public Builder userId(String userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        public Builder data(Map<String, Object> data) {
+            this.data = data;
+            return this;
+        }
+
+        public Builder metadata(Map<String, String> metadata) {
+            this.metadata = metadata;
+            return this;
+        }
+
+        public Builder occurredAt(Instant occurredAt) {
+            this.occurredAt = occurredAt;
+            return this;
+        }
+
+        public Builder version(int version) {
+            this.version = version;
+            return this;
+        }
+
+        public WorkflowEvent build() {
+            if (eventType == null || eventType.isBlank()) {
+                throw new IllegalStateException("eventType is required");
+            }
+            return new WorkflowEvent(this);
+        }
     }
 }

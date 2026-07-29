@@ -1,0 +1,243 @@
+package io.cerp.workflow.saga;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.service.EventPublisher;
+
+/**
+ * Test for BiddingSagaHandler that uses a simple mock EventPublisher.
+ */
+class BiddingSagaHandlerTest {
+
+    private BiddingSagaHandler handler;
+    private MockEventPublisher eventPublisher;
+
+    @BeforeEach
+    void setUp() {
+        eventPublisher = new MockEventPublisher();
+        handler = new BiddingSagaHandler(eventPublisher);
+    }
+
+    @Test
+    void testGetStepCode() {
+        assertEquals("Tender.CreateAndOpen", handler.getStepCode());
+    }
+
+    @Test
+    void testExecuteCreateTender() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", new HashMap<>());
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("projectId", "proj-123");
+
+        SagaContext result = handler.execute(context, "Tender.CreateAndOpen", payload);
+
+        assertNotNull(result);
+        assertEquals("proj-123", result.getData().get("projectId"));
+        assertTrue(result.getData().containsKey("tenderId"));
+        assertEquals("OPEN", result.getData().get("status"));
+        assertEquals(1, eventPublisher.getPublishedEvents().size());
+        assertEquals("TenderCreated", eventPublisher.getPublishedEvents().get(0).getEventType());
+    }
+
+    @Test
+    void testExecuteCreateTenderWithoutProjectId() {
+        UUID sagaId = UUID.randomUUID();
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", new HashMap<>());
+        Map<String, Object> payload = new HashMap<>();
+
+        SagaException ex = assertThrows(SagaException.class, () -> handler.execute(context, "Tender.CreateAndOpen", payload));
+        assertEquals("VALIDATION_ERROR", ex.getErrorCode());
+        assertEquals(0, eventPublisher.getPublishedEvents().size());
+    }
+
+    @Test
+    void testExecuteInviteVendors() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("vendorIds", List.of("vendor-1", "vendor-2"));
+        Map<String, Object> inviteConfig = new HashMap<>();
+        inviteConfig.put("expectedBids", 2);
+        payload.put("inviteConfig", inviteConfig);
+
+        SagaContext result = handler.execute(context, "Tender.InviteVendors", payload);
+
+        assertNotNull(result);
+        assertEquals(2, ((List<?>) result.getData().get("invitedVendorIds")).size());
+        assertEquals("UNDER_EVALUATION", result.getData().get("status"));
+        assertEquals(1, eventPublisher.getPublishedEvents().size());
+        assertEquals("VendorsInvited", eventPublisher.getPublishedEvents().get(0).getEventType());
+    }
+
+    @Test
+    void testExecuteCollectBids() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        Map<String, Object> payload = new HashMap<>();
+        var bid1 = Map.of("vendorId", "vendor-1", "price", 100.0);
+        var bid2 = Map.of("vendorId", "vendor-2", "price", 90.0);
+        payload.put("bids", List.of(bid1, bid2));
+
+        SagaContext result = handler.execute(context, "Bidding.CollectBids", payload);
+
+        assertNotNull(result);
+        assertEquals(2, ((List<?>) result.getData().get("bidsReceived")));
+        assertEquals(1, eventPublisher.getPublishedEvents().size());
+        assertEquals("BidsCollected", eventPublisher.getPublishedEvents().get(0).getEventType());
+    }
+
+    @Test
+    void testExecuteCollectBidsEmptyThrows() {
+        UUID sagaId = UUID.randomUUID();
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", new HashMap<>());
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("bids", List.of());
+
+        SagaException ex = assertThrows(SagaException.class, () -> handler.execute(context, "Bidding.CollectBids", payload));
+        assertEquals("NO_BIDS_RECEIVED", ex.getErrorCode());
+        assertEquals(0, eventPublisher.getPublishedEvents().size());
+    }
+
+    @Test
+    void testExecuteEvaluateBids() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        var bid1 = Map.of("vendorId", "vendor-1", "price", 100.0);
+        var bid2 = Map.of("vendorId", "vendor-2", "price", 90.0);
+        initialData.put("bids", List.of(bid1, bid2));
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        SagaContext result = handler.execute(context, "Bidding.Evaluate", null);
+
+        assertNotNull(result);
+        assertEquals("vendor-2", result.getData().get("winningVendorId"));
+        assertEquals(90.0, result.getData().get("winningPrice"));
+        assertEquals(1, eventPublisher.getPublishedEvents().size());
+        assertEquals("TenderEvaluated", eventPublisher.getPublishedEvents().get(0).getEventType());
+    }
+
+    @Test
+    void testExecuteAwardTender() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        initialData.put("winningVendorId", "vendor-2");
+        initialData.put("winningPrice", 90.0);
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        SagaContext result = handler.execute(context, "Tender.Award", null);
+
+        assertNotNull(result);
+        assertEquals(true, result.getData().get("poIssued"));
+        assertEquals("AWARDED", result.getData().get("status"));
+        assertEquals(2, eventPublisher.getPublishedEvents().size());
+        assertEquals("TenderAwarded", eventPublisher.getPublishedEvents().get(0).getEventType());
+        assertEquals("POIssued", eventPublisher.getPublishedEvents().get(1).getEventType());
+    }
+
+    @Test
+    void testGetNextStep() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", new HashMap<>());
+
+        String next = handler.getNextStep(context, "Tender.CreateAndOpen");
+        assertEquals("Tender.InviteVendors", next);
+
+        next = handler.getNextStep(context, "Tender.InviteVendors");
+        assertEquals("Bidding.CollectBids", next);
+
+        next = handler.getNextStep(context, "Bidding.CollectBids");
+        assertEquals("Bidding.Evaluate", next);
+
+        next = handler.getNextStep(context, "Bidding.Evaluate");
+        assertEquals("Tender.Award", next);
+
+        next = handler.getNextStep(context, "Tender.Award");
+        assertTrue(next == null);
+    }
+
+    @Test
+    void testCompensateAwardTender() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        SagaContext result = handler.compensate(context, "Tender.Award");
+        assertNotNull(result);
+        assertEquals(1, eventPublisher.getPublishedEvents().size());
+        assertEquals("POCancelled", eventPublisher.getPublishedEvents().get(0).getEventType());
+    }
+
+    @Test
+    void testCompensateAllSteps() throws Exception {
+        UUID sagaId = UUID.randomUUID();
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        initialData.put("invitedVendorIds", List.of("vendor-1"));
+        SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        handler.compensate(context, "Tender.Award");
+        handler.compensate(context, "Bidding.Evaluate");
+        handler.compensate(context, "Bidding.CollectBids");
+        handler.compensate(context, "Tender.InviteVendors");
+        handler.compensate(context, "Tender.CreateAndOpen");
+
+        assertEquals(5, eventPublisher.getPublishedEvents().size());
+    }
+
+    /**
+     * Simple mock event publisher for testing.
+     */
+    private static class MockEventPublisher implements EventPublisher {
+        private final List<WorkflowEvent> publishedEvents = new java.util.ArrayList<>();
+
+        @Override
+        public void publish(WorkflowEvent event) {
+            publishedEvents.add(event);
+        }
+
+        @Override
+        public void publish(WorkflowEvent event, Map<String, Object> metadata) {
+            publishedEvents.add(event);
+        }
+
+        @Override
+        public void publishEvent(String eventType, String sagaType, UUID aggregateId, String tenantId, Map<String, Object> data) {
+            // Not implemented for testing
+        }
+
+        @Override
+        public boolean isHealthy() {
+            return true;
+        }
+
+        public List<WorkflowEvent> getPublishedEvents() {
+            return java.util.Collections.unmodifiableList(publishedEvents);
+        }
+
+        public void clear() {
+            publishedEvents.clear();
+        }
+    }
+}

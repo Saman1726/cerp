@@ -1,0 +1,148 @@
+{
+  "templateId": "uuid-003",
+  "code": "MARKETPLACE_BIDDING",
+  "name": "Marketplace Bidding Workflow",
+  "description": "Workflow for open and invited tender bidding processes",
+  "version": 1,
+  "status": "Active",
+  "steps": [
+    {
+      "stepId": "uuid-003-1",
+      "order": 1,
+      "code": "CREATE_TENDER",
+      "name": "Create Tender",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["projectId", "category", "requirements", "tenderType"],
+      "slaHours": 24,
+      "nextSteps": ["TENDER_DRAFT_READY"]
+    },
+    {
+      "stepId": "uuid-003-2",
+      "order": 2,
+      "code": "PUBLISH_TENDER",
+      "name": "Publish Tender",
+      "type": "action",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["tenderType", "closingDate", "invitedVendorIds"],
+      "slaHours": 1,
+      "nextSteps": ["TENDER_OPEN"]
+    },
+    {
+      "stepId": "uuid-003-3",
+      "order": 3,
+      "code": "SUBMIT_BID",
+      "name": "Submit Bid",
+      "type": "task",
+      "assigneeRole": "Vendor",
+      "requiredFields": ["pricing", "leadTime", "attachments"],
+      "requiredEvidence": ["product_catalog", "compliance_declaration"],
+      "slaHours": 168,
+      "nextSteps": ["BID_SUBMITTED"]
+    },
+    {
+      "stepId": "uuid-003-4",
+      "order": 4,
+      "code": "CLOSE_EVALUATION",
+      "name": "Close for Evaluation",
+      "type": "task",
+      "assigneeRole": "Project Manager",
+      "slaHours": 24,
+      "nextSteps": ["UNDER_EVALUATION"]
+    },
+    {
+      "stepId": "uuid-003-5",
+      "order": 5,
+      "code": "SCORE_BIDS",
+      "name": "Score and Rank Bids",
+      "type": "approval",
+      "assigneeRole": "Evaluation Committee",
+      "requiredFields": [
+        "priceScore",
+        "leadTimeScore",
+        "ratingScore",
+        "completenessScore",
+        "recommendedWinner"
+      ],
+      "slaHours": 72,
+      "onApprove": ["RECOMMEND_WINNER"],
+      "onReject": ["REOPEN_BIDS"],
+      "nextSteps": ["RECOMMEND_WINNER", "REOPEN_BIDS"]
+    },
+    {
+      "stepId": "uuid-003-6",
+      "order": 6,
+      "code": "AWARD_TENDER",
+      "name": "Award Tender",
+      "type": "action",
+      "assigneeRole": "Project Manager",
+      "requiredFields": ["winningBidId", "commissionRate", "capAmount"],
+      "slaHours": 24,
+      "nextSteps": ["TENDER_AWARDED", "LINK_TO_PROCUREMENT"]
+    }
+  ],
+  "conditions": [
+    {
+      "name": "minimum_bids_threshold",
+      "expression": "receivedBids < 3",
+      "then": ["extend_deadline", "notify_invited_vendors"],
+      "else": "proceed_with_evaluation"
+    },
+    {
+      "name": "price_anomaly",
+      "expression": "lowestBid > averageOfEstimated * 1.5",
+      "then": ["require_justification", "review_by_finance"],
+      "else": "standard_evaluation"
+    }
+  ],
+  "compensations": [
+    {
+      "event": "TenderCancelled",
+      "actions": [
+        {
+          "service": "Marketplace",
+          "action": "RefundAllBids",
+          "parameters": {
+            "tenderId": "{{tenderId}}"
+          }
+        }
+      ]
+    },
+    {
+      "event": "BidSubmitted",
+      "actions": [
+        {
+          "service": "Marketplace",
+          "action": "RefundCredit",
+          "parameters": {
+            "vendorId": "{{vendorId}}",
+            "tenderId": "{{tenderId}}"
+          }
+        }
+      ]
+    }
+  ],
+  "kpis": [
+    {
+      "code": "TIME_TO_AWARD",
+      "measurement": "median(TenderAwarded.timestamp - TenderOpened.timestamp)",
+      "steps": [2, 3, 4, 5, 6],
+      "target": "<7 days",
+      "baseline": "14 days"
+    },
+    {
+      "code": "BID_COMPLETION_RATE",
+      "measurement": "count(BidSubmitted) / count(InvitationsSent)",
+      "steps": [2, 3],
+      "target": ">80%",
+      "baseline": "60%"
+    }
+  ],
+  "metadata": {
+    "createdBy": "uuid-admin-001",
+    "createdAt": "2026-01-15T00:00:00Z",
+    "updatedAt": "2026-01-15T00:00:00Z",
+    "applicableCategories": ["all"],
+    "applicableRegions": ["EMEA", "APAC", "AMERICAS"]
+  }
+}

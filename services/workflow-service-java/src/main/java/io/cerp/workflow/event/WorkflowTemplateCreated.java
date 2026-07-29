@@ -1,6 +1,7 @@
 package io.cerp.workflow.event;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -18,7 +19,22 @@ public class WorkflowTemplateCreated extends WorkflowEvent {
 
     public WorkflowTemplateCreated(UUID templateId, String code, String name,
             String phaseType, Integer templateVersion, String parametersSchema, List<String> requiredDocuments) {
-        super("WorkflowTemplateCreated", code);
+        super(WorkflowEvent.builder()
+            .eventType("WorkflowTemplateCreated")
+            .sagaType("WorkflowTemplate")
+            .sagaId(null)
+            .aggregateId(null)
+            .aggregateType("WorkflowTemplate")
+            .tenantId(null)
+            .userId(null)
+            .data(Map.of(
+                "templateId", templateId,
+                "code", code,
+                "name", name,
+                "phaseType", phaseType,
+                "templateVersion", templateVersion,
+                "parametersSchema", parametersSchema,
+                "requiredDocuments", requiredDocuments)));
         this.templateId = templateId;
         this.code = code;
         this.name = name;

@@ -33,7 +33,7 @@ public class KafkaEventPublisher {
      *            the domain event to publish
      */
     public void publish(WorkflowEvent event) {
-        String key = event.getAggregateId();
+        String key = event.getAggregateId() != null ? event.getAggregateId().toString() : null;
         kafkaTemplate.send(TOPIC, key, event).whenComplete((result, ex) -> {
             if (ex == null) {
                 log.info("Published event {} to topic {} at partition {} offset {}",

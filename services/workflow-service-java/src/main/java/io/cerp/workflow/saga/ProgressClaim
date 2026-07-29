@@ -1,0 +1,316 @@
+package io.cerp.workflow.saga;
+
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.service.EventPublisher;
+
+/**
+ * Saga handler for the Subcontractor Progress → Payment workflow (Section 7.5).
+ *
+ * <p>
+ * This handler coordinates the progress claim and payment process:
+ * <ol>
+ * <li>Subcontractor submits progress claim with evidence</li>
+ * <li>Site engineer verifies progress</li>
+ * <li>Invoice is issued and payment is processed</li>
+ * </ol>
+ *
+ * <p>
+ * State machine:
+ *
+ * <pre>
+ * Draft → Submitted → Under_Review → Verified → Invoice_Issued → Approved → Paid
+ *                                          ↓
+ *                                       Rejected
+ * </pre>
+ *
+ * @see <a href="https://microservices.io/patterns/orchestration/Saga.html">Saga Pattern</a>
+ */
+@Component
+public class ProgressClaimSagaHandler implements SagaHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(ProgressClaimSagaHandler.class);
+
+    /** Submit progress claim with evidence. */
+    public static final String SUBMIT_CLAIM = "ProgressClaim.Submit";
+
+    /** Verify progress by site engineer. */
+    public static final String VERIFY_PROGRESS = "Progress.Verify";
+
+    /** Issue invoice after verification. */
+    public static final String ISSUE_INVOICE = "Invoice.Issue";
+
+    /** Approve and process payment. */
+    public static final String APPROVE_PAYMENT = "Payment.Approve";
+
+    private final EventPublisher eventPublisher;
+
+    public ProgressClaimSagaHandler(EventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
+    }
+
+    @Override
+    public String getStepCode() {
+        return SUBMIT_CLAIM;
+    }
+
+    @Override
+    public SagaContext execute(SagaContext context, String command, Map<String, Object> payload) throws Exception {
+        log.info("Executing progress claim saga step: command={}, sagaId={}", command, context.getSagaId());
+
+        switch (command) {
+            case SUBMIT_CLAIM:
+                return executeSubmitClaim(context, payload);
+            case VERIFY_PROGRESS:
+                return executeVerifyProgress(context, payload);
+            case ISSUE_INVOICE:
+                return executeIssueInvoice(context, payload);
+            case APPROVE_PAYMENT:
+                return executeApprovePayment(context, payload);
+            default:
+                throw new SagaException("UNKNOWN_COMMAND", "Unknown command: " + command, Map.of());
+        }
+    }
+
+    @Override
+    public SagaContext compensate(SagaContext context, String stepCode) throws Exception {
+        log.info("Compensating progress claim saga step: stepCode={}, sagaId={}", stepCode, context.getSagaId());
+
+        switch (stepCode) {
+            case APPROVE_PAYMENT:
+                return compensateApprovePayment(context);
+            case ISSUE_INVOICE:
+                return compensateIssueInvoice(context);
+            case VERIFY_PROGRESS:
+                return compensateVerifyProgress(context);
+            case SUBMIT_CLAIM:
+                return compensateSubmitClaim(context);
+            default:
+                log.warn("No compensation for step: {}", stepCode);
+                return context;
+        }
+    }
+
+    @Override
+    public String getNextStep(SagaContext context, String executedCommand) {
+        String next = getNextStepCode(executedCommand);
+        if (next != null) {
+            context.getData().put("currentStep", next);
+        }
+        return next;
+    }
+
+    // ── Step Implementations ──
+
+    private SagaContext executeSubmitClaim(SagaContext context, Map<String, Object> payload) throws SagaException {
+        UUID sagaId = context.getSagaId();
+        String tenantId = context.getTenantId();
+
+        // Validate required fields
+        if (payload == null) {
+            throw new SagaException("VALIDATION_ERROR", "Payload is required for ProgressClaim.Submit", Map.of());
+        }
+        if (!payload.containsKey("subcontractorId")) {
+            throw new SagaException("VALIDATION_ERROR", "subcontractorId is required for ProgressClaim.Submit",
+                Map.of("field", "subcontractorId"));
+        }
+        if (!payload.containsKey("contractId")) {
+            throw new SagaException("VALIDATION_ERROR", "contractId is required for ProgressClaim.Submit",
+                Map.of("field", "contractId"));
+        }
+
+        String claimId = UUID.randomUUID().toString();
+        Instant submittedAt = Instant.now();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> claimData = (payload.containsKey("claimData"))
+                ? (Map<String, Object>) payload.get("claimData")
+                : Map.of();
+
+        Map<String, Object> submitResult = Map.of(
+            "claimId", claimId,
+            "subcontractorId", payload.get("subcontractorId"),
+            "contractId", payload.get("contractId"),
+            "claimedAmount", claimData.getOrDefault("amount", 0),
+            "evidence", claimData.getOrDefault("evidence", Map.of()),
+            "submittedAt", submittedAt.toString(),
+            "status", "SUBMITTED");
+
+        context.getData().putAll(submitResult);
+        context.getData().put("claimId", claimId);
+
+        // Emit ProgressClaimSubmitted event
+        publishEvent(sagaId, tenantId, "ProgressClaimSubmitted", submitResult);
+
+        log.info("Progress claim submitted: claimId={}, subcontractorId={}, amount={}",
+            claimId, payload.get("subcontractorId"), claimData.getOrDefault("amount", 0));
+        return context;
+    }
+
+    private SagaContext executeVerifyProgress(SagaContext context, Map<String, Object> payload) throws SagaException {
+        UUID sagaId = context.getSagaId();
+        String tenantId = context.getTenantId();
+        String claimId = (String) context.getData().get("claimId");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> verification = (payload != null && payload.containsKey("verification"))
+                ? (Map<String, Object>) payload.get("verification")
+                : Map.of();
+
+        Boolean verified = (Boolean) (verification != null ? verification.get("verified") : false);
+        if (verified == null) {
+            verified = false;
+        }
+
+        if (!verified) {
+            String reason = (String) (verification != null ? verification.get("reason") : "Progress not verified");
+            throw new SagaException("PROGRESS_NOT_VERIFIED", reason,
+                Map.of("claimId", claimId, "verifier", verification.get("verifier")));
+        }
+
+        Double claimedAmount = (Double) context.getData().get("claimedAmount");
+        Double verifiedAmount = (Double) (verification != null ? verification.get("verifiedAmount") : claimedAmount);
+        if (verifiedAmount == null) {
+            verifiedAmount = claimedAmount;
+        }
+
+        Map<String, Object> verifyResult = Map.of(
+            "claimId", claimId,
+            "verified", true,
+            "verifiedAmount", verifiedAmount,
+            "verifier", verification.get("verifier"),
+            "verificationNotes", verification.get("notes"),
+            "verifiedAt", Instant.now().toString(),
+            "status", "VERIFIED");
+
+        context.getData().putAll(verifyResult);
+
+        // Emit ProgressVerified event
+        publishEvent(sagaId, tenantId, "ProgressVerified", verifyResult);
+
+        log.info("Progress verified: claimId={}, verifiedAmount={}", claimId, verifiedAmount);
+        return context;
+    }
+
+    private SagaContext executeIssueInvoice(SagaContext context, Map<String, Object> payload) throws SagaException {
+        UUID sagaId = context.getSagaId();
+        String tenantId = context.getTenantId();
+        String claimId = (String) context.getData().get("claimId");
+        Double verifiedAmount = (Double) context.getData().get("verifiedAmount");
+
+        String invoiceId = UUID.randomUUID().toString();
+
+        Map<String, Object> invoiceData = Map.of(
+            "invoiceId", invoiceId,
+            "claimId", claimId,
+            "amount", verifiedAmount,
+            "status", "ISSUED",
+            "issuedAt", Instant.now().toString());
+
+        context.getData().putAll(invoiceData);
+        context.getData().put("invoiceId", invoiceId);
+
+        // Emit InvoiceIssued event
+        publishEvent(sagaId, tenantId, "InvoiceIssued", invoiceData);
+
+        log.info("Invoice issued: invoiceId={}, claimId={}, amount={}", invoiceId, claimId, verifiedAmount);
+        return context;
+    }
+
+    private SagaContext executeApprovePayment(SagaContext context, Map<String, Object> payload) throws SagaException {
+        UUID sagaId = context.getSagaId();
+        String tenantId = context.getTenantId();
+        String claimId = (String) context.getData().get("claimId");
+        String invoiceId = (String) context.getData().get("invoiceId");
+        Double verifiedAmount = (Double) context.getData().get("verifiedAmount");
+
+        Map<String, Object> paymentResult = Map.of(
+            "claimId", claimId,
+            "invoiceId", invoiceId,
+            "amount", verifiedAmount,
+            "paymentStatus", "PAID",
+            "paidAt", Instant.now().toString());
+
+        context.getData().putAll(paymentResult);
+
+        // Emit InvoiceApproved, PaymentCompleted events
+        publishEvent(sagaId, tenantId, "InvoiceApproved", paymentResult);
+        publishEvent(sagaId, tenantId, "PaymentCompleted", Map.of(
+            "claimId", claimId,
+            "invoiceId", invoiceId,
+            "amount", verifiedAmount,
+            "paymentMethod", (payload != null ? payload.get("paymentMethod") : null)));
+
+        log.info("Payment completed: claimId={}, invoiceId={}, amount={}", claimId, invoiceId, verifiedAmount);
+        return context;
+    }
+
+    // ── Compensation Methods ──
+
+    private SagaContext compensateApprovePayment(SagaContext context) throws SagaException {
+        String invoiceId = (String) context.getData().get("invoiceId");
+        publishEvent(context.getSagaId(), context.getTenantId(), "PaymentCancelled",
+            Map.of("invoiceId", invoiceId, "reason", "saga_compensation"));
+        log.info("Payment cancelled: invoiceId={}", invoiceId);
+        return context;
+    }
+
+    private SagaContext compensateIssueInvoice(SagaContext context) throws SagaException {
+        String invoiceId = (String) context.getData().get("invoiceId");
+        publishEvent(context.getSagaId(), context.getTenantId(), "InvoiceCancelled",
+            Map.of("invoiceId", invoiceId, "reason", "saga_compensation"));
+        log.info("Invoice cancelled: invoiceId={}", invoiceId);
+        return context;
+    }
+
+    private SagaContext compensateVerifyProgress(SagaContext context) throws SagaException {
+        String claimId = (String) context.getData().get("claimId");
+        publishEvent(context.getSagaId(), context.getTenantId(), "ClaimRejected",
+            Map.of("claimId", claimId, "reason", "saga_compensation"));
+        log.info("Claim rejected after verification compensation: claimId={}", claimId);
+        return context;
+    }
+
+    private SagaContext compensateSubmitClaim(SagaContext context) throws SagaException {
+        String claimId = (String) context.getData().get("claimId");
+        publishEvent(context.getSagaId(), context.getTenantId(), "ClaimCancelled",
+            Map.of("claimId", claimId, "reason", "saga_compensation"));
+        log.info("Claim cancelled: claimId={}", claimId);
+        return context;
+    }
+
+    // ── Step Transition Map ──
+
+    private String getNextStepCode(String executedStep) {
+        return switch (executedStep) {
+            case SUBMIT_CLAIM -> VERIFY_PROGRESS;
+            case VERIFY_PROGRESS -> ISSUE_INVOICE;
+            case ISSUE_INVOICE -> APPROVE_PAYMENT;
+            case APPROVE_PAYMENT -> null; // Saga complete
+            default -> null;
+        };
+    }
+
+    // ── Event Publishing ──
+
+    private void publishEvent(UUID sagaId, String tenantId, String eventType, Map<String, Object> data) {
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(eventType)
+                .sagaType("subcontractor_progress_payment")
+                .sagaId(sagaId.toString())
+                .tenantId(tenantId)
+                .data(data)
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish event: {}", eventType, e);
+        }
+    }
+}
