@@ -16,6 +16,10 @@ import type {
   WorkflowKpi,
 } from '@cerp/shared-types';
 
+// Saga endpoints use /api/sagas (proxied by Next.js API route to backend /api/v1/sagas)
+const SAGA_API_BASE = '/api/sagas';
+
+// Other workflow endpoints use /api/workflows (gateway routes to workflow-service)
 const WORKFLOW_API_BASE = '/api/workflows';
 
 /**
@@ -40,28 +44,28 @@ export const workflowApi = {
     if (query.sortBy) params.set('sortBy', query.sortBy);
     if (query.sortOrder) params.set('sortOrder', query.sortOrder);
 
-    return apiClient.get<SagaQueryResponse>(`${WORKFLOW_API_BASE}/sagas?${params}`);
+    return apiClient.get<SagaQueryResponse>(`${SAGA_API_BASE}?${params}`);
   },
 
   /**
    * Get a single saga by ID.
    */
   getSaga: async (sagaId: string): Promise<Saga> => {
-    return apiClient.get<Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}`);
+    return apiClient.get<Saga>(`${SAGA_API_BASE}/${sagaId}`);
   },
 
   /**
    * Get all events for a saga.
    */
   getSagaEvents: async (sagaId: string): Promise<SagaEvent[]> => {
-    return apiClient.get<SagaEvent[]>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/events`);
+    return apiClient.get<SagaEvent[]>(`${SAGA_API_BASE}/${sagaId}/events`);
   },
 
   /**
    * Create a new saga instance.
    */
   createSaga: async (request: CreateSagaRequest): Promise<Saga> => {
-    return apiClient.post<CreateSagaRequest, Saga>(`${WORKFLOW_API_BASE}/sagas`, request);
+    return apiClient.post<CreateSagaRequest, Saga>(SAGA_API_BASE, request);
   },
 
   // ── Saga Actions ──
@@ -70,21 +74,21 @@ export const workflowApi = {
    * Execute the next step in a saga.
    */
   executeStep: async (sagaId: string, request: ExecuteSagaStepRequest): Promise<Saga> => {
-    return apiClient.post<ExecuteSagaStepRequest, Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/execute`, request);
+    return apiClient.post<ExecuteSagaStepRequest, Saga>(`${SAGA_API_BASE}/${sagaId}/execute`, request);
   },
 
   /**
    * Perform a workflow action (resume, compensate, escalate, etc.).
    */
   performAction: async (sagaId: string, action: SagaAction): Promise<Saga> => {
-    return apiClient.post<SagaAction, Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/action`, action);
+    return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/action`, action);
   },
 
   /**
    * Manually compensate a saga (rollback).
    */
   compensateSaga: async (sagaId: string, reason?: string): Promise<Saga> => {
-    return apiClient.post<SagaAction, Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/compensate`, {
+    return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/compensate`, {
       action: 'compensate',
       reason,
     } as SagaAction);
@@ -94,7 +98,7 @@ export const workflowApi = {
    * Resume a paused saga.
    */
   resumeSaga: async (sagaId: string, stepCode?: string): Promise<Saga> => {
-    return apiClient.post<SagaAction, Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/resume`, {
+    return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/resume`, {
       action: 'resume',
       stepCode,
     } as SagaAction);
@@ -104,7 +108,7 @@ export const workflowApi = {
    * Escalate a saga step.
    */
   escalateSaga: async (sagaId: string, reason?: string): Promise<Saga> => {
-    return apiClient.post<SagaAction, Saga>(`${WORKFLOW_API_BASE}/sagas/${sagaId}/escalate`, {
+    return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/escalate`, {
       action: 'escalate',
       reason,
     } as SagaAction);
@@ -116,7 +120,18 @@ export const workflowApi = {
    * List all orchestration templates.
    */
   listTemplates: async (): Promise<OrchestrationTemplate[]> => {
-    return apiClient.get<OrchestrationTemplate[]>(`${WORKFLOW_API_BASE}/templates`);
+    const templates = await apiClient.get<Record<string, unknown>[]>(`${WORKFLOW_API_BASE}/templates`);
+    return templates.map((t) => ({
+      templateId: (t.id as string) ?? (t.templateId as string) ?? '',
+      code: t.code as string,
+      name: t.name as string,
+      description: t.description as string,
+      version: (t.version as number) ?? 1,
+      status: (t.status as OrchestrationTemplate['status']) ?? 'Draft',
+      steps: (t.steps as OrchestrationTemplate['steps']) ?? [],
+      conditions: t.conditions as OrchestrationTemplate['conditions'],
+      metadata: t.metadata as OrchestrationTemplate['metadata'],
+    }));
   },
 
   /**

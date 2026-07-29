@@ -1,3 +1,6 @@
+-- Enable pgcrypto extension for gen_random_uuid() (required in PostgreSQL 17+)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Transactional Outbox Events Table
 -- Supports the transactional outbox pattern for exactly-once event delivery to Kafka
 CREATE TABLE IF NOT EXISTS outbox_events (

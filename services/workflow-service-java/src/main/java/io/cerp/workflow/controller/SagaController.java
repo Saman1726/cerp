@@ -1,9 +1,11 @@
 package io.cerp.workflow.controller;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -197,13 +199,282 @@ public class SagaController {
      *            the aggregate identifier
      * @return list of saga instances associated with the aggregate
      */
-    @GetMapping
+    @GetMapping(params = "aggregateId")
     public ResponseEntity<List<SagaState>> getSagasByAggregate(
             @RequestParam String aggregateType,
             @RequestParam String aggregateId) {
         UUID uuid = UUID.fromString(aggregateId);
         List<SagaState> sagas = orchestrator.getSagaInstancesByAggregate(aggregateType, uuid);
         return ResponseEntity.ok(sagas);
+    }
+
+    /**
+     * List all sagas with filtering and pagination (frontend-compatible endpoint).
+     *
+     * @param sagaType
+     *            optional saga type filter
+     * @param status
+     *            optional status filter
+     * @param tenantId
+     *            optional tenant ID filter
+     * @param page
+     *            page number (default 1)
+     * @param pageSize
+     *            page size (default 25)
+     * @param sortBy
+     *            sort field (createdAt, updatedAt, status)
+     * @param sortOrder
+     *            sort direction (asc, desc)
+     * @return paginated saga list with metadata
+     */
+    @GetMapping
+    public ResponseEntity<Map<String, Object>> listSagas(
+            @RequestParam(required = false) String sagaType,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "25") int pageSize,
+            @RequestParam(defaultValue = "updatedAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortOrder) {
+
+        // Get all sagas from the orchestrator and filter in memory
+        List<SagaState> allSagas = new ArrayList<>(orchestrator.getActiveSagas());
+
+        // Apply filters
+        List<SagaState> filtered = allSagas.stream()
+            .filter(s -> sagaType == null || sagaType.isEmpty() || sagaType.equals(s.getSagaType()))
+            .filter(s -> status == null || status.isEmpty() || status.equals(s.getStatus()))
+            .filter(s -> tenantId == null || tenantId.isEmpty() ||
+                    (s.getTenantId() != null && s.getTenantId().toString().equals(tenantId)))
+            .collect(Collectors.toList());
+
+        // Apply sorting
+        filtered.sort((a, b) -> {
+            int cmp = 0;
+            switch (sortBy.toLowerCase()) {
+                case "createdAt":
+                    cmp = a.getCreatedAt().compareTo(b.getCreatedAt());
+                    break;
+                case "updatedAt":
+                    cmp = a.getUpdatedAt().compareTo(b.getUpdatedAt());
+                    break;
+                case "status":
+                    cmp = a.getStatus().compareTo(b.getStatus());
+                    break;
+                default:
+                    cmp = 0;
+            }
+            return "asc".equals(sortOrder) ? cmp : -cmp;
+        });
+
+        // Apply pagination
+        int total = filtered.size();
+        int fromIndex = (page - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, filtered.size());
+        List<SagaState> paged = fromIndex < filtered.size() ? filtered.subList(fromIndex, toIndex) : List.of();
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("items", paged);
+        response.put("total", total);
+        response.put("page", page);
+        response.put("pageSize", pageSize);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Get all events for a saga (frontend-compatible endpoint). Currently returns an empty list as events are not yet stored persistently.
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @return list of saga events
+     */
+    @GetMapping("/{sagaId}/events")
+    public ResponseEntity<List<Map<String, String>>> getSagaEvents(@PathVariable String sagaId) {
+        // Events are published via Kafka but not stored persistently yet
+        return ResponseEntity.ok(List.of());
+    }
+
+    /**
+     * Execute the next step in a saga (frontend-compatible endpoint).
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param request
+     *            the execution request containing command and optional data
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/execute")
+    public ResponseEntity<Map<String, Object>> executeStepFrontend(
+            @PathVariable String sagaId,
+            @RequestBody ExecuteStepFrontendRequest request) {
+        try {
+            SagaContext context = orchestrator.executeStep(
+                UUID.fromString(sagaId),
+                request.command(),
+                request.data());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("command", request.command());
+            response.put("status", "SUCCESS");
+            response.put("context", context.getData());
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "NOT_FOUND");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "EXECUTION_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Perform a generic workflow action on a saga (frontend-compatible endpoint).
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param request
+     *            the action request
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/action")
+    public ResponseEntity<Map<String, Object>> performActionFrontend(
+            @PathVariable String sagaId,
+            @RequestBody ActionRequest request) {
+        try {
+            switch (request.action()) {
+                case "resume":
+                    return resumeSagaFrontend(sagaId, null);
+                case "escalate":
+                    return escalateSagaFrontend(sagaId, request.reason());
+                case "complete_step":
+                    return completeStepFrontend(sagaId, request.stepCode());
+                case "insert_step":
+                case "remove_step":
+                    Map<String, Object> unsupported = new HashMap<>();
+                    unsupported.put("error", "UNSUPPORTED");
+                    unsupported.put("message", request.action() + " is not yet supported");
+                    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(unsupported);
+                default:
+                    Map<String, Object> unknown = new HashMap<>();
+                    unknown.put("error", "UNKNOWN_ACTION");
+                    unknown.put("message", "Unknown action: " + request.action());
+                    return ResponseEntity.badRequest().body(unknown);
+            }
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "ACTION_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Resume a paused saga (frontend-compatible endpoint).
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param stepCode
+     *            optional step code to resume from
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/resume")
+    public ResponseEntity<Map<String, Object>> resumeSagaFrontend(
+            @PathVariable String sagaId,
+            @RequestParam(required = false) String stepCode) {
+        try {
+            SagaContext context = orchestrator.executeStep(
+                UUID.fromString(sagaId),
+                "RESUME",
+                java.util.Map.of("stepCode", stepCode));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("action", "resume");
+            response.put("status", "RUNNING");
+            response.put("context", context.getData());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "RESUME_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Escalate a saga step (frontend-compatible endpoint).
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param reason
+     *            optional escalation reason
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/escalate")
+    public ResponseEntity<Map<String, Object>> escalateSagaFrontend(
+            @PathVariable String sagaId,
+            @RequestParam(required = false) String reason) {
+        try {
+            SagaContext context = orchestrator.executeStep(
+                UUID.fromString(sagaId),
+                "ESCALATE",
+                java.util.Map.of("reason", reason));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("action", "escalate");
+            response.put("status", "ESCALATED");
+            response.put("context", context.getData());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "ESCALATION_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Complete a specific step in a saga.
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param stepCode
+     *            the step code to complete
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/complete_step")
+    public ResponseEntity<Map<String, Object>> completeStepFrontend(
+            @PathVariable String sagaId,
+            @RequestParam(required = false) String stepCode) {
+        try {
+            SagaContext context = orchestrator.executeStep(
+                UUID.fromString(sagaId),
+                "COMPLETE_STEP",
+                java.util.Map.of("stepCode", stepCode));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("action", "complete_step");
+            response.put("status", "SUCCESS");
+            response.put("context", context.getData());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "COMPLETE_STEP_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
     }
 
     // ── DTOs ──
@@ -230,6 +501,24 @@ public class SagaController {
      */
     public record CompensateStepRequest(
             String stepCode) {
+    }
+
+    /**
+     * Request body for executing a saga step via frontend-compatible endpoint.
+     */
+    public record ExecuteStepFrontendRequest(
+            String command,
+            Map<String, Object> data) {
+    }
+
+    /**
+     * Request body for performing a generic workflow action.
+     */
+    public record ActionRequest(
+            String action,
+            String stepCode,
+            String reason,
+            Map<String, Object> data) {
     }
 
     /**

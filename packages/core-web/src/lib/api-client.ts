@@ -1,4 +1,4 @@
-import { API_URL, PROJECT_SERVICE_URL } from './env';
+import { API_URL, PROJECT_SERVICE_URL, WORKFLOW_SERVICE_URL } from './env';
 import { SESSION_COOKIE } from './session-cookies';
 
 const HTTP_NO_CONTENT = 204;
@@ -13,6 +13,18 @@ export class ApiClientError extends Error {
   }
 }
 
+// Detect whether a path belongs to the workflow service so we can route
+// to the correct backend (workflow-service-java on port 8089).
+// Workflow service uses /api/v1/ prefix for backend endpoints
+// Also matches /api/workflows/ and /api/sagas/ prefixes for Next.js API routes
+function isWorkflowServicePath(path: string): boolean {
+  return path.startsWith('/api/sagas') ||
+         path.startsWith('/api/v1/workflow') ||
+         path.startsWith('/api/v1/organisations') ||
+         path.startsWith('/api/v1/template-phase-mappings') ||
+         path.startsWith('/api/workflows/');
+}
+
 // Detect whether a path belongs to the project service so we can route
 // to the correct internal backend (the API gateway currently does not
 // proxy project endpoints).
@@ -25,12 +37,31 @@ function isProjectServicePath(path: string): boolean {
   );
 }
 
+// Paths that have Next.js API route proxies (server-side proxying).
+// These use relative URLs so Next.js can intercept and proxy to the backend.
+function hasApiRouteProxy(path: string): boolean {
+  return path.startsWith('/api/sagas') || path.startsWith('/api/workflows');
+}
+
 function baseUrlFor(path: string): string {
-  if (!isProjectServicePath(path)) {
-    return API_URL;
+  // Saga and workflow endpoints use relative paths (proxied by Next.js API routes).
+  // This allows the browser to fetch from /api/sagas and /api/workflows
+  // which are server-side proxied to WORKFLOW_SERVICE_URL.
+  if (hasApiRouteProxy(path)) {
+    return '';
   }
 
-  return PROJECT_SERVICE_URL;
+  // Other workflow service endpoints still route directly to the workflow service
+  if (isWorkflowServicePath(path)) {
+    return WORKFLOW_SERVICE_URL;
+  }
+
+  // Project service endpoints route to the project service
+  if (isProjectServicePath(path)) {
+    return PROJECT_SERVICE_URL;
+  }
+
+  return API_URL;
 }
 
 // Get the normalized path for the actual HTTP request

@@ -9,3 +9,4 @@ export * from './separator';
 export * from './badge';
 export * from './modal';
 export * from './textarea';
+export * from './tabs';

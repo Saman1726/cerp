@@ -111,11 +111,11 @@ export function TemplatesPage() {
                   <span>Steps: {template.steps.length}</span>
                 </div>
 
-                {template.metadata.applicableCategories &&
+                {template.metadata?.applicableCategories &&
                   template.metadata.applicableCategories.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {template.metadata.applicableCategories.map((cat) => (
-                        <Badge key={cat} variant="outline" className="text-xs">
+                        <Badge key={`${template.templateId}-${cat}`} variant="outline" className="text-xs">
                           {cat}
                         </Badge>
                       ))}

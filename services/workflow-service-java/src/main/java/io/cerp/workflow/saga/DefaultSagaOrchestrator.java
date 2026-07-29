@@ -17,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -43,6 +44,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     private final Map<UUID, SagaState> activeSagas = new ConcurrentHashMap<>();
     private final RetryConfig retryConfig;
 
+    @Autowired
     public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher) {
         this(sagaRepository, eventPublisher, new RetryConfig(3, Duration.ofSeconds(2), 2.0));
     }
@@ -284,6 +286,13 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         }
 
         return results;
+    }
+
+    /**
+     * Get all active saga states (for listing endpoint).
+     */
+    public List<SagaState> getActiveSagas() {
+        return new ArrayList<>(activeSagas.values());
     }
 
     // --- Entity/State conversion ---

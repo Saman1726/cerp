@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -37,12 +36,10 @@ public class SagaEntity {
     @Column(name = "next_step")
     private String nextStep;
 
-    @Lob
-    @Column(name = "steps_json")
+    @Column(name = "steps_json", columnDefinition = "TEXT")
     private String stepsJson;
 
-    @Lob
-    @Column(name = "last_error_json")
+    @Column(name = "last_error_json", columnDefinition = "TEXT")
     private String lastErrorJson;
 
     @Column(name = "created_at", nullable = false, updatable = false)

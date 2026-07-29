@@ -1,4 +1,4 @@
-import { Building2, Handshake, HardHat, LayoutDashboard, Settings, Users, Package, Store } from 'lucide-react';
+import { Building2, Handshake, HardHat, LayoutDashboard, Settings, Users, Package, Store, GitBranch } from 'lucide-react';
 import type { NavItem } from '@cerp/core-web/shell';
 
 export const navItems: NavItem[] = [
@@ -10,4 +10,5 @@ export const navItems: NavItem[] = [
   { label: 'Tenants', href: '/tenants', icon: Users },
   { label: 'Partners', href: '/partners', icon: Handshake },
   { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Workflows', href: '/workflows', icon: GitBranch },
 ];

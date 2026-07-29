@@ -10,6 +10,7 @@ export const config = {
     '/partners/:path*',
     '/vendors/:path*',
     '/settings/:path*',
+    '/workflows/:path*',
     '/login',
   ],
 };

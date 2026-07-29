@@ -23,6 +23,7 @@ io/cerp/workflow/state/StateMachineEngine$TransitionsInfo.class
 io/cerp/workflow/repository/WorkflowNoteRepository.class
 io/cerp/workflow/domain/TemplatePhaseMapping.class
 io/cerp/workflow/saga/SagaStep.class
+io/cerp/workflow/controller/SagaController$ActionRequest.class
 io/cerp/workflow/saga/DefaultSagaOrchestrator$RetryConfig.class
 io/cerp/workflow/saga/DefaultSagaOrchestrator.class
 io/cerp/workflow/repository/TenantRepository.class
@@ -45,6 +46,7 @@ io/cerp/workflow/domain/WorkflowTemplate.class
 io/cerp/workflow/service/TenantService.class
 io/cerp/workflow/saga/ProcurementSagaHandler.class
 io/cerp/workflow/seed/WorkflowSeedInitializer$SnaggingTemplateDefinition.class
+io/cerp/workflow/controller/SagaController$ExecuteStepFrontendRequest.class
 io/cerp/workflow/seed/WorkflowSeedInitializer$FacilityManagementTemplateDefinition.class
 io/cerp/workflow/state/StateMachineDefinition.class
 io/cerp/workflow/domain/TemplatePhaseMapping$BuildingTypeGroup.class
