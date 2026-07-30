@@ -123,19 +123,19 @@ public class WorkflowTemplateService {
     }
 
     /**
-     * List all active templates for the current tenant.
+     * List all active templates for the current tenant with steps eagerly loaded.
      */
     @Transactional(readOnly = true)
     public List<WorkflowTemplate> listActiveTemplates() {
-        return templateRepository.findByTenantIdAndStatusOrderByOrderNum(tenantId);
+        return templateRepository.findByTenantIdWithSteps(tenantId);
     }
 
     /**
-     * List all templates (any status) for the current tenant, ordered by construction phase.
+     * List all templates (any status) for the current tenant with steps eagerly loaded, ordered by construction phase.
      */
     @Transactional(readOnly = true)
     public List<WorkflowTemplate> listAllTemplates() {
-        return templateRepository.findByTenantIdOrderByOrderNum(tenantId);
+        return templateRepository.findByTenantIdWithSteps(tenantId);
     }
 
     /**
@@ -201,6 +201,35 @@ public class WorkflowTemplateService {
             WorkflowTemplate.TemplateStatus.ACTIVE)
             .orElseThrow(() -> new IllegalArgumentException("Active template not found: " + code));
         return template.getSteps();
+    }
+
+    /**
+     * Get a template by ID with its steps eagerly loaded (LEFT JOIN FETCH). This method should be used when the response requires the steps collection to be serialized.
+     */
+    @Transactional(readOnly = true)
+    public Optional<WorkflowTemplate> getTemplateWithSteps(UUID id) {
+        return templateRepository.findByIdWithSteps(id);
+    }
+
+    /**
+     * Get a template by code with its steps eagerly loaded (LEFT JOIN FETCH).
+     */
+    @Transactional(readOnly = true)
+    public Optional<WorkflowTemplate> getTemplateWithSteps(String tenantId, String code) {
+        return templateRepository.findByTenantIdAndCodeAndStatusWithSteps(tenantId, code);
+    }
+
+    /**
+     * Get an active template by code with its steps eagerly loaded (LEFT JOIN FETCH). Used when the template code is known (e.g., PRE_CONSTRUCTION).
+     */
+    @Transactional(readOnly = true)
+    public Optional<WorkflowTemplate> getTemplateByCodeWithSteps(String code) {
+        if (tenantId == null) {
+            // Fallback during startup: try to find any template by code with steps
+            return templateRepository.findByCode(code)
+                .flatMap(t -> templateRepository.findByIdWithSteps(t.getId()));
+        }
+        return templateRepository.findByTenantIdAndCodeAndStatusWithSteps(tenantId, code);
     }
 
     private WorkflowTemplateStep mapStepRequestToEntity(WorkflowTemplateStepRequest stepReq, Integer order) {

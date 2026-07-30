@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getAuthHeaders } from '../../utils';
+import { getAuthHeaders, getBackendHeaders } from '../../utils';
 
 // Map Java TemplateStatus to frontend WorkflowTemplateStatus
 function mapTemplateStatus(status: string): string {
@@ -18,7 +18,8 @@ export async function GET(
 ) {
   try {
     const { code } = await params;
-    const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates/${code}`;
+    // Use the new /by-code/{code} endpoint that returns template + steps in one request
+    const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates/by-code/${code}`;
 
     const res = await fetch(url, {
       headers: getAuthHeaders(request),
@@ -30,21 +31,11 @@ export async function GET(
       return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
     }
 
-    const javaTemplate = await res.json();
+    const javaData = await res.json();
 
-    const stepsUrl = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates/${code}/steps`;
-    let javaSteps: Record<string, unknown>[] = [];
-    try {
-      const stepsRes = await fetch(stepsUrl, {
-        headers: getAuthHeaders(request),
-        cache: 'no-store',
-      });
-      if (stepsRes.ok) {
-        javaSteps = await stepsRes.json();
-      }
-    } catch {
-      // Ignore step fetch errors
-    }
+    // The response includes template and steps together from the /by-code/{code} endpoint
+    const javaTemplate = javaData.template ?? javaData;
+    const javaSteps: Record<string, unknown>[] = javaData.steps ?? [];
 
     // Transform template steps to frontend format
     const transformedSteps = javaSteps.map((step: Record<string, unknown>) => ({
@@ -87,6 +78,44 @@ export async function GET(
       template: transformedTemplate,
       steps: transformedSteps,
     });
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ code: string }> }
+) {
+  try {
+    const { code } = await params;
+    const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates/${code}`;
+
+    const body = await request.json();
+    console.log('[API workflows/templates]', code, 'PATCH request body:', JSON.stringify(body, null, 2));
+
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        ...getBackendHeaders(request as any),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[API workflows/templates]', code, 'PATCH response status:', res.status, res.statusText);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => undefined);
+      console.error('[API workflows/templates]', code, 'PATCH error:', res.status, data);
+      return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },

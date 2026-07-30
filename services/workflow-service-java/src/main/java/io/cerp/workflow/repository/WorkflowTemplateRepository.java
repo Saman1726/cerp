@@ -37,9 +37,6 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
                         @Param("templateCode") String templateCode,
                         @Param("stepCode") String stepCode);
 
-        @Query("SELECT DISTINCT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps WHERE t.tenantId = :tenantId ORDER BY COALESCE(t.orderNum, 9999), t.code")
-        List<WorkflowTemplate> findByTenantIdWithSteps(@Param("tenantId") String tenantId);
-
         /**
          * Find templates by phase type ordered by construction phase order.
          */
@@ -55,4 +52,22 @@ public interface WorkflowTemplateRepository extends JpaRepository<WorkflowTempla
 
         Optional<WorkflowTemplate> findByTenantIdAndCodeAndStatus(String tenantId, String code,
                         WorkflowTemplate.TemplateStatus status);
+
+        /**
+         * Find a template by ID with its steps and assignee roles eagerly loaded (LEFT JOIN FETCH).
+         */
+        @Query("SELECT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps s LEFT JOIN FETCH s.assigneeRoleEntities WHERE t.id = :id")
+        Optional<WorkflowTemplate> findByIdWithSteps(@Param("id") UUID id);
+
+        /**
+         * Find an active template by code with its steps and assignee roles eagerly loaded (LEFT JOIN FETCH).
+         */
+        @Query("SELECT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps s LEFT JOIN FETCH s.assigneeRoleEntities WHERE t.code = :code AND t.tenantId = :tenantId AND t.status = 'ACTIVE'")
+        Optional<WorkflowTemplate> findByTenantIdAndCodeAndStatusWithSteps(@Param("tenantId") String tenantId, @Param("code") String code);
+
+        /**
+         * Find all templates for tenant with steps and assignee roles eagerly loaded (LEFT JOIN FETCH).
+         */
+        @Query("SELECT t FROM WorkflowTemplate t LEFT JOIN FETCH t.steps s LEFT JOIN FETCH s.assigneeRoleEntities WHERE t.tenantId = :tenantId ORDER BY COALESCE(t.orderNum, 9999), t.code")
+        List<WorkflowTemplate> findByTenantIdWithSteps(@Param("tenantId") String tenantId);
 }

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.BatchSize;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
@@ -73,7 +74,8 @@ public class WorkflowTemplate {
      * Applicable scope levels for this template. - WHOLE: template applies to whole buildings/SubProjects - FLOOR: template applies to specific floors within a
      * SubProject - PART: template applies to specific building parts within a SubProject
      */
-    @ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
+    @ElementCollection(fetch = jakarta.persistence.FetchType.LAZY)
+    @BatchSize(size = 20)
     @Column(name = "applicable_scope_levels", length = 16)
     private List<String> applicableScopeLevels = new ArrayList<>();
 

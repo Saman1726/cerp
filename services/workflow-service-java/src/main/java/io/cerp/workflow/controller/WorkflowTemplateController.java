@@ -1,6 +1,9 @@
 package io.cerp.workflow.controller;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -62,16 +66,44 @@ public class WorkflowTemplateController {
         return ResponseEntity.ok(templateService.listAllTemplates());
     }
 
+    /**
+     * Get a template by ID with its steps eagerly loaded (LEFT JOIN FETCH). Following the same pattern as WorkflowController.getWorkflowDetail.
+     */
+    @Transactional(readOnly = true)
     @GetMapping("/{id}")
-    public ResponseEntity<WorkflowTemplate> getById(@PathVariable String id) {
-        WorkflowTemplate template = templateService.getActiveTemplate(id);
-        return ResponseEntity.ok(template);
+    public ResponseEntity<Map<String, Object>> getById(@PathVariable String id) {
+        UUID templateId = UUID.fromString(id);
+        Optional<WorkflowTemplate> templateOpt = templateService.getTemplateWithSteps(templateId);
+
+        Map<String, Object> response = new HashMap<>();
+        templateOpt.ifPresent(t -> {
+            response.put("template", t);
+            response.put("steps", t.getSteps());
+        });
+
+        return templateOpt.isPresent()
+                ? ResponseEntity.ok(response)
+                : ResponseEntity.notFound().build();
     }
 
-    @GetMapping("/{code}")
-    public ResponseEntity<WorkflowTemplate> getByCode(@PathVariable String code) {
-        WorkflowTemplate template = templateService.getActiveTemplate(code);
-        return ResponseEntity.ok(template);
+    /**
+     * Get a template detail with steps by ID. Returns: { template: {...}, steps: [...] }
+     */
+    @Transactional(readOnly = true)
+    @GetMapping("/{id}/detail")
+    public ResponseEntity<Map<String, Object>> getTemplateDetail(@PathVariable String id) {
+        UUID templateId = UUID.fromString(id);
+        Optional<WorkflowTemplate> templateOpt = templateService.getTemplateWithSteps(templateId);
+
+        Map<String, Object> response = new HashMap<>();
+        templateOpt.ifPresent(t -> {
+            response.put("template", t);
+            response.put("steps", t.getSteps());
+        });
+
+        return templateOpt.isPresent()
+                ? ResponseEntity.ok(response)
+                : ResponseEntity.notFound().build();
     }
 
     @PatchMapping("/{code}")
@@ -96,5 +128,24 @@ public class WorkflowTemplateController {
     @GetMapping("/{code}/steps")
     public ResponseEntity<List<WorkflowTemplateStep>> getSteps(@PathVariable String code) {
         return ResponseEntity.ok(templateService.getTemplateSteps(code));
+    }
+
+    /**
+     * Get an active template by code with its steps eagerly loaded (LEFT JOIN FETCH). This endpoint accepts template codes like "PRE_CONSTRUCTION" instead of UUIDs.
+     */
+    @Transactional(readOnly = true)
+    @GetMapping("/by-code/{code}")
+    public ResponseEntity<Map<String, Object>> getByCode(@PathVariable String code) {
+        Optional<WorkflowTemplate> templateOpt = templateService.getTemplateByCodeWithSteps(code);
+
+        Map<String, Object> response = new HashMap<>();
+        templateOpt.ifPresent(t -> {
+            response.put("template", t);
+            response.put("steps", t.getSteps());
+        });
+
+        return templateOpt.isPresent()
+                ? ResponseEntity.ok(response)
+                : ResponseEntity.notFound().build();
     }
 }

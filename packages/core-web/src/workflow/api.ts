@@ -118,20 +118,49 @@ export const workflowApi = {
 
   /**
    * List all orchestration templates.
+   * Note: The backend returns templates without steps in the list endpoint.
+   * Steps are fetched lazily when viewing template details.
    */
-  listTemplates: async (): Promise<OrchestrationTemplate[]> => {
+  listTemplates: async (): Promise<Omit<OrchestrationTemplate, 'steps'>[]> => {
     const templates = await apiClient.get<Record<string, unknown>[]>(`${WORKFLOW_API_BASE}/templates`);
     return templates.map((t) => ({
       templateId: (t.id as string) ?? (t.templateId as string) ?? '',
-      code: t.code as string,
-      name: t.name as string,
-      description: t.description as string,
+      code: (t.code as string) ?? '',
+      name: (t.name as string) ?? '',
+      description: (t.description as string) ?? '',
       version: (t.version as number) ?? 1,
       status: (t.status as OrchestrationTemplate['status']) ?? 'Draft',
-      steps: (t.steps as OrchestrationTemplate['steps']) ?? [],
-      conditions: t.conditions as OrchestrationTemplate['conditions'],
-      metadata: t.metadata as OrchestrationTemplate['metadata'],
+      steps: [] as OrchestrationTemplate['steps'],
+      metadata: (t.metadata as OrchestrationTemplate['metadata']) ?? {
+        createdBy: '',
+        createdAt: '',
+        updatedAt: '',
+      },
     }));
+  },
+
+  /**
+   * Get a single template by code with all steps.
+   */
+  getTemplateWithSteps: async (templateCode: string): Promise<OrchestrationTemplate> => {
+    const result = await apiClient.get<{ template: Record<string, unknown>; steps: Record<string, unknown>[] }>(
+      `${WORKFLOW_API_BASE}/templates/${templateCode}`
+    );
+    const { template, steps } = result;
+    return {
+      templateId: (template.id as string) ?? '',
+      code: (template.code as string) ?? '',
+      name: (template.name as string) ?? '',
+      description: (template.description as string) ?? '',
+      version: (template.version as number) ?? 1,
+      status: (template.status as OrchestrationTemplate['status']) ?? 'Draft',
+      steps: (steps as OrchestrationTemplate['steps']) ?? [],
+      metadata: (template.metadata as OrchestrationTemplate['metadata']) ?? {
+        createdBy: '',
+        createdAt: '',
+        updatedAt: '',
+      },
+    };
   },
 
   /**
@@ -154,10 +183,10 @@ export const workflowApi = {
   },
 
   /**
-   * Update an existing orchestration template.
+   * Update an existing orchestration template (uses PATCH).
    */
   updateTemplate: async (templateCode: string, request: UpdateOrchestrationTemplateRequest): Promise<OrchestrationTemplate> => {
-    return apiClient.put<UpdateOrchestrationTemplateRequest, OrchestrationTemplate>(
+    return apiClient.patch<UpdateOrchestrationTemplateRequest, OrchestrationTemplate>(
       `${WORKFLOW_API_BASE}/templates/${templateCode}`,
       request
     );

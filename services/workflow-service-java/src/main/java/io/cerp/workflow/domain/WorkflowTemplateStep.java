@@ -2,7 +2,9 @@ package io.cerp.workflow.domain;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -67,9 +69,8 @@ public class WorkflowTemplateStep {
      * </p>
      */
     @OneToMany(mappedBy = "templateStep", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-    @JsonBackReference("template-step-assignee-roles")
     @OrderBy("roleOrder ASC")
-    private List<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities = new ArrayList<>();
+    private Set<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities = new LinkedHashSet<>();
 
     @Column(name = "requires_evidence", nullable = false)
     private Boolean requiresEvidence = false;
@@ -177,11 +178,11 @@ public class WorkflowTemplateStep {
         this.assigneeRoles = assigneeRoles;
     }
 
-    public List<WorkflowTemplateStepAssigneeRole> getAssigneeRoleEntities() {
+    public Set<WorkflowTemplateStepAssigneeRole> getAssigneeRoleEntities() {
         return assigneeRoleEntities;
     }
 
-    public void setAssigneeRoleEntities(List<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities) {
+    public void setAssigneeRoleEntities(Set<WorkflowTemplateStepAssigneeRole> assigneeRoleEntities) {
         this.assigneeRoleEntities = assigneeRoleEntities;
     }
 
@@ -201,11 +202,11 @@ public class WorkflowTemplateStep {
     }
 
     /**
-     * Get the primary assignee role name (first role in the ordered list).
+     * Get the primary assignee role name (first role in the ordered set).
      */
     public String getPrimaryAssigneeRole() {
         if (assigneeRoleEntities != null && !assigneeRoleEntities.isEmpty()) {
-            return assigneeRoleEntities.get(0).getRoleName();
+            return assigneeRoleEntities.iterator().next().getRoleName();
         }
         if (assigneeRoles != null && !assigneeRoles.isEmpty()) {
             return assigneeRoles.get(0);

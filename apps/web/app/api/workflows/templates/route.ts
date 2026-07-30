@@ -124,3 +124,39 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflow-templates`;
+    console.log('[API workflows/templates] Creating template from URL:', url);
+
+    const body = await request.json();
+    console.log('[API workflows/templates] Create request body:', JSON.stringify(body, null, 2));
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...getBackendHeaders(request),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    console.log('[API workflows/templates] Create response status:', res.status, res.statusText);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => undefined);
+      console.error('[API workflows/templates] Create error:', res.status, data);
+      return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('[API workflows/templates] Create unexpected error:', error);
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
