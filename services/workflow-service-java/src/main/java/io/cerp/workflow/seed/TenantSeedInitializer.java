@@ -22,8 +22,8 @@ public class TenantSeedInitializer implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(TenantSeedInitializer.class);
 
-    private static final String DEFAULT_TENANT_CODE = "default";
-    private static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    public static final String DEFAULT_TENANT_CODE = "default";
+    public static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final String DEFAULT_TENANT_NAME = "Default Tenant";
     private static final String DEFAULT_TENANT_DESCRIPTION = "System default tenant for development and initial setup";
 

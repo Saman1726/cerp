@@ -51,6 +51,46 @@ public interface EventPublisher {
             String tenantId, Map<String, Object> data);
 
     /**
+     * Publish a workflow event with an explicit sagaId.
+     *
+     * @param eventType
+     *            the event type (e.g., "ProcurementRequestCreated")
+     * @param sagaType
+     *            the saga/workflow type
+     * @param sagaId
+     *            the saga instance ID
+     * @param aggregateId
+     *            the aggregate ID that caused the event
+     * @param tenantId
+     *            the tenant ID
+     * @param data
+     *            the event payload
+     */
+    void publishEvent(String eventType, String sagaType, String sagaId, UUID aggregateId,
+            String tenantId, Map<String, Object> data);
+
+    /**
+     * Publish a workflow event with an explicit sagaId and userId.
+     *
+     * @param eventType
+     *            the event type (e.g., "ProcurementRequestCreated")
+     * @param sagaType
+     *            the saga/workflow type
+     * @param sagaId
+     *            the saga instance ID
+     * @param aggregateId
+     *            the aggregate ID that caused the event
+     * @param tenantId
+     *            the tenant ID
+     * @param userId
+     *            the user ID
+     * @param data
+     *            the event payload
+     */
+    void publishEvent(String eventType, String sagaType, String sagaId, UUID aggregateId,
+            String tenantId, String userId, Map<String, Object> data);
+
+    /**
      * Check if the event publisher is healthy.
      *
      * @return true if healthy

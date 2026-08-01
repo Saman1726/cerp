@@ -1,6 +1,7 @@
 package io.cerp.workflow.saga;
 
 import io.cerp.workflow.config.TenantContext;
+import io.cerp.workflow.seed.TenantSeedInitializer;
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.repository.SagaEntity;
 import io.cerp.workflow.repository.SagaRepository;
@@ -59,7 +60,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     @Override
     public UUID startSaga(String sagaType, SagaContext context) {
         UUID sagaId = context.getSagaId();
-        String tenantId = TenantContext.get().map(Object::toString).orElse("unknown");
+        String tenantId = TenantContext.get().map(Object::toString)
+            .orElse(TenantSeedInitializer.DEFAULT_TENANT_ID.toString());
 
         SagaState state = new SagaState(
             sagaId,
@@ -84,6 +86,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             .sagaType(sagaType)
             .sagaId(sagaId.toString())
             .tenantId(tenantId)
+            .userId(context.getUserId())
             .data(context.getData())
             .build());
 
@@ -119,14 +122,16 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             // Update saga state
             updateSagaState(state, command, nextStep, null);
 
-            String tenantId = TenantContext.get().map(Object::toString).orElse(state.getTenantId());
+            String stepTenantId = TenantContext.get().map(Object::toString)
+                .orElse(state.getTenantId());
 
             // Publish step completed event
             eventPublisher.publish(WorkflowEvent.builder()
                 .eventType(state.getSagaType() + ".STEP_COMPLETED")
                 .sagaType(state.getSagaType())
                 .sagaId(sagaId.toString())
-                .tenantId(tenantId)
+                .tenantId(stepTenantId)
+                .userId(context.getUserId())
                 .data(Map.of("step", command, "nextStep", nextStep))
                 .build());
 
@@ -298,6 +303,25 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     // --- Entity/State conversion ---
 
     private SagaEntity toEntity(SagaState state) {
+        // Extract userId and projectId from state data if available
+        String userId = null;
+        UUID projectId = null;
+        if (state.getData() != null) {
+            Object userIdObj = state.getData().get("userId");
+            if (userIdObj instanceof String s) {
+                userId = s;
+            }
+            Object projectIdObj = state.getData().get("projectId");
+            if (projectIdObj instanceof String ps) {
+                try {
+                    projectId = UUID.fromString(ps);
+                } catch (IllegalArgumentException e) {
+                    // ignore
+                }
+            } else if (projectIdObj instanceof UUID pu) {
+                projectId = pu;
+            }
+        }
         return new SagaEntity(
             state.getSagaId(),
             state.getSagaType(),
@@ -307,6 +331,9 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getNextStep(),
             serializeSteps(state.getSteps()),
             state.getLastError() != null ? serializeError(state.getLastError()) : null,
+            state.getSagaId().toString(),
+            userId,
+            projectId,
             LocalDateTime.now(),
             LocalDateTime.now());
     }

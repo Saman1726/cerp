@@ -61,7 +61,43 @@ export const SAGA_TYPE_LABELS: Record<string, string> = {
   DELIVERY_WORKFLOW: 'Material Delivery & Discrepancy',
   BIDDING_WORKFLOW: 'Marketplace Bidding',
   PROGRESS_CLAIM_WORKFLOW: 'Subcontractor Progress → Payment',
+  // Procurement Saga step labels
+  CreateProcurementRequest: 'Create Procurement Request',
+  SubmitForApproval: 'Submit for Approval',
+  ApproveRequest: 'Approve Request',
+  IssuePurchaseOrder: 'Issue Purchase Order',
+  ReceiveDelivery: 'Receive Delivery',
+  ConfirmDelivery: 'Confirm Delivery',
+  CloseProcurement: 'Close Procurement',
+  // Bidding Saga step labels
+  'Tender.CreateAndOpen': 'Create & Open Tender',
+  'Tender.InviteVendors': 'Invite Vendors',
+  'Bidding.CollectBids': 'Collect Bids',
+  'Bidding.Evaluate': 'Evaluate Bids',
+  'Tender.Award': 'Award Tender',
 };
+
+// ── Procurement Saga Step Definitions ──
+
+export const PROCUREMENT_SAGA_STEPS: { code: string; label: string; description: string }[] = [
+  { code: 'CreateProcurementRequest', label: 'Create Request', description: 'Create a new procurement request' },
+  { code: 'SubmitForApproval', label: 'Submit for Approval', description: 'Submit the request for approval' },
+  { code: 'ApproveRequest', label: 'Approve Request', description: 'Approve or reject the request' },
+  { code: 'IssuePurchaseOrder', label: 'Issue PO', description: 'Issue purchase order to vendor' },
+  { code: 'ReceiveDelivery', label: 'Receive Delivery', description: 'Receive goods at site' },
+  { code: 'ConfirmDelivery', label: 'Confirm Delivery', description: 'Confirm delivery accepted' },
+  { code: 'CloseProcurement', label: 'Close', description: 'Close the procurement' },
+];
+
+// ── Bidding Saga Step Definitions ──
+
+export const BIDDING_SAGA_STEPS: { code: string; label: string; description: string }[] = [
+  { code: 'Tender.CreateAndOpen', label: 'Create Tender', description: 'Create and open a tender' },
+  { code: 'Tender.InviteVendors', label: 'Invite Vendors', description: 'Invite vendors to bid' },
+  { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Collect bids from vendors' },
+  { code: 'Bidding.Evaluate', label: 'Evaluate Bids', description: 'Evaluate received bids' },
+  { code: 'Tender.Award', label: 'Award Tender', description: 'Award tender and issue PO' },
+];
 
 export const SAGA_STATUS_LABELS: Record<string, string> = {
   RUNNING: 'Running',

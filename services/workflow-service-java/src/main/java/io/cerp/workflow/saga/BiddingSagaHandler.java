@@ -131,15 +131,34 @@ public class BiddingSagaHandler implements SagaHandler {
                 Map.of("field", "projectId"));
         }
 
+        // Extract projectId and set as aggregate ID
+        Object projectIdObj = payload.get("projectId");
+        UUID projectId = null;
+        if (projectIdObj instanceof String s) {
+            try {
+                projectId = UUID.fromString(s);
+            } catch (IllegalArgumentException e) {
+                // ignore
+            }
+        } else if (projectIdObj instanceof UUID u) {
+            projectId = u;
+        }
+
         final String tenderId = UUID.randomUUID().toString();
         final Map<String, Object> tenderData = new HashMap<>();
         tenderData.put("tenderId", tenderId);
-        tenderData.put("projectId", payload.get("projectId"));
+        tenderData.put("projectId", projectIdObj);
         tenderData.put("status", "OPEN");
         tenderData.put("createdAt", Instant.now().toString());
 
         context.getData().putAll(tenderData);
         context.getData().put("tenderId", tenderId);
+
+        // Set the aggregate ID to the project ID
+        if (projectId != null) {
+            context.setAggregateId(projectId);
+            context.setProjectId(projectId);
+        }
 
         // Emit TenderCreated event
         publishEvent(sagaId, tenantId, "TenderCreated", tenderData);
@@ -402,11 +421,18 @@ public class BiddingSagaHandler implements SagaHandler {
 
     private void publishEvent(final UUID sagaId, final String tenantId, final String eventType,
             final Map<String, Object> data) {
+        publishEvent(sagaId, tenantId, null, eventType, data);
+    }
+
+    private void publishEvent(final UUID sagaId, final String tenantId, final UUID aggregateId,
+            final String eventType, final Map<String, Object> data) {
         try {
             eventPublisher.publish(WorkflowEvent.builder()
                 .eventType(eventType)
                 .sagaType("marketplace_bidding")
                 .sagaId(sagaId.toString())
+                .aggregateId(aggregateId)
+                .aggregateType("Tender")
                 .tenantId(tenantId)
                 .data(data)
                 .build());

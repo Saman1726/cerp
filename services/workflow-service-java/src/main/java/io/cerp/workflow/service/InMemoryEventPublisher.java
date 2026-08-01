@@ -61,10 +61,76 @@ public class InMemoryEventPublisher implements EventPublisher {
         WorkflowEvent event = WorkflowEvent.builder()
             .eventType(eventType)
             .sagaType(sagaType)
-            .sagaId(aggregateId != null ? aggregateId.toString() : null)
             .aggregateId(aggregateId)
             .aggregateType(sagaType)
             .tenantId(tenantId)
+            .data(data)
+            .build();
+        persistToOutbox(event);
+    }
+
+    /**
+     * Publish an event with an explicit sagaId.
+     *
+     * @param eventType
+     *            the event type
+     * @param sagaType
+     *            the saga type
+     * @param sagaId
+     *            the saga instance ID (not the aggregate ID)
+     * @param aggregateId
+     *            the business aggregate ID
+     * @param tenantId
+     *            the tenant ID
+     * @param data
+     *            the event data
+     */
+    @Override
+    @Transactional
+    public void publishEvent(String eventType, String sagaType, String sagaId, UUID aggregateId,
+            String tenantId, Map<String, Object> data) {
+        WorkflowEvent event = WorkflowEvent.builder()
+            .eventType(eventType)
+            .sagaType(sagaType)
+            .sagaId(sagaId)
+            .aggregateId(aggregateId)
+            .aggregateType(aggregateId != null ? "Aggregate" : null)
+            .tenantId(tenantId)
+            .data(data)
+            .build();
+        persistToOutbox(event);
+    }
+
+    /**
+     * Publish an event with an explicit sagaId and userId.
+     *
+     * @param eventType
+     *            the event type
+     * @param sagaType
+     *            the saga type
+     * @param sagaId
+     *            the saga instance ID (not the aggregate ID)
+     * @param aggregateId
+     *            the business aggregate ID
+     * @param tenantId
+     *            the tenant ID
+     * @param userId
+     *            the user ID
+     * @param data
+     *            the event data
+     */
+    @Override
+    @Transactional
+    public void publishEvent(String eventType, String sagaType, String sagaId, UUID aggregateId,
+            String tenantId, String userId, Map<String, Object> data) {
+        WorkflowEvent event = WorkflowEvent.builder()
+            .eventType(eventType)
+            .sagaType(sagaType)
+            .sagaId(sagaId)
+            .aggregateId(aggregateId)
+            .aggregateType(aggregateId != null ? "Aggregate" : null)
+            .tenantId(tenantId)
+            .userId(userId)
             .data(data)
             .build();
         persistToOutbox(event);

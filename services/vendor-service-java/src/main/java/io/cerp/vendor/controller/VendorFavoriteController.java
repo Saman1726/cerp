@@ -1,11 +1,17 @@
 package io.cerp.vendor.controller;
 
 import io.cerp.vendor.client.IdentityServiceClient;
+import io.cerp.vendor.entity.Vendor;
 import io.cerp.vendor.model.VendorFavorite;
 import io.cerp.vendor.service.VendorFavoriteService;
+import io.cerp.vendor.service.VendorService;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,21 +27,50 @@ public class VendorFavoriteController {
 
     private final VendorFavoriteService vendorFavoriteService;
     private final IdentityServiceClient identityServiceClient;
+    private final VendorService vendorService;
 
     public VendorFavoriteController(
             VendorFavoriteService vendorFavoriteService,
-            IdentityServiceClient identityServiceClient) {
+            IdentityServiceClient identityServiceClient,
+            VendorService vendorService) {
         this.vendorFavoriteService = vendorFavoriteService;
         this.identityServiceClient = identityServiceClient;
+        this.vendorService = vendorService;
     }
 
     /**
-     * Get all favorited vendors for the current user.
+     * Get all favorited vendors for the current user with full vendor details.
      */
     @GetMapping("/my-vendors")
-    public List<VendorFavorite> getMyVendors(JwtAuthenticationToken authentication) {
+    public List<VendorFavoriteWithDetails> getMyVendorsWithDetails(JwtAuthenticationToken authentication) {
         UUID userId = extractUserId(authentication);
-        return vendorFavoriteService.getMyFavorites(userId);
+        List<VendorFavorite> favorites = vendorFavoriteService.getMyFavorites(userId);
+
+        return favorites.stream()
+            .map(fav -> {
+                Optional<Vendor> vendorOpt = vendorService.findById(fav.getVendorId());
+                if (vendorOpt.isPresent()) {
+                    Vendor vendor = vendorOpt.get();
+                    VendorFavoriteWithDetails details = new VendorFavoriteWithDetails();
+                    details.setVendorId(vendor.getId());
+                    details.setTenantId(vendor.getTenantId());
+                    details.setLegalName(vendor.getLegalName());
+                    details.setContactName(vendor.getContactName());
+                    details.setPhone(vendor.getPhone());
+                    details.setWebsite(vendor.getWebsite());
+                    details.setAddress(vendor.getAddress());
+                    details.setCity(vendor.getCity());
+                    details.setCountry(vendor.getCountry());
+                    details.setStatus(vendor.getStatus());
+                    details.setCategories(vendor.getCategories());
+                    details.setCreatedAt(vendor.getCreatedAt());
+                    details.setUpdatedAt(vendor.getUpdatedAt());
+                    return details;
+                }
+                return null;
+            })
+            .filter(v -> v != null)
+            .collect(Collectors.toList());
     }
 
     /**
@@ -90,6 +125,129 @@ public class VendorFavoriteController {
             }
             throw new IllegalStateException(
                 "Invalid UUID in token sub claim and IdentityServiceClient is not available. sub=" + sub);
+        }
+    }
+
+    /**
+     * Vendor favorite with full vendor details.
+     */
+    public static class VendorFavoriteWithDetails {
+        private UUID vendorId;
+        private UUID tenantId;
+        private String legalName;
+        private String contactName;
+        private String phone;
+        private String website;
+        private String address;
+        private String city;
+        private String country;
+        private String status;
+        private List<String> categories;
+        private java.time.OffsetDateTime createdAt;
+        private java.time.OffsetDateTime updatedAt;
+
+        public UUID getVendorId() {
+            return vendorId;
+        }
+
+        public void setVendorId(UUID vendorId) {
+            this.vendorId = vendorId;
+        }
+
+        public UUID getTenantId() {
+            return tenantId;
+        }
+
+        public void setTenantId(UUID tenantId) {
+            this.tenantId = tenantId;
+        }
+
+        public String getLegalName() {
+            return legalName;
+        }
+
+        public void setLegalName(String legalName) {
+            this.legalName = legalName;
+        }
+
+        public String getContactName() {
+            return contactName;
+        }
+
+        public void setContactName(String contactName) {
+            this.contactName = contactName;
+        }
+
+        public String getPhone() {
+            return phone;
+        }
+
+        public void setPhone(String phone) {
+            this.phone = phone;
+        }
+
+        public String getWebsite() {
+            return website;
+        }
+
+        public void setWebsite(String website) {
+            this.website = website;
+        }
+
+        public String getAddress() {
+            return address;
+        }
+
+        public void setAddress(String address) {
+            this.address = address;
+        }
+
+        public String getCity() {
+            return city;
+        }
+
+        public void setCity(String city) {
+            this.city = city;
+        }
+
+        public String getCountry() {
+            return country;
+        }
+
+        public void setCountry(String country) {
+            this.country = country;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public List<String> getCategories() {
+            return categories;
+        }
+
+        public void setCategories(List<String> categories) {
+            this.categories = categories;
+        }
+
+        public java.time.OffsetDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public void setCreatedAt(java.time.OffsetDateTime createdAt) {
+            this.createdAt = createdAt;
+        }
+
+        public java.time.OffsetDateTime getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public void setUpdatedAt(java.time.OffsetDateTime updatedAt) {
+            this.updatedAt = updatedAt;
         }
     }
 }

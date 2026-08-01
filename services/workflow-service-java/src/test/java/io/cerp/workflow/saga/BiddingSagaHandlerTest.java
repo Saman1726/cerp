@@ -237,6 +237,18 @@ class BiddingSagaHandlerTest {
         }
 
         @Override
+        public void publishEvent(final String eventType, final String sagaType, final String sagaId,
+                final UUID aggregateId, final String tenantId, final Map<String, Object> data) {
+            // Not implemented for testing
+        }
+
+        @Override
+        public void publishEvent(final String eventType, final String sagaType, final String sagaId,
+                final UUID aggregateId, final String tenantId, final String userId, final Map<String, Object> data) {
+            // Not implemented for testing
+        }
+
+        @Override
         public boolean isHealthy() {
             return true;
         }

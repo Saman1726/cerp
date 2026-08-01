@@ -123,6 +123,25 @@ public class ProcurementSagaHandler implements SagaHandler {
     // --- Execute methods ---
 
     private SagaContext executeCreateRequest(SagaContext context, Map<String, Object> payload) throws Exception {
+        // Extract projectId from context data
+        Object projectIdObj = context.getData().get("projectId");
+        UUID projectId = null;
+        if (projectIdObj instanceof String s) {
+            try {
+                projectId = UUID.fromString(s);
+            } catch (IllegalArgumentException e) {
+                // ignore - projectId may not be a valid UUID
+            }
+        } else if (projectIdObj instanceof UUID u) {
+            projectId = u;
+        }
+
+        // Set the aggregate ID to the project ID (the business entity)
+        if (projectId != null) {
+            context.setAggregateId(projectId);
+            context.setProjectId(projectId);
+        }
+
         Map<String, Object> data = Map.of(
             "requestId", context.getSagaId().toString(),
             "projectId", context.getData().get("projectId"),
@@ -134,7 +153,7 @@ public class ProcurementSagaHandler implements SagaHandler {
             .eventType("ProcurementRequestCreated")
             .sagaType("ProcurementSaga")
             .sagaId(context.getSagaId().toString())
-            .aggregateId(context.getAggregateId())
+            .aggregateId(projectId)
             .aggregateType("ProcurementRequest")
             .tenantId(context.getTenantId())
             .userId(context.getUserId())

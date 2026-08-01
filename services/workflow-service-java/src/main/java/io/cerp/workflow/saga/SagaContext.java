@@ -142,4 +142,62 @@ public class SagaContext {
     public void setAggregateId(UUID aggregateId) {
         data.put("aggregateId", aggregateId.toString());
     }
+
+    /**
+     * Get the project ID associated with this saga.
+     */
+    public UUID getProjectId() {
+        Object projectId = data.get("projectId");
+        if (projectId instanceof String s) {
+            try {
+                return UUID.fromString(s);
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
+        return projectId instanceof UUID u ? u : null;
+    }
+
+    /**
+     * Set the project ID associated with this saga.
+     */
+    public void setProjectId(UUID projectId) {
+        data.put("projectId", projectId);
+    }
+
+    /**
+     * Get the material ID associated with this saga.
+     */
+    public String getMaterialId() {
+        Object materialId = data.get("materialId");
+        return materialId != null ? materialId.toString() : null;
+    }
+
+    /**
+     * Set the material ID associated with this saga.
+     */
+    public void setMaterialId(String materialId) {
+        data.put("materialId", materialId);
+    }
+
+    /**
+     * Get the quantity associated with this saga.
+     */
+    public Integer getQuantity() {
+        Object quantity = data.get("quantity");
+        if (quantity instanceof Integer i) {
+            return i;
+        }
+        if (quantity instanceof Number n) {
+            return n.intValue();
+        }
+        return null;
+    }
+
+    /**
+     * Set the quantity associated with this saga.
+     */
+    public void setQuantity(Integer quantity) {
+        data.put("quantity", quantity);
+    }
 }

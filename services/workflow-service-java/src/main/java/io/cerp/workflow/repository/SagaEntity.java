@@ -42,6 +42,15 @@ public class SagaEntity {
     @Column(name = "last_error_json", columnDefinition = "TEXT")
     private String lastErrorJson;
 
+    @Column(name = "saga_id")
+    private String sagaId;
+
+    @Column(name = "user_id")
+    private String userId;
+
+    @Column(name = "project_id")
+    private UUID projectId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -54,6 +63,14 @@ public class SagaEntity {
     public SagaEntity(UUID id, String sagaType, String tenantId, String status,
             String currentStep, String nextStep, String stepsJson,
             String lastErrorJson, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(id, sagaType, tenantId, status, currentStep, nextStep, stepsJson,
+            lastErrorJson, null, null, null, createdAt, updatedAt);
+    }
+
+    public SagaEntity(UUID id, String sagaType, String tenantId, String status,
+            String currentStep, String nextStep, String stepsJson,
+            String lastErrorJson, String sagaId, String userId, UUID projectId,
+            LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.sagaType = sagaType;
         this.tenantId = tenantId;
@@ -62,6 +79,9 @@ public class SagaEntity {
         this.nextStep = nextStep;
         this.stepsJson = stepsJson;
         this.lastErrorJson = lastErrorJson;
+        this.sagaId = sagaId;
+        this.userId = userId;
+        this.projectId = projectId;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -144,5 +164,29 @@ public class SagaEntity {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getSagaId() {
+        return sagaId;
+    }
+
+    public void setSagaId(String sagaId) {
+        this.sagaId = sagaId;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public UUID getProjectId() {
+        return projectId;
+    }
+
+    public void setProjectId(UUID projectId) {
+        this.projectId = projectId;
     }
 }

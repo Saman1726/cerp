@@ -40,13 +40,13 @@ function isProjectServicePath(path: string): boolean {
 // Paths that have Next.js API route proxies (server-side proxying).
 // These use relative URLs so Next.js can intercept and proxy to the backend.
 function hasApiRouteProxy(path: string): boolean {
-  return path.startsWith('/api/sagas') || path.startsWith('/api/workflows');
+  return path.startsWith('/api/sagas') || path.startsWith('/api/workflows') || path.startsWith('/api/projects') || path.startsWith('/api/vendors/');
 }
 
 function baseUrlFor(path: string): string {
-  // Saga and workflow endpoints use relative paths (proxied by Next.js API routes).
-  // This allows the browser to fetch from /api/sagas and /api/workflows
-  // which are server-side proxied to WORKFLOW_SERVICE_URL.
+  // Endpoints with Next.js API route proxies use relative paths.
+  // This allows the browser to fetch from /api/sagas, /api/workflows, /api/projects
+  // which are server-side proxied to the respective backend services.
   if (hasApiRouteProxy(path)) {
     return '';
   }
@@ -56,7 +56,8 @@ function baseUrlFor(path: string): string {
     return WORKFLOW_SERVICE_URL;
   }
 
-  // Project service endpoints route to the project service
+  // Project service endpoints route to the project service (direct Docker access)
+  // Note: /api/projects paths are handled by hasApiRouteProxy above
   if (isProjectServicePath(path)) {
     return PROJECT_SERVICE_URL;
   }

@@ -187,9 +187,11 @@ services:
       - '8087:8087'
 
   web:
-    image: node:24-alpine
+    build:
+      context: .
+      dockerfile: services/web/Dockerfile
+      target: dev
     container_name: cerp-web
-    working_dir: /app
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -213,14 +215,6 @@ services:
       NEXT_PUBLIC_VENDOR_SERVICE_URL: http://vendor-service-java:8085
     ports:
       - '3001:3001'
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/apps/web/node_modules
-      - /app/packages/core-web/node_modules
-      - /app/packages/shared-types/node_modules
-    # Exclude .env.local so Docker's NEXT_PUBLIC_* env vars take precedence
-    command: sh -c "rm -f apps/web/.env.local && corepack enable && pnpm install --frozen-lockfile && pnpm --filter web run dev"
     profiles:
       - legacy
 
