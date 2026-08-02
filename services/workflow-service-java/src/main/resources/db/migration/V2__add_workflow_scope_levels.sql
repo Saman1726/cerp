@@ -3,8 +3,8 @@
 -- Note: workflow_template_step_assignee_roles is created in V11 with a normalized schema
 
 -- JPA @ElementCollection creates separate join tables for applicableScopeLevels and requiredDocuments
-CREATE TABLE workflow_template_applicable_scope_levels (
-    workflow_template_id UUID NOT NULL REFERENCES workflow_templates (id) ON DELETE CASCADE,
+CREATE TABLE workflow.workflow_template_applicable_scope_levels (
+    workflow_template_id UUID NOT NULL REFERENCES workflow.workflow_templates (id) ON DELETE CASCADE,
     applicable_scope_levels VARCHAR(16) NOT NULL,
     PRIMARY KEY (
         workflow_template_id,
@@ -12,10 +12,10 @@ CREATE TABLE workflow_template_applicable_scope_levels (
     )
 );
 
-CREATE INDEX idx_template_scope_levels_template ON workflow_template_applicable_scope_levels (workflow_template_id);
+CREATE INDEX idx_template_scope_levels_template ON workflow.workflow_template_applicable_scope_levels (workflow_template_id);
 
-CREATE TABLE workflow_template_required_documents (
-    workflow_template_id UUID NOT NULL REFERENCES workflow_templates (id) ON DELETE CASCADE,
+CREATE TABLE workflow.workflow_template_required_documents (
+    workflow_template_id UUID NOT NULL REFERENCES workflow.workflow_templates (id) ON DELETE CASCADE,
     required_documents VARCHAR(64) NOT NULL,
     PRIMARY KEY (
         workflow_template_id,
@@ -23,25 +23,25 @@ CREATE TABLE workflow_template_required_documents (
     )
 );
 
-CREATE INDEX idx_template_required_docs_template ON workflow_template_required_documents (workflow_template_id);
+CREATE INDEX idx_template_required_docs_template ON workflow.workflow_template_required_documents (workflow_template_id);
 
--- Add default_scope_level column to workflow_templates (applicable_scope_levels is a separate table via @ElementCollection)
-ALTER TABLE workflow_templates
+-- Add default_scope_level column to workflow.workflow_templates (applicable_scope_levels is a separate table via @ElementCollection)
+ALTER TABLE workflow.workflow_templates
 ADD COLUMN default_scope_level VARCHAR(16) NOT NULL DEFAULT 'WHOLE';
 
--- Add scope level column to workflows to indicate the execution scope
-ALTER TABLE workflows
+-- Add scope level column to workflow.workflows to indicate the execution scope
+ALTER TABLE workflow.workflows
 ADD COLUMN scope_level VARCHAR(16) NOT NULL DEFAULT 'WHOLE';
 
 -- Add indexes for new columns
-CREATE INDEX idx_templates_scope_level ON workflow_templates (default_scope_level);
+CREATE INDEX idx_templates_scope_level ON workflow.workflow_templates (default_scope_level);
 
-CREATE INDEX idx_workflows_scope_level ON workflows (scope_level);
+CREATE INDEX idx_workflows_scope_level ON workflow.workflows (scope_level);
 
 -- Comments
-COMMENT ON COLUMN workflow_templates.default_scope_level IS 'WHOLE, FLOOR, PART - default scope when instantiating';
+COMMENT ON COLUMN workflow.workflow_templates.default_scope_level IS 'WHOLE, FLOOR, PART - default scope when instantiating';
 
-COMMENT ON COLUMN workflows.scope_level IS 'WHOLE, FLOOR, PART - the execution scope of this workflow instance';
+COMMENT ON COLUMN workflow.workflows.scope_level IS 'WHOLE, FLOOR, PART - the execution scope of this workflow instance';
 
 -- Note: applicable_scope_levels, required_documents are stored in separate join tables via JPA @ElementCollection
 -- Note: floor_ids and part_ids are stored in separate join tables (workflow_floor_ids, workflow_part_ids)

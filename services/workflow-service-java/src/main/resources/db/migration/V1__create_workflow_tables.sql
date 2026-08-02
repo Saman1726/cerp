@@ -1,5 +1,8 @@
+-- Create workflow schema for isolation from other services
+CREATE SCHEMA IF NOT EXISTS workflow;
+
 -- Workflow Templates
-CREATE TABLE workflow_templates (
+CREATE TABLE workflow.workflow_templates (
     id UUID PRIMARY KEY,
     tenant_id VARCHAR(255) NOT NULL,
     code VARCHAR(64) NOT NULL,
@@ -16,16 +19,16 @@ CREATE TABLE workflow_templates (
     CONSTRAINT uk_template_tenant_code_version UNIQUE (tenant_id, code, version)
 );
 
-CREATE INDEX idx_template_tenant_code ON workflow_templates (tenant_id, code);
+CREATE INDEX idx_template_tenant_code ON workflow.workflow_templates (tenant_id, code);
 
-CREATE INDEX idx_template_status ON workflow_templates (status);
+CREATE INDEX idx_template_status ON workflow.workflow_templates (status);
 
-CREATE INDEX idx_template_phase_type ON workflow_templates (phase_type);
+CREATE INDEX idx_template_phase_type ON workflow.workflow_templates (phase_type);
 
 -- Workflow Template Steps
-CREATE TABLE workflow_template_steps (
+CREATE TABLE workflow.workflow_template_steps (
     id UUID PRIMARY KEY,
-    template_id UUID NOT NULL REFERENCES workflow_templates(id) ON DELETE CASCADE,
+    template_id UUID NOT NULL REFERENCES workflow.workflow_templates(id) ON DELETE CASCADE,
     step_order INTEGER NOT NULL,
     code VARCHAR(64) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -40,15 +43,15 @@ CREATE TABLE workflow_template_steps (
     gating_condition TEXT
 );
 
-CREATE INDEX idx_template_steps_template ON workflow_template_steps (template_id, step_order);
+CREATE INDEX idx_template_steps_template ON workflow.workflow_template_steps (template_id, step_order);
 
 -- Workflow Instances
-CREATE TABLE workflows (
+CREATE TABLE workflow.workflows (
     id UUID PRIMARY KEY,
     tenant_id VARCHAR(255) NOT NULL,
     project_id UUID NOT NULL,
     subproject_id UUID NOT NULL,
-    template_id UUID NOT NULL REFERENCES workflow_templates (id),
+    template_id UUID NOT NULL REFERENCES workflow.workflow_templates (id),
     template_version INTEGER NOT NULL,
     code VARCHAR(64) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -79,20 +82,20 @@ CREATE TABLE workflows (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_workflow_tenant_project_subproject ON workflows (
+CREATE INDEX idx_workflow_tenant_project_subproject ON workflow.workflows (
     tenant_id,
     project_id,
     subproject_id
 );
 
-CREATE INDEX idx_workflow_tenant_status ON workflows (tenant_id, status);
+CREATE INDEX idx_workflow_tenant_status ON workflow.workflows (tenant_id, status);
 
-CREATE INDEX idx_workflow_template ON workflows (template_id);
+CREATE INDEX idx_workflow_template ON workflow.workflows (template_id);
 
 -- Workflow Step Instances
-CREATE TABLE workflow_steps (
+CREATE TABLE workflow.workflow_steps (
     id UUID PRIMARY KEY,
-    workflow_id UUID NOT NULL REFERENCES workflows (id) ON DELETE CASCADE,
+    workflow_id UUID NOT NULL REFERENCES workflow.workflows (id) ON DELETE CASCADE,
     template_step_id UUID,
     step_order INTEGER NOT NULL,
     code VARCHAR(64) NOT NULL,
@@ -119,15 +122,15 @@ CREATE TABLE workflow_steps (
     weight NUMERIC(5, 2) DEFAULT 1.0
 );
 
-CREATE INDEX idx_wf_steps_workflow ON workflow_steps (workflow_id, step_order);
+CREATE INDEX idx_wf_steps_workflow ON workflow.workflow_steps (workflow_id, step_order);
 
-CREATE INDEX idx_wf_steps_status ON workflow_steps (workflow_id, status);
+CREATE INDEX idx_wf_steps_status ON workflow.workflow_steps (workflow_id, status);
 
 -- Workflow Notes
-CREATE TABLE workflow_notes (
+CREATE TABLE workflow.workflow_notes (
     id UUID PRIMARY KEY,
-    workflow_id UUID NOT NULL REFERENCES workflows (id) ON DELETE CASCADE,
-    step_id UUID REFERENCES workflow_steps (id) ON DELETE SET NULL,
+    workflow_id UUID NOT NULL REFERENCES workflow.workflows (id) ON DELETE CASCADE,
+    step_id UUID REFERENCES workflow.workflow_steps (id) ON DELETE SET NULL,
     author_id UUID NOT NULL,
     note TEXT NOT NULL,
     note_type VARCHAR(16) NOT NULL CHECK (
@@ -141,8 +144,8 @@ CREATE TABLE workflow_notes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_wf_notes_workflow ON workflow_notes (workflow_id);
+CREATE INDEX idx_wf_notes_workflow ON workflow.workflow_notes (workflow_id);
 
-CREATE INDEX idx_wf_notes_step ON workflow_notes (step_id);
+CREATE INDEX idx_wf_notes_step ON workflow.workflow_notes (step_id);
 
-CREATE INDEX idx_wf_notes_created_at ON workflow_notes (created_at);
+CREATE INDEX idx_wf_notes_created_at ON workflow.workflow_notes (created_at);

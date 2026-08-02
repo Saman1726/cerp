@@ -20,14 +20,22 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        default-schema: workflow
     show-sql: false
     open-in-view: false
 
   flyway:
     enabled: true
     locations: classpath:db/migration
+    # Use workflow-specific schema to isolate from other services sharing cerp-postgres
+    default-schema: workflow
+    schemas: workflow
+    create-schemas: true
+    # Use a unique history table to prevent conflicts with other services
+    table: workflow_flyway_history
     baseline-on-migrate: true
     baseline-version: 0
+    validate-on-migrate: true
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
