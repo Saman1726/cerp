@@ -227,6 +227,29 @@ export interface UpdateCompanyProfileRequest {
   avatarUrl?: string;
 }
 
+// ── Purchase Order Types (Vendor-facing) ──
+
+export interface VendorPurchaseOrder {
+  sagaId: string;
+  status: string;
+  currentStep: string;
+  vendorId: string;
+  projectId: string;
+  materialId: string;
+  quantity: number;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  stepCount: number;
+}
+
+export interface VendorPurchaseOrderResponse {
+  items: VendorPurchaseOrder[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ── Vendor Profile Types ──
 
 export interface VendorProfile {

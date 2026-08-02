@@ -69,6 +69,7 @@ export const SAGA_TYPE_LABELS: Record<string, string> = {
   ReceiveDelivery: 'Receive Delivery',
   ConfirmDelivery: 'Confirm Delivery',
   CloseProcurement: 'Close Procurement',
+  Resume: 'Resume',
   // Bidding Saga step labels
   'Tender.CreateAndOpen': 'Create & Open Tender',
   'Tender.InviteVendors': 'Invite Vendors',

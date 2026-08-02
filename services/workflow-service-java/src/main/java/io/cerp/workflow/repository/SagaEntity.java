@@ -45,6 +45,9 @@ public class SagaEntity {
     @Column(name = "saga_id")
     private String sagaId;
 
+    @Column(name = "data_json", columnDefinition = "TEXT")
+    private String dataJson;
+
     @Column(name = "user_id")
     private String userId;
 
@@ -64,13 +67,21 @@ public class SagaEntity {
             String currentStep, String nextStep, String stepsJson,
             String lastErrorJson, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this(id, sagaType, tenantId, status, currentStep, nextStep, stepsJson,
-            lastErrorJson, null, null, null, createdAt, updatedAt);
+            lastErrorJson, null, null, null, null, createdAt, updatedAt);
     }
 
     public SagaEntity(UUID id, String sagaType, String tenantId, String status,
             String currentStep, String nextStep, String stepsJson,
             String lastErrorJson, String sagaId, String userId, UUID projectId,
             LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this(id, sagaType, tenantId, status, currentStep, nextStep, stepsJson,
+            lastErrorJson, sagaId, userId, projectId, null, createdAt, updatedAt);
+    }
+
+    public SagaEntity(UUID id, String sagaType, String tenantId, String status,
+            String currentStep, String nextStep, String stepsJson,
+            String lastErrorJson, String sagaId, String userId, UUID projectId,
+            String dataJson, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.sagaType = sagaType;
         this.tenantId = tenantId;
@@ -82,6 +93,7 @@ public class SagaEntity {
         this.sagaId = sagaId;
         this.userId = userId;
         this.projectId = projectId;
+        this.dataJson = dataJson;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -188,5 +200,13 @@ public class SagaEntity {
 
     public void setProjectId(UUID projectId) {
         this.projectId = projectId;
+    }
+
+    public String getDataJson() {
+        return dataJson;
+    }
+
+    public void setDataJson(String dataJson) {
+        this.dataJson = dataJson;
     }
 }

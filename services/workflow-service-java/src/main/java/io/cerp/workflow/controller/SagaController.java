@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -129,13 +130,17 @@ public class SagaController {
 
         UUID startedId = orchestrator.startSaga(request.sagaType(), context);
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("sagaId", startedId);
-        response.put("sagaType", request.sagaType());
-        response.put("status", "RUNNING");
-        response.put("createdAt", java.time.Instant.now().toString());
+        SagaState initialState = orchestrator.getSagaState(startedId);
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("sagaId", startedId);
+        responseData.put("sagaType", request.sagaType());
+        responseData.put("status", "RUNNING");
+        responseData.put("createdAt", java.time.Instant.now().toString());
+        if (initialState != null && initialState.getData() != null) {
+            responseData.put("data", initialState.getData());
+        }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(responseData);
     }
 
     /**
@@ -240,6 +245,65 @@ public class SagaController {
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "COMPENSATION_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Update an existing saga's data without changing its state.
+     *
+     * <p>
+     * This endpoint allows updating the data payload of an existing saga (e.g., editing procurement request details)
+     * while preserving the saga's current state, steps, and history.
+     * </p>
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param request
+     *            the update request containing new data fields
+     * @return the updated saga state
+     */
+    @PutMapping("/{sagaId}")
+    public ResponseEntity<Map<String, Object>> updateSaga(
+            @PathVariable String sagaId,
+            @RequestBody UpdateSagaRequest request) {
+        try {
+            SagaState state = orchestrator.getSagaState(UUID.fromString(sagaId));
+            if (state == null) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "NOT_FOUND");
+                error.put("message", "Saga not found: " + sagaId);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+            }
+
+            // Check if saga is in a cancellable state (RUNNING or REQUIRES_MANUAL_INTERVENTION)
+            if (!"RUNNING".equals(state.getStatus()) && !"REQUIRES_MANUAL_INTERVENTION".equals(state.getStatus())) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "INVALID_STATE");
+                error.put("message", "Saga cannot be updated in current state: " + state.getStatus());
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+            }
+
+            // Update the saga data by merging the new fields
+            SagaContext updatedContext = orchestrator.updateSagaData(
+                UUID.fromString(sagaId),
+                request.data());
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("updated", true);
+            response.put("context", updatedContext.getData());
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "NOT_FOUND");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "UPDATE_FAILED");
             error.put("message", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
@@ -446,7 +510,7 @@ public class SagaController {
         try {
             switch (request.action()) {
                 case "resume":
-                    return resumeSagaFrontend(sagaId, null);
+                    return resumeSagaFrontend(sagaId, null, null);
                 case "escalate":
                     return escalateSagaFrontend(sagaId, request.reason());
                 case "complete_step":
@@ -472,23 +536,110 @@ public class SagaController {
     }
 
     /**
-     * Resume a paused saga (frontend-compatible endpoint).
+     * Pause a running saga (frontend-compatible endpoint).
      *
      * @param sagaId
      *            the saga identifier
-     * @param stepCode
-     *            optional step code to resume from
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/pause")
+    public ResponseEntity<Map<String, Object>> pauseSagaFrontend(@PathVariable String sagaId) {
+        try {
+            orchestrator.pauseSaga(UUID.fromString(sagaId));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("action", "pause");
+            response.put("status", "PAUSED");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "NOT_FOUND");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        } catch (IllegalStateException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "INVALID_STATE");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "PAUSE_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Resume a paused saga (transition from PAUSED to RUNNING).
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @return the updated saga state
+     */
+    @PostMapping("/{sagaId}/start")
+    public ResponseEntity<Map<String, Object>> startPausedSagaFrontend(@PathVariable String sagaId) {
+        try {
+            orchestrator.resumeSaga(UUID.fromString(sagaId));
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("sagaId", sagaId);
+            response.put("action", "resume");
+            response.put("status", "RUNNING");
+
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "NOT_FOUND");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+        } catch (IllegalStateException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "INVALID_STATE");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "RESUME_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Resume a paused saga (frontend-compatible endpoint).
+     *
+     * <p>
+     * Accepts an optional stepCode either from the request body or as a query parameter.
+     * The frontend sends { action: 'resume', stepCode } in the request body.
+     * This is for the legacy resume flow where the saga is RUNNING but waiting for manual intervention.
+     * </p>
+     *
+     * @param sagaId
+     *            the saga identifier
+     * @param requestBody
+     *            optional request body containing stepCode
+     * @param stepCodeQueryParam
+     *            optional step code from query parameter (for backward compatibility)
      * @return the updated saga state
      */
     @PostMapping("/{sagaId}/resume")
     public ResponseEntity<Map<String, Object>> resumeSagaFrontend(
             @PathVariable String sagaId,
-            @RequestParam(required = false) String stepCode) {
+            @RequestBody(required = false) ResumeRequest requestBody,
+            @RequestParam(required = false) String stepCodeQueryParam) {
+        // Prefer stepCode from request body, fall back to query parameter
+        String stepCode = (requestBody != null && requestBody.stepCode() != null)
+                ? requestBody.stepCode()
+                : stepCodeQueryParam;
         try {
+            Map<String, Object> resumePayload = new HashMap<>();
+            resumePayload.put("stepCode", stepCode);
             SagaContext context = orchestrator.executeStep(
                 UUID.fromString(sagaId),
                 "RESUME",
-                java.util.Map.of("stepCode", stepCode));
+                resumePayload);
 
             Map<String, Object> response = new HashMap<>();
             response.put("sagaId", sagaId);
@@ -519,10 +670,12 @@ public class SagaController {
             @PathVariable String sagaId,
             @RequestParam(required = false) String reason) {
         try {
+            Map<String, Object> escalatePayload = new HashMap<>();
+            escalatePayload.put("reason", reason);
             SagaContext context = orchestrator.executeStep(
                 UUID.fromString(sagaId),
                 "ESCALATE",
-                java.util.Map.of("reason", reason));
+                escalatePayload);
 
             Map<String, Object> response = new HashMap<>();
             response.put("sagaId", sagaId);
@@ -553,10 +706,12 @@ public class SagaController {
             @PathVariable String sagaId,
             @RequestParam(required = false) String stepCode) {
         try {
+            Map<String, Object> completeStepPayload = new HashMap<>();
+            completeStepPayload.put("stepCode", stepCode);
             SagaContext context = orchestrator.executeStep(
                 UUID.fromString(sagaId),
                 "COMPLETE_STEP",
-                java.util.Map.of("stepCode", stepCode));
+                completeStepPayload);
 
             Map<String, Object> response = new HashMap<>();
             response.put("sagaId", sagaId);
@@ -581,6 +736,13 @@ public class SagaController {
     public record StartSagaRequest(
             String sagaType,
             UUID sagaId,
+            Map<String, Object> data) {
+    }
+
+    /**
+     * Request body for updating an existing saga.
+     */
+    public record UpdateSagaRequest(
             Map<String, Object> data) {
     }
 
@@ -615,6 +777,13 @@ public class SagaController {
             String stepCode,
             String reason,
             Map<String, Object> data) {
+    }
+
+    /**
+     * Request body for the resume endpoint.
+     */
+    public record ResumeRequest(
+            String stepCode) {
     }
 
     /**

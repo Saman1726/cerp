@@ -53,6 +53,7 @@ public class ProcurementSagaHandler implements SagaHandler {
     public static final String STEP_RECEIVE_DELIVERY = "ReceiveDelivery";
     public static final String STEP_CONFIRM_DELIVERY = "ConfirmDelivery";
     public static final String STEP_CLOSE = "CloseProcurement";
+    public static final String STEP_RESUME = "Resume";
 
     @Override
     public String getStepCode() {
@@ -78,6 +79,9 @@ public class ProcurementSagaHandler implements SagaHandler {
                 return executeConfirmDelivery(context, payload);
             case STEP_CLOSE:
                 return executeClose(context, payload);
+            case STEP_RESUME:
+            case "RESUME":
+                return executeResume(context, payload);
             default:
                 throw new IllegalArgumentException("Unknown step: " + stepCode);
         }
@@ -116,8 +120,37 @@ public class ProcurementSagaHandler implements SagaHandler {
             case STEP_RECEIVE_DELIVERY -> STEP_CONFIRM_DELIVERY;
             case STEP_CONFIRM_DELIVERY -> STEP_CLOSE;
             case STEP_CLOSE -> null;
+            case STEP_RESUME -> getNextStepFromCurrentState(context);
             default -> null;
         };
+    }
+
+    /**
+     * Determine the next step based on the current step stored in saga state.
+     * <p>
+     * NOTE: If currentStep is "Resume" (a corrupted value from the old resume endpoint bug),
+     * treat it as if no currentStep exists and return the first step.
+     */
+    private String getNextStepFromCurrentState(SagaContext context) {
+        Object currentStepObj = context.getData().get("currentStep");
+        if (currentStepObj instanceof String currentStep) {
+            // Handle corrupted currentStep="Resume" from old resume endpoint
+            if ("Resume".equals(currentStep) || "RESUME".equals(currentStep)) {
+                log.warn("Detected corrupted currentStep='Resume' for saga {}, resetting to first step", context.getSagaId());
+                return STEP_CREATE_REQUEST;
+            }
+            return switch (currentStep) {
+                case STEP_CREATE_REQUEST -> STEP_SUBMIT_FOR_APPROVAL;
+                case STEP_SUBMIT_FOR_APPROVAL -> STEP_APPROVE_REQUEST;
+                case STEP_APPROVE_REQUEST -> STEP_ISSUE_PO;
+                case STEP_ISSUE_PO -> STEP_RECEIVE_DELIVERY;
+                case STEP_RECEIVE_DELIVERY -> STEP_CONFIRM_DELIVERY;
+                case STEP_CONFIRM_DELIVERY -> STEP_CLOSE;
+                default -> null;
+            };
+        }
+        // No currentStep - return first step
+        return STEP_CREATE_REQUEST;
     }
 
     // --- Execute methods ---
@@ -287,6 +320,72 @@ public class ProcurementSagaHandler implements SagaHandler {
 
         eventPublisher.publish(event);
         context.complete();
+        return context;
+    }
+
+    /**
+     * Resume a paused/stalled saga by advancing to the next step based on current state.
+     * This is used when a saga needs manual intervention or was paused waiting for external action.
+     */
+    private SagaContext executeResume(SagaContext context, Map<String, Object> payload) throws Exception {
+        // Extract optional stepCode from payload (passed by SagaController)
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resumePayload = payload != null ? payload : Map.of();
+        Object stepCodeObj = resumePayload.get("stepCode");
+        String targetStep = stepCodeObj instanceof String s ? s : null;
+
+        // Get current step from context data
+        Object currentStepObj = context.getData().get("currentStep");
+        String currentStep = currentStepObj instanceof String s ? s : null;
+
+        log.info("Resuming procurement saga: sagaId={}, currentStep={}, targetStep={}",
+            context.getSagaId(), currentStep, targetStep);
+
+        // If a specific target step is provided, use it; otherwise advance from current
+        String nextStep;
+        if (targetStep != null) {
+            nextStep = targetStep;
+        } else if (currentStep != null) {
+            // Advance to the next step in the sequence
+            nextStep = switch (currentStep) {
+                case STEP_CREATE_REQUEST -> STEP_SUBMIT_FOR_APPROVAL;
+                case STEP_SUBMIT_FOR_APPROVAL -> STEP_APPROVE_REQUEST;
+                case STEP_APPROVE_REQUEST -> STEP_ISSUE_PO;
+                case STEP_ISSUE_PO -> STEP_RECEIVE_DELIVERY;
+                case STEP_RECEIVE_DELIVERY -> STEP_CONFIRM_DELIVERY;
+                case STEP_CONFIRM_DELIVERY -> STEP_CLOSE;
+                default -> null;
+            };
+        } else {
+            // No current step info, try to determine from saga status
+            nextStep = STEP_SUBMIT_FOR_APPROVAL; // Default to first actionable step
+        }
+
+        // Publish resume event
+        WorkflowEvent event = WorkflowEvent.builder()
+            .eventType("ProcurementSagaResumed")
+            .sagaType("ProcurementSaga")
+            .sagaId(context.getSagaId().toString())
+            .aggregateId(context.getAggregateId())
+            .aggregateType("ProcurementRequest")
+            .tenantId(context.getTenantId())
+            .userId(context.getUserId())
+            .data(Map.of(
+                "status", "Resumed",
+                "previousStep", currentStep,
+                "nextStep", nextStep))
+            .build();
+
+        eventPublisher.publish(event);
+
+        // Update current step to the next step
+        if (nextStep != null) {
+            context.setCurrentStep(nextStep);
+        } else {
+            // Saga is complete
+            context.complete();
+        }
+
         return context;
     }
 

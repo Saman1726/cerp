@@ -4,7 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,19 +18,24 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
+import io.cerp.workflow.domain.bidding.VendorBidSubmission;
 
 class BiddingSagaHandlerTest {
 
     private BiddingSagaHandler handler;
     private MockEventPublisher eventPublisher;
+    private VendorBidSubmissionService bidSubmissionService;
 
     @BeforeEach
     void setUp() {
         eventPublisher = new MockEventPublisher();
-        handler = new BiddingSagaHandler(eventPublisher);
+        bidSubmissionService = mock(VendorBidSubmissionService.class);
+        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService);
     }
 
     @Test
@@ -81,7 +91,6 @@ class BiddingSagaHandlerTest {
         assertNotNull(result);
         assertEquals(2, ((List<?>) result.getData().get("invitedVendorIds")).size());
         assertEquals("UNDER_EVALUATION", result.getData().get("status"));
-        // expectedBids is an Integer
         assertEquals(2, ((Number) result.getData().get("expectedBids")).intValue());
         assertEquals("2026-08-01T00:00:00Z", result.getData().get("bidDeadline"));
         assertEquals(1, eventPublisher.getPublishedEvents().size());
@@ -93,19 +102,18 @@ class BiddingSagaHandlerTest {
         final UUID sagaId = UUID.randomUUID();
         final Map<String, Object> initialData = new HashMap<>();
         initialData.put("tenderId", "tender-1");
+        initialData.put("biddingSagaId", sagaId.toString());
         final SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
 
-        final Map<String, Object> payload = new HashMap<>();
-        final Map<String, Object> bid1 = Map.of("vendorId", "vendor-1", "price", 100.0);
-        final Map<String, Object> bid2 = Map.of("vendorId", "vendor-2", "price", 90.0);
-        payload.put("bids", List.of(bid1, bid2));
+        // Create mock bid submissions
+        VendorBidSubmission bid1 = createMockBid(sagaId, "vendor-1", 100.0);
+        VendorBidSubmission bid2 = createMockBid(sagaId, "vendor-2", 90.0);
+        when(bidSubmissionService.getBidsBySagaId(sagaId)).thenReturn(List.of(bid1, bid2));
 
-        final SagaContext result = handler.execute(context, "Bidding.CollectBids", payload);
+        final SagaContext result = handler.execute(context, "Bidding.CollectBids", null);
 
         assertNotNull(result);
-        // bidsReceived is an integer count, not a list
         assertEquals(2, ((Number) result.getData().get("bidsReceived")).intValue());
-        // bids is a List
         assertTrue(result.getData().containsKey("bids"));
         assertEquals(2, ((List<?>) result.getData().get("bids")).size());
         assertEquals(1, eventPublisher.getPublishedEvents().size());
@@ -115,12 +123,16 @@ class BiddingSagaHandlerTest {
     @Test
     void testExecuteCollectBidsEmptyThrows() {
         final UUID sagaId = UUID.randomUUID();
-        final SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", new HashMap<>());
-        final Map<String, Object> payload = new HashMap<>();
-        payload.put("bids", List.of());
+        final Map<String, Object> initialData = new HashMap<>();
+        initialData.put("tenderId", "tender-1");
+        initialData.put("biddingSagaId", sagaId.toString());
+        final SagaContext context = new SagaContext(sagaId, "marketplace_bidding", "tenant-1", initialData);
+
+        // No bids - should throw NO_BIDS_RECEIVED
+        when(bidSubmissionService.getBidsBySagaId(sagaId)).thenReturn(List.of());
 
         final SagaException ex = assertThrows(SagaException.class,
-            () -> handler.execute(context, "Bidding.CollectBids", payload));
+            () -> handler.execute(context, "Bidding.CollectBids", null));
         assertEquals("NO_BIDS_RECEIVED", ex.getErrorCode());
         assertEquals(0, eventPublisher.getPublishedEvents().size());
     }
@@ -212,6 +224,32 @@ class BiddingSagaHandlerTest {
         handler.compensate(context, "Tender.CreateAndOpen");
 
         assertEquals(5, eventPublisher.getPublishedEvents().size());
+    }
+
+    // ── Helpers ──
+
+    private VendorBidSubmission createMockBid(UUID sagaId, String vendorId, double price) {
+        UUID bidId = UUID.randomUUID();
+        VendorBidSubmission bid = new VendorBidSubmission(
+            "tender-1",
+            sagaId,
+            UUID.randomUUID(), // vendorId
+            UUID.randomUUID(), // vendorUserId
+            "tenant-1",
+            new BigDecimal(price),
+            BigDecimal.ONE,
+            new BigDecimal(price),
+            new BigDecimal(price),
+            "30 days",
+            null
+        );
+        // Set IDs and timestamps manually (these are normally set by JPA)
+        bid.setId(bidId);
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        bid.setCreatedAt(now);
+        bid.setUpdatedAt(now);
+        bid.setSubmittedAt(now);
+        return bid;
     }
 
     /**

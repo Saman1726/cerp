@@ -16,6 +16,7 @@ import { z } from 'zod';
  */
 export const sagaStatusSchema = z.enum([
   'RUNNING',
+  'PAUSED',
   'COMPLETED',
   'FAILED',
   'COMPENSATING',
@@ -159,7 +160,7 @@ export type SagaQueryResponse = z.infer<typeof sagaQueryResponseSchema>;
 
 export const sagaActionSchema = z.object({
   sagaId: z.string(),
-  action: z.enum(['resume', 'compensate', 'escalate', 'complete_step', 'insert_step', 'remove_step']),
+  action: z.enum(['resume', 'pause', 'start', 'compensate', 'escalate', 'complete_step', 'insert_step', 'remove_step']),
   stepCode: z.string().optional(),
   data: z.record(z.string(), z.any()).optional(),
   reason: z.string().optional(),

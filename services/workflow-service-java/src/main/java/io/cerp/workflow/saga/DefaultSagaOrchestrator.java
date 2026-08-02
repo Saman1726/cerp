@@ -128,8 +128,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             // Determine next step
             String nextStep = handler.getNextStep(context, command);
 
-            // Update saga state
-            updateSagaState(state, command, nextStep, null);
+            // Update saga state — pass context so the updated currentStep is captured
+            updateSagaState(state, command, nextStep, null, context);
 
             String stepTenantId = TenantContext.get().map(Object::toString)
                 .orElse(state.getTenantId());
@@ -179,7 +179,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
                     context = handler.compensate(context, stepCode);
 
                     // Record compensation
-                    updateSagaState(state, "COMPENSATE:" + stepCode, null, null);
+                    updateSagaState(state, "COMPENSATE:" + stepCode, null, null, null);
 
                     log.info("Saga step compensated: sagaId={}, step={}", sagaId, stepCode);
                     return context;
@@ -191,6 +191,118 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         log.warn("No handler found to compensate step: sagaId={}, step={}", sagaId, stepCode);
         return createContextFromState(state);
+    }
+
+    @Override
+    public void pauseSaga(UUID sagaId) {
+        SagaState state = activeSagas.get(sagaId);
+        if (state == null) {
+            throw new IllegalArgumentException("Saga not found: " + sagaId);
+        }
+
+        if ("PAUSED".equals(state.getStatus())) {
+            throw new IllegalStateException("Saga is already PAUSED: " + sagaId);
+        }
+
+        if ("COMPLETED".equals(state.getStatus()) || "ABORTED".equals(state.getStatus())) {
+            throw new IllegalStateException("Saga is already " + state.getStatus() + ": " + sagaId);
+        }
+
+        // Extract userId from state data for the outbox event
+        String userId = null;
+        if (state.getData() != null) {
+            Object userIdObj = state.getData().get("userId");
+            if (userIdObj instanceof String s) {
+                userId = s;
+            }
+        }
+
+        // Build action-specific data payload
+        Map<String, Object> pauseData = new HashMap<>(state.getData() != null ? state.getData() : Map.of());
+        pauseData.put("action", "pause");
+
+        // Use status-only update to preserve all other fields (user_id, project_id, steps_json, current_step, data_json)
+        sagaRepository.updateStatusOnlyBySagaId(sagaId.toString(), "PAUSED", java.time.LocalDateTime.now());
+
+        // Update in-memory cache
+        SagaState newState = new SagaState(
+            state.getSagaId(),
+            state.getSagaType(),
+            state.getTenantId(),
+            "PAUSED",
+            state.getCurrentStep(),
+            null,
+            state.getSteps(),
+            state.getLastError(),
+            state.getCreatedAt(),
+            Instant.now(),
+            state.getData());
+        activeSagas.put(sagaId, newState);
+
+        log.info("Saga paused: sagaId={}", sagaId);
+
+        eventPublisher.publish(WorkflowEvent.builder()
+            .eventType(state.getSagaType() + ".SAGA_PAUSED")
+            .sagaType(state.getSagaType())
+            .sagaId(sagaId.toString())
+            .tenantId(state.getTenantId())
+            .userId(userId)
+            .data(pauseData)
+            .build());
+    }
+
+    @Override
+    public void resumeSaga(UUID sagaId) {
+        SagaState state = activeSagas.get(sagaId);
+        if (state == null) {
+            throw new IllegalArgumentException("Saga not found: " + sagaId);
+        }
+
+        if (!"PAUSED".equals(state.getStatus())) {
+            throw new IllegalStateException("Saga is not PAUSED (current status: " + state.getStatus() + "): " + sagaId);
+        }
+
+        // Extract userId from state data for the outbox event
+        String userId = null;
+        if (state.getData() != null) {
+            Object userIdObj = state.getData().get("userId");
+            if (userIdObj instanceof String s) {
+                userId = s;
+            }
+        }
+
+        // Build action-specific data payload
+        Map<String, Object> resumeData = new HashMap<>(state.getData() != null ? state.getData() : Map.of());
+        resumeData.put("action", "resume");
+
+        // Use status-only update to preserve all other fields (user_id, project_id, steps_json, current_step, data_json)
+        sagaRepository.updateStatusOnlyBySagaId(sagaId.toString(), "RUNNING", java.time.LocalDateTime.now());
+
+        // Update in-memory cache
+        SagaState newState = new SagaState(
+            state.getSagaId(),
+            state.getSagaType(),
+            state.getTenantId(),
+            "RUNNING",
+            state.getCurrentStep(),
+            null,
+            state.getSteps(),
+            state.getLastError(),
+            state.getCreatedAt(),
+            Instant.now(),
+            state.getData());
+        activeSagas.put(sagaId, newState);
+
+        log.info("Saga resumed: sagaId={}", sagaId);
+
+        eventPublisher.publish(WorkflowEvent.builder()
+            .eventType(state.getSagaType() + ".SAGA_RESUMED")
+            .sagaType(state.getSagaType())
+            .sagaId(sagaId.toString())
+            .tenantId(state.getTenantId())
+            .userId(userId)
+            .data(resumeData)
+            .build());
     }
 
     @Override
@@ -291,6 +403,45 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     }
 
     @Override
+    public SagaContext updateSagaData(UUID sagaId, Map<String, Object> newData) {
+        SagaState state = activeSagas.get(sagaId);
+        if (state == null) {
+            throw new IllegalArgumentException("Saga not found: " + sagaId);
+        }
+
+        // Merge new data into existing data
+        Map<String, Object> updatedData = new HashMap<>(state.getData());
+        if (newData != null) {
+            updatedData.putAll(newData);
+        }
+
+        // Update the saga state with the merged data while preserving status and steps
+        SagaState newState = new SagaState(
+            state.getSagaId(),
+            state.getSagaType(),
+            state.getTenantId(),
+            state.getStatus(),
+            state.getCurrentStep(),
+            state.getNextStep(),
+            state.getSteps(),
+            state.getLastError(),
+            state.getCreatedAt(),
+            Instant.now(),
+            updatedData);
+
+        activeSagas.put(sagaId, newState);
+        sagaRepository.save(toEntity(newState));
+
+        log.info("Saga data updated: sagaId={}", sagaId);
+
+        return new SagaContext(
+            newState.getSagaId(),
+            newState.getSagaType(),
+            newState.getTenantId(),
+            updatedData);
+    }
+
+    @Override
     public List<SagaState> getSagaInstancesByAggregate(String aggregateType, UUID aggregateId) {
         List<SagaState> results = new ArrayList<>();
 
@@ -355,6 +506,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
                 projectId = pu;
             }
         }
+        // Serialize the complete data map to JSON
+        String dataJson = serializeStateData(state.getData());
         return new SagaEntity(
             state.getSagaId(),
             state.getSagaType(),
@@ -367,6 +520,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getSagaId().toString(),
             userId,
             projectId,
+            dataJson,
             LocalDateTime.now(),
             LocalDateTime.now());
     }
@@ -375,15 +529,22 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
      * Convert a SagaEntity to SagaState, populating data from entity fields.
      */
     private SagaState toState(SagaEntity entity) {
-        Map<String, Object> data = new HashMap<>();
-        if (entity.getProjectId() != null) {
+        // Try to deserialize the complete data map from dataJson first
+        Map<String, Object> data = deserializeStateData(entity.getDataJson());
+        if (data == null) {
+            data = new HashMap<>();
+        }
+        // Ensure projectId and userId are set from entity fields (for backwards compatibility)
+        if (entity.getProjectId() != null && !data.containsKey("projectId")) {
             data.put("projectId", entity.getProjectId().toString());
         }
-        if (entity.getUserId() != null) {
+        if (entity.getUserId() != null && !data.containsKey("userId")) {
             data.put("userId", entity.getUserId());
         }
         // Store sagaType in data for frontend access
-        data.put("sagaType", entity.getSagaType());
+        if (!data.containsKey("sagaType")) {
+            data.put("sagaType", entity.getSagaType());
+        }
 
         return new SagaState(
             entity.getId(),
@@ -397,6 +558,48 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             entity.getCreatedAt() != null ? entity.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
             data);
+    }
+
+    /**
+     * Serialize the state data map to JSON string.
+     */
+    private String serializeStateData(Map<String, Object> data) {
+        if (data == null || data.isEmpty()) {
+            return null;
+        }
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(data);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Deserialize the data JSON string back to a map.
+     */
+    private Map<String, Object> deserializeStateData(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            java.util.Map<String, Object> map = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(json, java.util.Map.class);
+            // Convert any numeric types to proper Java types
+            Map<String, Object> result = new HashMap<>();
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                Object value = entry.getValue();
+                if (value instanceof Integer) {
+                    result.put(entry.getKey(), ((Integer) value).longValue());
+                } else if (value instanceof Number && !(value instanceof Long) && !(value instanceof Double)) {
+                    result.put(entry.getKey(), ((Number) value).doubleValue());
+                } else {
+                    result.put(entry.getKey(), value);
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String serializeSteps(List<SagaStep> steps) {
@@ -508,7 +711,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             data);
     }
 
-    private void updateSagaState(SagaState state, String stepCode, String nextStep, SagaError error) {
+    private void updateSagaState(SagaState state, String stepCode, String nextStep, SagaError error, SagaContext context) {
         List<SagaStep> steps = new ArrayList<>(state.getSteps());
         steps.add(new SagaStep(
             stepCode,
@@ -518,13 +721,20 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             error == null ? Instant.now() : null,
             error));
 
+        // Use the updated currentStep from context if available, otherwise fall back to the old state value.
+        // The handler sets currentStep in context.getData() via context.setCurrentStep(), but the SagaState
+        // currentStep field was never updated from that context — causing the stale value bug.
+        String updatedCurrentStep = (context != null && context.getCurrentStep() != null)
+            ? context.getCurrentStep()
+            : state.getCurrentStep();
+
         // Preserve the original data map (including userId, projectId) for toEntity extraction
         SagaState newState = new SagaState(
             state.getSagaId(),
             state.getSagaType(),
             state.getTenantId(),
             error == null ? "RUNNING" : "ABORTED",
-            stepCode,
+            updatedCurrentStep,
             nextStep,
             steps,
             error,

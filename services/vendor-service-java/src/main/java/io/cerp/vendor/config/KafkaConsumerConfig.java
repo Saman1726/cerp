@@ -38,6 +38,16 @@ public class KafkaConsumerConfig {
         props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, "io.cerp.vendor.dto.VendorEventEnvelope");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        // Heartbeat and session timeout settings to prevent frequent disconnections
+        // heartbeat.interval.ms should be <= session.timeout.ms / 3
+        // session.timeout.ms should be <= max.poll.interval.ms
+        props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 10000); // 10 seconds
+        props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 60000);   // 60 seconds
+        props.put(ConsumerConfig.MAX_POLL_INTERVAL_MS_CONFIG, 300000); // 5 minutes
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, 100);        // Limit records per poll
+        props.put(ConsumerConfig.CONNECTIONS_MAX_IDLE_MS_CONFIG, 540000); // 9 minutes
+        props.put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, 1000);
+        props.put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, 10000);
         return new DefaultKafkaConsumerFactory<>(props);
     }
 

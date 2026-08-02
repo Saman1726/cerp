@@ -18,6 +18,8 @@ import { workflowApi } from '../workflow/api';
 import { SAGA_TYPE_LABELS } from '../workflow/types';
 import type { Saga, SagaQuery, SagaQueryResponse, ProjectSummary } from '@cerp/shared-types';
 import { apiClient } from '../lib/api-client';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
+import { MoreVertical, Eye, Pencil, Play, Square } from 'lucide-react';
 
 interface ProcurementSagaListProps {
   tenantId?: string;
@@ -107,6 +109,7 @@ export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSa
 
   const getStatusFilterOptions = () => [
     { value: 'RUNNING', label: 'Running', color: 'bg-blue-100 text-blue-800' },
+    { value: 'PAUSED', label: 'Paused', color: 'bg-yellow-100 text-yellow-800' },
     { value: 'COMPLETED', label: 'Completed', color: 'bg-green-100 text-green-800' },
     { value: 'FAILED', label: 'Failed', color: 'bg-red-100 text-red-800' },
     { value: 'COMPENSATING', label: 'Compensating', color: 'bg-yellow-100 text-yellow-800' },
@@ -266,24 +269,54 @@ export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSa
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(saga.updatedAt).toLocaleString()}
                           </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onSagaSelect?.(saga)}
-                              >
-                                View
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onSagaEdit?.(saga)}
-                              >
-                                Edit
-                              </Button>
-                            </div>
-                          </TableCell>
+                           <TableCell>
+                             <DropdownMenu>
+                               <DropdownMenuTrigger asChild>
+                                 <Button variant="ghost" size="sm">
+                                   <MoreVertical className="w-4 h-4" />
+                                 </Button>
+                               </DropdownMenuTrigger>
+                               <DropdownMenuContent align="end">
+                                 <DropdownMenuItem onClick={() => onSagaSelect?.(saga)}>
+                                   <Eye className="w-4 h-4 mr-2" />
+                                   View
+                                 </DropdownMenuItem>
+                                 <DropdownMenuItem onClick={() => onSagaEdit?.(saga)}>
+                                   <Pencil className="w-4 h-4 mr-2" />
+                                   Edit
+                                 </DropdownMenuItem>
+                                  {/* Pause/Resume button - depends on saga status */}
+                                  {(saga.status === 'RUNNING' || saga.status === 'PAUSED') && (
+                                    <DropdownMenuItem onClick={async () => {
+                                      try {
+                                        if (saga.status === 'RUNNING') {
+                                          await workflowApi.pauseSaga(saga.sagaId);
+                                        } else {
+                                          await workflowApi.startSaga(saga.sagaId);
+                                        }
+                                        // Refresh the list
+                                        fetchSagas();
+                                      } catch (err) {
+                                        console.error('Failed to pause/resume saga:', err);
+                                      }
+                                    }}>
+                                      {saga.status === 'RUNNING' ? (
+                                        <>
+                                          <Square className="w-4 h-4 mr-2" />
+                                          Pause
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Play className="w-4 h-4 mr-2" />
+                                          Resume
+                                        </>
+                                      )}
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuSeparator />
+                                </DropdownMenuContent>
+                             </DropdownMenu>
+                           </TableCell>
                         </TableRow>
                       );
                     })

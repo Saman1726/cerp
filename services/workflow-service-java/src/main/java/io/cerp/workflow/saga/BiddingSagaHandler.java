@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 
 /**
  * Saga handler for the Marketplace Bidding workflow (Section 7.4).
@@ -56,10 +57,15 @@ public class BiddingSagaHandler implements SagaHandler {
     /** Award tender and issue purchase order. */
     public static final String AWARD_TENDER = "Tender.Award";
 
-    private final EventPublisher eventPublisher;
+    /** Resume a paused/stalled bidding saga. */
+    public static final String RESUME = "Resume";
 
-    public BiddingSagaHandler(final EventPublisher eventPublisher) {
+    private final EventPublisher eventPublisher;
+    private final VendorBidSubmissionService bidSubmissionService;
+
+    public BiddingSagaHandler(final EventPublisher eventPublisher, VendorBidSubmissionService bidSubmissionService) {
         this.eventPublisher = eventPublisher;
+        this.bidSubmissionService = bidSubmissionService;
     }
 
     @Override
@@ -83,6 +89,9 @@ public class BiddingSagaHandler implements SagaHandler {
                 return executeEvaluateBids(context, payload);
             case AWARD_TENDER:
                 return executeAwardTender(context, payload);
+            case RESUME:
+            case "RESUME":
+                return executeResume(context, payload);
             default:
                 throw new SagaException("UNKNOWN_COMMAND", "Unknown command: " + command, new HashMap<>());
         }
@@ -227,9 +236,30 @@ public class BiddingSagaHandler implements SagaHandler {
         final String tenantId = context.getTenantId();
         final String tenderId = (String) context.getData().get("tenderId");
 
-        final List<Map<String, Object>> bids = (payload != null && payload.containsKey("bids"))
-                ? (List<Map<String, Object>>) payload.get("bids")
-                : List.of();
+        // Extract bidding saga ID from context
+        Object sagaIdObj = context.getData().get("biddingSagaId");
+        UUID biddingSagaId = null;
+        if (sagaIdObj instanceof String s) {
+            try {
+                biddingSagaId = UUID.fromString(s);
+            } catch (IllegalArgumentException e) {
+                biddingSagaId = sagaId;
+            }
+        } else if (sagaIdObj instanceof UUID u) {
+            biddingSagaId = u;
+        }
+        
+        // Use the context sagaId if biddingSagaId is not set
+        if (biddingSagaId == null) {
+            biddingSagaId = sagaId;
+        }
+
+        // Query database for stored bids instead of expecting them in payload
+        final List<Map<String, Object>> bids = bidSubmissionService
+                .getBidsBySagaId(biddingSagaId)
+                .stream()
+                .map(VendorBidSubmissionService::toMap)
+                .toList();
 
         if (bids.isEmpty()) {
             final Object vendorIdsObj = context.getData().get("invitedVendorIds");
@@ -240,11 +270,14 @@ public class BiddingSagaHandler implements SagaHandler {
             final Map<String, Object> errorDetails = new HashMap<>();
             errorDetails.put("tenderId", tenderId);
             errorDetails.put("invitedCount", invitedCountVal);
-            throw new SagaException("NO_BIDS_RECEIVED", "No bids received for tender: " + tenderId, errorDetails);
+            errorDetails.put("biddingSagaId", biddingSagaId.toString());
+            throw new SagaException("NO_BIDS_RECEIVED", "No bids received for tender: " + tenderId 
+                    + " (sagaId: " + biddingSagaId + "). Vendors have not submitted bids yet.", errorDetails);
         }
 
         final Map<String, Object> collectData = new HashMap<>();
         collectData.put("tenderId", tenderId);
+        collectData.put("biddingSagaId", biddingSagaId.toString());
         collectData.put("bidsReceived", bids.size());
         collectData.put("bids", bids);
         collectData.put("status", "UNDER_EVALUATION");
@@ -254,7 +287,8 @@ public class BiddingSagaHandler implements SagaHandler {
         // Emit BidsCollected event
         publishEvent(sagaId, tenantId, "BidsCollected", collectData);
 
-        log.info("Bids collected for tender: tenderId={}, bidsReceived={}", tenderId, bids.size());
+        log.info("Bids collected for tender: tenderId={}, biddingSagaId={}, bidsReceived={}", 
+                tenderId, biddingSagaId, bids.size());
         return context;
     }
 
@@ -413,8 +447,80 @@ public class BiddingSagaHandler implements SagaHandler {
             case COLLECT_BIDS -> EVALUATE_BIDS;
             case EVALUATE_BIDS -> AWARD_TENDER;
             case AWARD_TENDER -> null; // Saga complete
+            case RESUME -> null; // Resume is handled by executeResume, not getNextStepCode
             default -> null;
         };
+    }
+
+    /**
+     * Determine the next step based on the current step stored in saga state.
+     */
+    private String getNextStepFromCurrentState(final SagaContext context) {
+        final Object currentStepObj = context.getData().get("currentStep");
+        if (currentStepObj instanceof String currentStep) {
+            return switch (currentStep) {
+                case CREATE_TENDER -> INVITE_VENDORS;
+                case INVITE_VENDORS -> COLLECT_BIDS;
+                case COLLECT_BIDS -> EVALUATE_BIDS;
+                case EVALUATE_BIDS -> AWARD_TENDER;
+                default -> null;
+            };
+        }
+        // Default: if no current step, start with inviting vendors
+        // (CreateAndOpen is assumed to have been executed during saga creation)
+        return INVITE_VENDORS;
+    }
+
+    /**
+     * Resume a paused/stalled bidding saga by advancing to the next step.
+     */
+    private SagaContext executeResume(final SagaContext context, final Map<String, Object> payload)
+            throws SagaException {
+        final UUID sagaId = context.getSagaId();
+        final String tenantId = context.getTenantId();
+        final String tenderId = (String) context.getData().get("tenderId");
+
+        // Extract optional target step from payload
+        String targetStep = null;
+        if (payload != null) {
+            final Object stepCodeObj = payload.get("stepCode");
+            if (stepCodeObj instanceof String s) {
+                targetStep = s;
+            }
+        }
+
+        // Get current step from context
+        final Object currentStepObj = context.getData().get("currentStep");
+        final String currentStep = currentStepObj instanceof String s ? s : null;
+
+        // Determine next step
+        final String nextStep;
+        if (targetStep != null) {
+            nextStep = targetStep;
+        } else {
+            nextStep = getNextStepFromCurrentState(context);
+        }
+
+        log.info("Resuming bidding saga: sagaId={}, tenderId={}, currentStep={}, nextStep={}",
+            sagaId, tenderId, currentStep, nextStep);
+
+        final Map<String, Object> resumeData = new HashMap<>();
+        resumeData.put("tenderId", tenderId);
+        resumeData.put("previousStep", currentStep != null ? currentStep : "unknown");
+        resumeData.put("nextStep", nextStep != null ? nextStep : "completed");
+        resumeData.put("status", "RESUMED");
+
+        // Publish Resumed event
+        publishEvent(sagaId, tenantId, "BiddingSagaResumed", resumeData);
+
+        if (nextStep != null) {
+            context.getData().put("currentStep", nextStep);
+        } else {
+            // Saga is complete
+            log.info("Bidding saga completed after resume: tenderId={}", tenderId);
+        }
+
+        return context;
     }
 
     // ── Event Publishing ──

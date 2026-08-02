@@ -50,6 +50,22 @@ public interface SagaOrchestrator {
     SagaContext compensateStep(UUID sagaId, String stepCode);
 
     /**
+     * Pause a running saga instance.
+     *
+     * @param sagaId
+     *            the saga instance ID
+     */
+    void pauseSaga(UUID sagaId);
+
+    /**
+     * Resume a paused saga instance (transition from PAUSED to RUNNING).
+     *
+     * @param sagaId
+     *            the saga instance ID
+     */
+    void resumeSaga(UUID sagaId);
+
+    /**
      * Complete a saga instance successfully.
      *
      * @param sagaId
@@ -107,4 +123,20 @@ public interface SagaOrchestrator {
      * @return list of saga instances
      */
     List<SagaState> getSagaInstancesByAggregate(String aggregateType, UUID aggregateId);
+
+    /**
+     * Update the data payload of an existing saga without changing its state.
+     *
+     * <p>
+     * This method merges the provided data fields into the saga's existing data map,
+     * preserving the saga's current status, steps, and history.
+     * </p>
+     *
+     * @param sagaId
+     *            the saga instance ID
+     * @param newData
+     *            the new data fields to merge into the saga
+     * @return the updated saga context
+     */
+    SagaContext updateSagaData(UUID sagaId, Map<String, Object> newData);
 }

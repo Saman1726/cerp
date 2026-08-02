@@ -5,9 +5,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Repository for saga state persistence.
@@ -75,4 +77,20 @@ public interface SagaRepository extends JpaRepository<SagaEntity, UUID> {
          * Find sagas by saga_id and tenant.
          */
         Optional<SagaEntity> findBySagaIdAndTenantId(String sagaId, String tenantId);
+
+        /**
+         * Update only the status and updatedAt fields for a saga by saga_id (external identifier).
+         * This preserves all other fields including user_id, project_id, steps_json, current_step, and data_json.
+         *
+         * @param sagaId the saga_id external identifier (String, e.g. "9ac2141a-fa70-482f-9aa2-81419d5a1bdc")
+         * @param status the new status value
+         * @param updatedAt the new updated timestamp
+         * @return number of rows affected
+         */
+        @Modifying
+        @Transactional
+        @Query("UPDATE SagaEntity s SET s.status = :status, s.updatedAt = :updatedAt WHERE s.sagaId = :sagaId")
+        int updateStatusOnlyBySagaId(@Param("sagaId") String sagaId,
+                                     @Param("status") String status,
+                                     @Param("updatedAt") LocalDateTime updatedAt);
 }

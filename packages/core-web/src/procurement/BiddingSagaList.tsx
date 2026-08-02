@@ -143,6 +143,7 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
 
   const getStatusFilterOptions = () => [
     { value: 'RUNNING', label: 'Running', color: 'bg-blue-100 text-blue-800' },
+    { value: 'PAUSED', label: 'Paused', color: 'bg-yellow-100 text-yellow-800' },
     { value: 'COMPLETED', label: 'Completed', color: 'bg-green-100 text-green-800' },
     { value: 'FAILED', label: 'Failed', color: 'bg-red-100 text-red-800' },
     { value: 'COMPENSATING', label: 'Compensating', color: 'bg-yellow-100 text-yellow-800' },
@@ -312,24 +313,45 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
                            <TableCell className="text-sm text-muted-foreground">
                              {new Date(saga.updatedAt).toLocaleString()}
                            </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onSagaSelect?.(saga)}
-                              >
-                                View
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onSagaEdit?.(saga)}
-                              >
-                                Edit
-                              </Button>
-                            </div>
-                          </TableCell>
+                           <TableCell>
+                             <div className="flex items-center gap-1">
+                               <Button
+                                 variant="ghost"
+                                 size="sm"
+                                 onClick={() => onSagaSelect?.(saga)}
+                               >
+                                 View
+                               </Button>
+                               <Button
+                                 variant="ghost"
+                                 size="sm"
+                                 onClick={() => onSagaEdit?.(saga)}
+                               >
+                                 Edit
+                               </Button>
+                                {/* Pause/Resume button - depends on saga status */}
+                                {(saga.status === 'RUNNING' || saga.status === 'PAUSED') && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={async () => {
+                                      try {
+                                        if (saga.status === 'RUNNING') {
+                                          await workflowApi.pauseSaga(saga.sagaId);
+                                        } else {
+                                          await workflowApi.startSaga(saga.sagaId);
+                                        }
+                                        fetchSagas();
+                                      } catch (err) {
+                                        console.error('Failed to pause/resume bidding saga:', err);
+                                      }
+                                    }}
+                                  >
+                                    {saga.status === 'RUNNING' ? 'Pause' : 'Resume'}
+                                  </Button>
+                                )}
+                             </div>
+                           </TableCell>
                         </TableRow>
                       );
                     })

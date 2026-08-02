@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
-import { Separator } from '../components/ui/separator';
-import { cn } from '../lib/utils';
+import { Modal } from '../components/ui/modal';
 import { SagaStatusBadge } from '../workflow/SagaStatusBadge';
 import { workflowApi } from '../workflow/api';
 import { PROCUREMENT_SAGA_STEPS, SAGA_TYPE_LABELS } from '../workflow/types';
@@ -15,41 +15,26 @@ import type { Saga } from '../workflow/types';
 import type {
   CreateProcurementSagaRequest,
   ExecuteProcurementSagaStepRequest,
-  ProjectSummary,
+  VendorPartnerSummary,
 } from '@cerp/shared-types';
 import { ProjectSelect } from './ProjectSelect';
 import { VendorSelect } from './VendorSelect';
-import {
-  Dialog,
-  DialogContent,
-} from '../components/ui/modal/dialog';
-import { Input } from '../components/ui/input';
-import { ArrowRight, Plus, Loader2, ExternalLink } from 'lucide-react';
 
 interface ProcurementSagaFormProps {
   tenantId: string;
   saga?: Saga | null;
   onSuccess?: (saga: Saga) => void;
   onCancel?: () => void;
+  onViewBidding?: () => void;
+  viewOnly?: boolean;
 }
 
-type BiddingMode = 'INVITED' | 'OPEN_TENDER';
-
-interface BiddingConfig {
-  biddingMode: BiddingMode;
-  vendorIds: string[];
-  bidDeadline?: string;
-  description?: string;
-}
-
-export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: ProcurementSagaFormProps) {
-  // Initialize form state from saga data if in edit mode
+export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onViewBidding, viewOnly }: ProcurementSagaFormProps) {
   const getInitialProjectId = () => saga?.data?.projectId || '';
   const getInitialDescription = () => (saga?.data?.description as string) || '';
   const getInitialMaterialId = () => (saga?.data?.materialId as string) || '';
   const getInitialQuantity = () => (saga?.data?.quantity?.toString()) || '';
   const [projectId, setProjectId] = useState(getInitialProjectId);
-  const [selectedProject, setSelectedProject] = useState<ProjectSummary | null>(null);
   const [materialId, setMaterialId] = useState(getInitialMaterialId);
   const [quantity, setQuantity] = useState(getInitialQuantity);
   const [description, setDescription] = useState(getInitialDescription);
@@ -58,14 +43,157 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
   const [createdSaga, setCreatedSaga] = useState<Saga | null>(null);
   const [approvalReason, setApprovalReason] = useState('');
 
-  // Bidding/Tender dialog state
-  const [showBiddingDialog, setShowBiddingDialog] = useState(false);
-  const [biddingConfig, setBiddingConfig] = useState<BiddingConfig>({
-    biddingMode: 'INVITED',
-    vendorIds: [],
-  });
-  const [creatingBidding, setCreatingBidding] = useState(false);
-  const [createdBiddingSaga, setCreatedBiddingSaga] = useState<Saga | null>(null);
+  // Vendor assignment state
+  const [showVendorAssignModal, setShowVendorAssignModal] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState('');
+  const [selectedVendor, setSelectedVendor] = useState<VendorPartnerSummary | null>(null);
+  const [vendors, setVendors] = useState<VendorPartnerSummary[]>([]);
+  const [loadingVendors, setLoadingVendors] = useState(false);
+  const [relatedBiddingSagas, setRelatedBiddingSagas] = useState<Saga[]>([]);
+
+  // Load vendors on mount
+  useEffect(() => {
+    const loadVendors = async () => {
+      setLoadingVendors(true);
+      try {
+        const res = await fetch('/api/vendors/my-vendors', {
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const rawData = await res.json();
+          const vendorList: VendorPartnerSummary[] = (rawData as Array<Record<string, unknown>>).map((v) => ({
+            id: String((v.vendorId as string) ?? (v.id as string) ?? ''),
+            tenantId: (v.tenantId as string) ?? '',
+            legalName: (v.legalName as string) ?? 'Unknown Vendor',
+            status: ((v.status as 'pending' | 'approved' | 'rejected') ?? 'pending') as 'pending' | 'approved' | 'rejected',
+            city: (v.city as string) ?? null,
+            categories: ((v.categories ?? []) as VendorPartnerSummary['categories']) as VendorPartnerSummary['categories'],
+          }));
+          setVendors(vendorList);
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setLoadingVendors(false);
+      }
+    };
+    loadVendors();
+  }, []);
+
+  // Load related bidding sagas when saga changes
+  useEffect(() => {
+    const loadRelatedBiddingSagas = async (s: Saga | null) => {
+      if (!s) {
+        setRelatedBiddingSagas([]);
+        return;
+      }
+      try {
+        const response = await workflowApi.listSagas({
+          sagaType: 'BIDDING_WORKFLOW',
+          tenantId: s.tenantId,
+          pageSize: 50,
+        });
+        // Filter to find bidding sagas related to this procurement saga
+        const related = response.items.filter(
+          (biddingSaga) => {
+            const data = biddingSaga.data as Record<string, unknown>;
+            return String(data?.procurementSagaId ?? '') === s.sagaId || String(data?.relatedProcurementSagaId ?? '') === s.sagaId;
+          }
+        );
+        setRelatedBiddingSagas(related);
+      } catch {
+        setRelatedBiddingSagas([]);
+      }
+    };
+    loadRelatedBiddingSagas(saga ?? createdSaga ?? null);
+  }, [saga?.sagaId, createdSaga?.sagaId]);
+
+  // Helper: get effective current step
+  const getEffectiveStep = (s: Saga | null | undefined): string => {
+    if (!s) return 'CreateProcurementRequest';
+    const step = s.currentStep || 'CreateProcurementRequest';
+    if (step === 'Resume') {
+      return (s.data?.currentStep as string) || 'CreateProcurementRequest';
+    }
+    return step;
+  };
+
+  // Check if the saga is paused
+  const isSagaPaused = (s: Saga | null | undefined): boolean => {
+    if (!s) return false;
+    return s.status === 'PAUSED' || s.status === 'REQUIRES_MANUAL_INTERVENTION';
+  };
+
+  // Check if bidding can be created: ONLY on IssuePurchaseOrder step (vendor not required - bidding is how you assign vendors)
+  const canCreateBidding = (s: Saga | null | undefined): boolean => {
+    if (!s) return false;
+    const effectiveStep = getEffectiveStep(s);
+    return effectiveStep === 'IssuePurchaseOrder';
+  };
+
+  // Check if a bidding saga exists and is in a terminal state (COMPLETED or ABORTED/FAILED)
+  const hasCompletedBidding = (s: Saga | null | undefined): boolean => {
+    if (!s) return false;
+    return relatedBiddingSagas.some(
+      (biddingSaga) =>
+        biddingSaga.status === 'COMPLETED' || biddingSaga.status === 'FAILED' || biddingSaga.status === 'COMPENSATED'
+    );
+  };
+
+  // Check if bidding is in progress
+  const hasInProgressBidding = (s: Saga | null | undefined): boolean => {
+    if (!s) return false;
+    return relatedBiddingSagas.some(
+      (biddingSaga) =>
+        biddingSaga.status === 'RUNNING' ||
+        biddingSaga.status === 'PAUSED' ||
+        biddingSaga.status === 'REQUIRES_MANUAL_INTERVENTION'
+    );
+  };
+
+  // Check if vendor is assigned
+  const hasVendor = (s: Saga | null | undefined): boolean => {
+    if (!s) return false;
+    const data = s.data as Record<string, unknown>;
+    return !!data?.vendorId;
+  };
+
+  // Get assigned vendor details
+  const getAssignedVendor = (s: Saga | null | undefined): VendorPartnerSummary | null => {
+    if (!s) return null;
+    const data = s.data as Record<string, unknown>;
+    const vendorId = data?.vendorId as string | undefined;
+    if (!vendorId) return null;
+    return vendors.find((v) => v.id === vendorId) ?? null;
+  };
+
+  // Fetch fresh saga data
+  const refreshSaga = async (sagaId: string): Promise<Saga> => {
+    const refreshed = await workflowApi.getSaga(sagaId);
+    return refreshed;
+  };
+
+  // Reload related bidding sagas
+  const reloadRelatedBiddingSagas = async (procurementSagaId: string) => {
+    try {
+      const tenantIdToUse = (saga?.tenantId ?? createdSaga?.tenantId ?? tenantId) as string;
+      const response = await workflowApi.listSagas({
+        sagaType: 'BIDDING_WORKFLOW',
+        tenantId: tenantIdToUse,
+        pageSize: 50,
+      });
+      const related = response.items.filter(
+        (biddingSaga) => {
+          const data = biddingSaga.data as Record<string, unknown>;
+          return String(data?.procurementSagaId ?? '') === procurementSagaId || String(data?.relatedProcurementSagaId ?? '') === procurementSagaId;
+        }
+      );
+      setRelatedBiddingSagas(related);
+    } catch {
+      // silently fail
+    }
+  };
 
   const handleCreateSaga = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,26 +201,53 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
     setError(null);
 
     try {
-      const request: CreateProcurementSagaRequest = {
-        sagaType: 'PROCUREMENT_WORKFLOW',
-        tenantId,
-        data: {
+      if (saga) {
+        const updateData: Record<string, unknown> = {
           projectId,
           ...(materialId ? { materialId } : {}),
           ...(quantity ? { quantity: Number(quantity) } : {}),
           ...(description ? { description } : {}),
-        },
-      };
+        };
+        const updatedSaga = await workflowApi.updateSaga(saga.sagaId, updateData);
+        const body = updatedSaga as Record<string, unknown>;
+        const contextData = (body.context as Record<string, unknown>) || {};
+        const mergedData = { ...saga.data, ...contextData };
+        const sagaResult: Saga = {
+          sagaId: saga.sagaId,
+          sagaType: (body.sagaType as string) || 'PROCUREMENT_WORKFLOW',
+          sagaTypeName: (body.sagaType as string) || 'PROCUREMENT_WORKFLOW',
+          status: (body.status as Saga['status']) || 'RUNNING',
+          currentStep: (contextData?.currentStep as string) || saga.currentStep,
+          tenantId: saga.tenantId,
+          data: mergedData,
+          steps: saga.steps || [],
+          createdAt: saga.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
+        setCreatedSaga(sagaResult);
+        onSuccess?.(sagaResult);
+      } else {
+        const request: CreateProcurementSagaRequest = {
+          sagaType: 'PROCUREMENT_WORKFLOW',
+          tenantId,
+          data: {
+            projectId,
+            ...(materialId ? { materialId } : {}),
+            ...(quantity ? { quantity: Number(quantity) } : {}),
+            ...(description ? { description } : {}),
+          },
+        };
 
-      const createdSaga = await workflowApi.createSaga(request as unknown as Parameters<typeof workflowApi.createSaga>[0]);
-      setCreatedSaga(createdSaga);
-      onSuccess?.(createdSaga);
+        const createdSagaResult = await workflowApi.createSaga(request as unknown as Parameters<typeof workflowApi.createSaga>[0]);
+        setCreatedSaga(createdSagaResult);
+        onSuccess?.(createdSagaResult);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create procurement saga');
+      setError(err instanceof Error ? err.message : 'Failed to save procurement saga');
     } finally {
       setLoading(false);
     }
-  }, [tenantId, projectId, materialId, quantity, description, onSuccess]);
+  }, [saga, tenantId, projectId, materialId, quantity, description, onSuccess]);
 
   const handleExecuteStep = useCallback(async (command: ExecuteProcurementSagaStepRequest['command'], data?: Record<string, unknown>) => {
     if (!createdSaga) return;
@@ -129,52 +284,143 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
     }
   }, [createdSaga]);
 
-  // Handle creating bidding from procurement
-  const handleCreateBidding = useCallback(async () => {
-    if (!createdSaga) return;
-    setCreatingBidding(true);
+  // Get the active saga (createdSaga takes precedence, fallback to saga)
+  const activeSaga = createdSaga || saga || null;
+
+  // Handle vendor assignment
+  const handleAssignVendor = useCallback(async () => {
+    const sagaToUse = activeSaga;
+    if (!sagaToUse || !selectedVendorId) return;
+    setLoading(true);
     setError(null);
 
     try {
-      const biddingData: Record<string, unknown> = {
-        procurementSagaId: createdSaga.sagaId,
-        biddingMode: biddingConfig.biddingMode,
-        projectId: createdSaga.data?.projectId || projectId,
-      };
+      // Update the saga with vendorId
+      await workflowApi.updateSaga(sagaToUse.sagaId, {
+        vendorId: selectedVendorId,
+      });
 
-      if (biddingConfig.biddingMode === 'INVITED' && biddingConfig.vendorIds.length > 0) {
-        biddingData.vendorIds = biddingConfig.vendorIds;
-      }
+      // Refresh saga data
+      const refreshedSaga = await refreshSaga(sagaToUse.sagaId);
 
-      if (biddingConfig.description) {
-        biddingData.description = biddingConfig.description;
-      }
+      // Update saga state - always set createdSaga so UI refreshes properly
+      // This works for both edit mode (createdSaga exists) and view mode (only saga prop exists)
+      setCreatedSaga(refreshedSaga);
 
-      if (biddingConfig.bidDeadline) {
-        biddingData.inviteConfig = { bidDeadline: biddingConfig.bidDeadline };
-      }
+      setSelectedVendor(null);
+      setSelectedVendorId('');
+      setShowVendorAssignModal(false);
 
-      const request = {
-        sagaType: 'BIDDING_WORKFLOW' as const,
-        tenantId,
-        data: biddingData,
-      };
-
-      const biddingSaga = await workflowApi.createSaga(request as unknown as Parameters<typeof workflowApi.createSaga>[0]);
-      setCreatedBiddingSaga(biddingSaga);
+      // Reload related bidding sagas
+      await reloadRelatedBiddingSagas(sagaToUse.sagaId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create bidding saga');
+      setError(err instanceof Error ? err.message : 'Failed to assign vendor');
     } finally {
-      setCreatingBidding(false);
+      setLoading(false);
     }
-  }, [createdSaga, biddingConfig, tenantId, projectId]);
+  }, [activeSaga, selectedVendorId]);
+
+  // Handle IssuePurchaseOrder button click
+  const handleIssuePurchaseOrder = useCallback(async () => {
+    if (!createdSaga) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      // First check for in-progress bidding regardless of vendor assignment
+      const hasInProgress = hasInProgressBidding(createdSaga);
+      if (hasInProgress) {
+        setError('A bidding is currently in progress for this procurement. Please wait for it to complete before proceeding.');
+        return;
+      }
+
+      // Check if vendor is already assigned
+      if (hasVendor(createdSaga)) {
+        // Vendor is assigned, check for completed bidding
+        const hasCompleted = hasCompletedBidding(createdSaga);
+
+        if (hasCompleted) {
+          // Bidding is completed, proceed to next step
+          await handleExecuteStep('ReceiveDelivery');
+          await reloadRelatedBiddingSagas(createdSaga.sagaId);
+        } else {
+          // No bidding or bidding not started - vendor already assigned, go to next step
+          await handleExecuteStep('ReceiveDelivery');
+          await reloadRelatedBiddingSagas(createdSaga.sagaId);
+        }
+      } else {
+        // No vendor assigned and no in-progress bidding, show vendor assignment modal
+        setShowVendorAssignModal(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process IssuePurchaseOrder');
+    } finally {
+      setLoading(false);
+    }
+  }, [createdSaga, handleExecuteStep]);
+
+  // Handle IssuePurchaseOrder for view mode (when viewing existing saga, not created)
+  const handleIssuePurchaseOrderViewMode = useCallback(async (s: Saga) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Fetch fresh related bidding sagas
+      const response = await workflowApi.listSagas({
+        sagaType: 'BIDDING_WORKFLOW',
+        tenantId: s.tenantId,
+        pageSize: 50,
+      });
+      const relatedBidding = response.items.filter(
+        (biddingSaga) => {
+          const data = biddingSaga.data as Record<string, unknown>;
+          return String(data?.procurementSagaId ?? '') === s.sagaId || String(data?.relatedProcurementSagaId ?? '') === s.sagaId;
+        }
+      );
+
+      const hasInProgress = relatedBidding.some(
+        (b) => b.status === 'RUNNING' || b.status === 'PAUSED' || b.status === 'REQUIRES_MANUAL_INTERVENTION'
+      );
+
+      // First check for in-progress bidding regardless of vendor assignment
+      if (hasInProgress) {
+        setError('A bidding is currently in progress for this procurement. Please wait for it to complete before proceeding.');
+        return;
+      }
+
+      // Check if vendor is already assigned
+      const sData = s.data as Record<string, unknown>;
+      if (sData?.vendorId) {
+        // Vendor is assigned, check for completed bidding
+        const hasCompleted = relatedBidding.some(
+          (b) => b.status === 'COMPLETED' || b.status === 'FAILED' || b.status === 'COMPENSATED'
+        );
+
+        if (hasCompleted) {
+          // Bidding is completed, proceed to next step
+          const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
+          const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+          setCreatedSaga(updatedSaga);
+        } else {
+          // No bidding or bidding not started - vendor already assigned, go to next step
+          const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
+          const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+          setCreatedSaga(updatedSaga);
+        }
+      } else {
+        // No vendor assigned and no in-progress bidding, show vendor assignment modal
+        setShowVendorAssignModal(true);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process IssuePurchaseOrder');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const currentStepIndex = createdSaga
     ? PROCUREMENT_SAGA_STEPS.findIndex((s) => s.code === createdSaga.currentStep)
     : -1;
-
-  // Get related bid sagas from saga data
-  const relatedBiddingSagas = createdSaga?.data?.relatedBiddingSagas as Saga[] | undefined;
 
   return (
     <div className="space-y-6">
@@ -186,11 +432,11 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
         </p>
       </div>
 
-      {/* Saga Info Banner when editing */}
+      {/* Saga Info Banner when viewing or editing */}
       {saga && !createdSaga && (
         <Card className="border-blue-200 bg-blue-50/50">
-          <CardContent className="pt-4 space-y-2">
-            <div className="text-sm font-medium">Editing Procurement Saga</div>
+          <CardContent className="pt-4 space-y-3">
+            <div className="text-sm font-medium">{viewOnly ? 'Viewing Procurement Saga' : 'Editing Procurement Saga'}</div>
             <div className="text-xs text-muted-foreground font-mono">
               Saga ID: {saga.sagaId.slice(0, 8)}...
             </div>
@@ -205,11 +451,451 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
                 Project: {saga.data.projectId}
               </div>
             )}
+
+            {/* Assigned Vendor Info - show when vendor is assigned */}
+            {(() => {
+              const assignedVendor = getAssignedVendor(saga);
+              if (assignedVendor) {
+                return (
+                  <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                    <div className="font-medium text-foreground">Assigned Vendor:</div>
+                    <div>{assignedVendor.legalName}</div>
+                    {assignedVendor.city && <div className="text-xs">{assignedVendor.city}</div>}
+                    {assignedVendor.status === 'approved' && (
+                      <Badge variant="outline" className="text-xs mt-1">Approved</Badge>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Action buttons for viewing mode */}
+            {viewOnly && (saga.status === 'RUNNING' || saga.status === 'PAUSED' || saga.status === 'REQUIRES_MANUAL_INTERVENTION') && (
+              <div className="pt-2 space-y-2">
+                <div className="text-xs font-medium text-muted-foreground">Actions</div>
+
+                {/* Pause/Resume button */}
+                {(() => {
+                  if (saga.status === 'RUNNING') {
+                    return (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            await workflowApi.pauseSaga(saga.sagaId);
+                            window.location.reload();
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to pause saga');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Pause
+                      </Button>
+                    );
+                  }
+                  if (saga.status === 'PAUSED') {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            await workflowApi.startSaga(saga.sagaId);
+                            window.location.reload();
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to resume saga');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Resume
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Submit for Approval - shows for first step or null step */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'CreateProcurementRequest') {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const request: ExecuteProcurementSagaStepRequest = {
+                              command: 'SubmitForApproval',
+                            };
+                            const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : `Failed to execute step: SubmitForApproval`);
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Submit for Approval
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Approve/Reject Request - shows for SubmitForApproval step */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'SubmitForApproval') {
+                    return (
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            setLoading(true);
+                            setError(null);
+                            try {
+                              const request: ExecuteProcurementSagaStepRequest = {
+                                command: 'ApproveRequest',
+                                data: { approvalData: { approved: true } },
+                              };
+                              const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                              setCreatedSaga(updatedSaga);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : `Failed to execute step: ApproveRequest`);
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          disabled={loading}
+                        >
+                          Approve Request
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            setLoading(true);
+                            setError(null);
+                            try {
+                              const request: ExecuteProcurementSagaStepRequest = {
+                                command: 'ApproveRequest',
+                                data: { approvalData: { approved: false, rejectionReason: approvalReason || 'Rejected during viewing' } },
+                              };
+                              const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                              setCreatedSaga(updatedSaga);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : `Failed to execute step: ApproveRequest`);
+                            } finally {
+                              setLoading(false);
+                            }
+                          }}
+                          disabled={loading}
+                        >
+                          Reject Request
+                        </Button>
+                        <Input
+                          placeholder="Rejection reason (if rejecting)"
+                          value={approvalReason}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApprovalReason(e.target.value)}
+                          className="max-w-xs"
+                        />
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Issue Purchase Order - shows for ApproveRequest step */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'ApproveRequest') {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const request: ExecuteProcurementSagaStepRequest = {
+                              command: 'IssuePurchaseOrder',
+                            };
+                            const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : `Failed to execute step: IssuePurchaseOrder`);
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Issue Purchase Order
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Receive Delivery - shows for IssuePurchaseOrder step AND vendor is assigned */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'IssuePurchaseOrder' && hasVendor(saga)) {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          await handleIssuePurchaseOrderViewMode(saga);
+                        }}
+                        disabled={loading}
+                      >
+                        Receive Delivery
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Issue Purchase Order button for IssuePurchaseOrder step (vendor not assigned yet) */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'IssuePurchaseOrder' && !hasVendor(saga)) {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          await handleIssuePurchaseOrderViewMode(saga);
+                        }}
+                        disabled={loading || showVendorAssignModal}
+                      >
+                        Issue Purchase Order (Assign Vendor)
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Confirm Delivery - shows for ReceiveDelivery step */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'ReceiveDelivery') {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const request: ExecuteProcurementSagaStepRequest = {
+                              command: 'ConfirmDelivery',
+                            };
+                            const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : `Failed to execute step: ConfirmDelivery`);
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Confirm Delivery
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Close Procurement - shows for ConfirmDelivery step */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'ConfirmDelivery') {
+                    return (
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const request: ExecuteProcurementSagaStepRequest = {
+                              command: 'CloseProcurement',
+                            };
+                            const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : `Failed to execute step: CloseProcurement`);
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Close Procurement
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Resume Saga - shows when saga is paused */}
+                {(() => {
+                  if (isSagaPaused(saga)) {
+                    const isManualIntervention = saga.status === 'REQUIRES_MANUAL_INTERVENTION';
+                    return (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-orange-600">
+                          {isManualIntervention ? 'Saga requires manual intervention' : 'Saga is paused - needs resume'}
+                        </div>
+                        <div className="flex gap-2">
+                          {isManualIntervention ? (
+                            <Button
+                              size="sm"
+                              onClick={async () => {
+                                setLoading(true);
+                                setError(null);
+                                try {
+                                  const targetStep = saga.data?.currentStep as string | undefined;
+                                  const updatedSaga = await workflowApi.resumeSaga(saga.sagaId, targetStep);
+                                  setCreatedSaga(updatedSaga);
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : 'Failed to resume saga');
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }}
+                              disabled={loading}
+                            >
+                              Resume Saga
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={async () => {
+                                setLoading(true);
+                                setError(null);
+                                try {
+                                  await workflowApi.startSaga(saga.sagaId);
+                                  window.location.reload();
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : 'Failed to resume saga');
+                                } finally {
+                                  setLoading(false);
+                                }
+                              }}
+                              disabled={loading}
+                            >
+                              Resume
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              setLoading(true);
+                              setError(null);
+                              try {
+                                const updatedSaga = await workflowApi.compensateSaga(saga.sagaId, 'Manual compensation requested');
+                                setCreatedSaga(updatedSaga);
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : 'Failed to compensate saga');
+                              } finally {
+                                setLoading(false);
+                              }
+                            }}
+                            disabled={loading}
+                          >
+                            Cancel Saga
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Cancel Saga - shows for first two steps */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'CreateProcurementRequest' || effectiveStep === 'SubmitForApproval') {
+                    return (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const updatedSaga = await workflowApi.compensateSaga(saga.sagaId, 'Manual compensation requested');
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to compensate saga');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Cancel Saga
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Create Bidding - ONLY shows on IssuePurchaseOrder step */}
+                {(() => {
+                  if (canCreateBidding(saga)) {
+                    return (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={onViewBidding}
+                      >
+                        Create Bidding
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Bidding in progress indicator */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(saga);
+                  if (effectiveStep === 'IssuePurchaseOrder' && hasInProgressBidding(saga)) {
+                    return (
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        Bidding in progress...
+                      </Badge>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded text-xs">
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Created Saga Status with Bidding Section */}
+      {/* Created Saga Status */}
       {createdSaga && (
         <Card>
           <CardHeader className="pb-3">
@@ -238,6 +924,48 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
                 <span>{new Date(createdSaga.updatedAt).toLocaleString()}</span>
               </div>
             </div>
+
+            {/* Assigned Vendor Info */}
+            {(() => {
+              const assignedVendor = getAssignedVendor(createdSaga);
+              if (assignedVendor) {
+                return (
+                  <Card className="border-green-200 bg-green-50/50">
+                    <CardContent className="pt-4 space-y-2">
+                      <div className="text-sm font-medium text-green-800">Assigned Vendor</div>
+                      <div className="text-sm">{assignedVendor.legalName}</div>
+                      {assignedVendor.city && (
+                        <div className="text-xs text-muted-foreground">{assignedVendor.city}</div>
+                      )}
+                      {assignedVendor.status === 'approved' && (
+                        <Badge variant="outline" className="text-xs">Approved</Badge>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Related Bidding Info */}
+            {(() => {
+              if (relatedBiddingSagas.length > 0) {
+                return (
+                  <Card className="border-purple-200 bg-purple-50/50">
+                    <CardContent className="pt-4 space-y-2">
+                      <div className="text-sm font-medium text-purple-800">Related Bidding</div>
+                      {relatedBiddingSagas.map((biddingSaga) => (
+                        <div key={biddingSaga.sagaId} className="flex items-center gap-2 text-sm">
+                          <SagaStatusBadge status={biddingSaga.status} />
+                          <span className="font-mono text-xs">{biddingSaga.sagaId.slice(0, 8)}...</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                );
+              }
+              return null;
+            })()}
 
             {/* Progress Steps */}
             <div className="space-y-2">
@@ -277,143 +1005,256 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
               </div>
             )}
 
-            {/* Action Buttons based on current step */}
-            {createdSaga.status === 'RUNNING' && (
+            {/* Action Buttons based on current step and status */}
+            {(createdSaga.status === 'RUNNING' || createdSaga.status === 'PAUSED' || createdSaga.status === 'REQUIRES_MANUAL_INTERVENTION') && (
               <div className="flex flex-wrap gap-2">
-                {createdSaga.currentStep === 'CreateProcurementRequest' && (
-                  <Button
-                    onClick={() => handleExecuteStep('SubmitForApproval')}
-                    disabled={loading}
-                  >
-                    Submit for Approval
-                  </Button>
-                )}
-
-                {createdSaga.currentStep === 'SubmitForApproval' && (
-                  <>
-                    <Button
-                      variant="destructive"
-                      onClick={() =>
-                        handleExecuteStep('ApproveRequest', {
-                          approvalData: { approved: false, rejectionReason: approvalReason },
-                        })
-                      }
-                      disabled={loading}
-                    >
-                      Reject Request
-                    </Button>
-                    <Input
-                      placeholder="Rejection reason (if rejecting)"
-                      value={approvalReason}
-                      onChange={(e) => setApprovalReason(e.target.value)}
-                      className="max-w-xs"
-                    />
-                  </>
-                )}
-
-                {createdSaga.currentStep === 'ApproveRequest' && (
-                  <Button
-                    onClick={() => handleExecuteStep('IssuePurchaseOrder')}
-                    disabled={loading}
-                  >
-                    Issue Purchase Order
-                  </Button>
-                )}
-
-                {createdSaga.currentStep === 'IssuePurchaseOrder' && (
-                  <Button
-                    onClick={() => handleExecuteStep('ReceiveDelivery')}
-                    disabled={loading}
-                  >
-                    Receive Delivery
-                  </Button>
-                )}
-
-                {createdSaga.currentStep === 'ReceiveDelivery' && (
-                  <Button
-                    onClick={() => handleExecuteStep('ConfirmDelivery')}
-                    disabled={loading}
-                  >
-                    Confirm Delivery
-                  </Button>
-                )}
-
-                {createdSaga.currentStep === 'ConfirmDelivery' && (
-                  <Button
-                    onClick={() => handleExecuteStep('CloseProcurement')}
-                    disabled={loading}
-                  >
-                    Close Procurement
-                  </Button>
-                )}
-
-                {(createdSaga.currentStep === 'CreateProcurementRequest' || createdSaga.currentStep === 'SubmitForApproval') && (
+                {/* Pause button for RUNNING saga */}
+                {createdSaga.status === 'RUNNING' && (
                   <Button
                     variant="outline"
-                    onClick={handleCompensate}
-                    disabled={loading}
-                  >
-                    Cancel Saga
-                  </Button>
-                )}
-              </div>
-            )}
-
-            {/* Create Bidding/Tender Button */}
-            {(createdSaga.status === 'RUNNING' || createdSaga.status === 'COMPLETED') && (
-              <>
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-medium">Bidding & Tender</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Create a bidding/saga related to this procurement
-                    </p>
-                  </div>
-                  <Button
-                    onClick={() => {
-                      setShowBiddingDialog(true);
+                    onClick={async () => {
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        await workflowApi.pauseSaga(createdSaga.sagaId);
+                        const refreshed = await refreshSaga(createdSaga.sagaId);
+                        setCreatedSaga(refreshed);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Failed to pause saga');
+                      } finally {
+                        setLoading(false);
+                      }
                     }}
                     disabled={loading}
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Bidding/Tender
+                    Pause
                   </Button>
-                </div>
+                )}
 
-                {/* Related Bidding Sagas */}
-                {relatedBiddingSagas && relatedBiddingSagas.length > 0 && (
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'CreateProcurementRequest') {
+                    return (
+                      <Button
+                        onClick={() => handleExecuteStep('SubmitForApproval')}
+                        disabled={loading}
+                      >
+                        Submit for Approval
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'SubmitForApproval') {
+                    return (
+                      <>
+                        <Button
+                          onClick={() =>
+                            handleExecuteStep('ApproveRequest', {
+                              approvalData: { approved: true },
+                            })
+                          }
+                          disabled={loading}
+                        >
+                          Approve Request
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() =>
+                            handleExecuteStep('ApproveRequest', {
+                              approvalData: { approved: false, rejectionReason: approvalReason },
+                            })
+                          }
+                          disabled={loading}
+                        >
+                          Reject Request
+                        </Button>
+                        <Input
+                          placeholder="Rejection reason (if rejecting)"
+                          value={approvalReason}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApprovalReason(e.target.value)}
+                          className="max-w-xs"
+                        />
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'ApproveRequest') {
+                    return (
+                      <Button
+                        onClick={() => handleExecuteStep('IssuePurchaseOrder')}
+                        disabled={loading}
+                      >
+                        Issue Purchase Order
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* IssuePurchaseOrder step: Vendor not assigned - show Issue Purchase Order to trigger assignment */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'IssuePurchaseOrder' && !hasVendor(createdSaga)) {
+                    return (
+                      <Button
+                        onClick={() => handleIssuePurchaseOrder()}
+                        disabled={loading}
+                      >
+                        Issue Purchase Order (Assign Vendor)
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* IssuePurchaseOrder step: Vendor assigned - show Receive Delivery */}
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'IssuePurchaseOrder' && hasVendor(createdSaga)) {
+                    return (
+                      <>
+                        <Button
+                          onClick={() => handleIssuePurchaseOrder()}
+                          disabled={loading}
+                        >
+                          Receive Delivery
+                        </Button>
+                        {hasInProgressBidding(createdSaga) && (
+                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                            Bidding in progress...
+                          </Badge>
+                        )}
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'ReceiveDelivery') {
+                    return (
+                      <Button
+                        onClick={() => handleExecuteStep('ConfirmDelivery')}
+                        disabled={loading}
+                      >
+                        Confirm Delivery
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'ConfirmDelivery') {
+                    return (
+                      <Button
+                        onClick={() => handleExecuteStep('CloseProcurement')}
+                        disabled={loading}
+                      >
+                        Close Procurement
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {(() => {
+                  const effectiveStep = getEffectiveStep(createdSaga);
+                  if (effectiveStep === 'CreateProcurementRequest' || effectiveStep === 'SubmitForApproval') {
+                    return (
+                      <Button
+                        variant="outline"
+                        onClick={handleCompensate}
+                        disabled={loading}
+                      >
+                        Cancel Saga
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Resume/Start button for PAUSED saga */}
+                {createdSaga.status === 'PAUSED' && (
+                  <Button
+                    onClick={async () => {
+                      setLoading(true);
+                      setError(null);
+                      try {
+                        await workflowApi.startSaga(createdSaga.sagaId);
+                        const refreshed = await refreshSaga(createdSaga.sagaId);
+                        setCreatedSaga(refreshed);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Failed to resume saga');
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading}
+                  >
+                    Resume
+                  </Button>
+                )}
+
+                {/* Resume Saga - shows when saga requires manual intervention */}
+                {createdSaga.status === 'REQUIRES_MANUAL_INTERVENTION' && (
                   <div className="space-y-2">
-                    <Label className="text-xs">Related Bidding Sagas</Label>
-                    {relatedBiddingSagas.map((bidSaga) => (
-                      <Card key={bidSaga.sagaId} className="p-3">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline">BIDDING_WORKFLOW</Badge>
-                              <SagaStatusBadge status={bidSaga.status} />
-                            </div>
-                            <div className="text-xs text-muted-foreground font-mono">
-                              {bidSaga.sagaId.slice(0, 8)}...
-                            </div>
-                            <div className="text-xs">
-                              Current: {SAGA_TYPE_LABELS[bidSaga.currentStep ?? ''] ?? bidSaga.currentStep ?? 'N/A'}
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(`/sagas/${bidSaga.sagaId}`, '_blank')}
-                          >
-                            <ExternalLink className="w-3 h-3 mr-1" />
-                            View
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
+                    <div className="text-xs font-medium text-orange-600">Saga requires manual intervention</div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={async () => {
+                          setLoading(true);
+                          setError(null);
+                          try {
+                            const targetStep = createdSaga.data?.currentStep as string | undefined;
+                            const updatedSaga = await workflowApi.resumeSaga(createdSaga.sagaId, targetStep);
+                            setCreatedSaga(updatedSaga);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to resume saga');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Resume Saga
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleCompensate}
+                        disabled={loading}
+                      >
+                        Cancel Saga
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </>
+
+                {/* Create Bidding - ONLY shows on IssuePurchaseOrder step */}
+                {(() => {
+                  if (canCreateBidding(createdSaga)) {
+                    return (
+                      <Button
+                        variant="secondary"
+                        onClick={onViewBidding}
+                      >
+                        Create Bidding
+                      </Button>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             )}
 
             {/* Saga Status Actions */}
@@ -442,7 +1283,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
         </Card>
       )}
 
-      {/* Creation Form */}
+      {/* Creation/Edit Form */}
       {!createdSaga && (
         <Card>
           <CardHeader>
@@ -450,17 +1291,18 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateSaga} className="space-y-4">
-              {/* Project Selection */}
-              <ProjectSelect
-                onChange={(pId, project) => {
-                  setProjectId(pId);
-                  setSelectedProject(project);
-                }}
-                label="Project"
-                placeholder="Select a project for this procurement..."
-                required
-                helpText="Select the project this procurement request is for"
-              />
+              {/* Project Selection - only show when creating new procurement, not when editing */}
+              {!saga && (
+                <ProjectSelect
+                  onChange={(pId: string, _project: unknown) => {
+                    setProjectId(pId);
+                  }}
+                  label="Project"
+                  placeholder="Select a project for this procurement..."
+                  required
+                  helpText="Select the project this procurement request is for"
+                />
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -468,7 +1310,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
                   <Input
                     id="materialId"
                     value={materialId}
-                    onChange={(e) => setMaterialId(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaterialId(e.target.value)}
                     placeholder="uuid or material identifier"
                   />
                 </div>
@@ -479,7 +1321,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
                     type="number"
                     min="1"
                     value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuantity(e.target.value)}
                     placeholder="1"
                   />
                 </div>
@@ -490,7 +1332,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
                 <Textarea
                   id="description"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDescription(e.target.value)}
                   placeholder="Brief description of the procurement..."
                   rows={3}
                   maxLength={500}
@@ -504,7 +1346,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
               )}
 
               <div className="flex gap-2">
-                <Button type="submit" disabled={loading || !projectId}>
+                <Button type="submit" disabled={loading || (!saga && !projectId)}>
                   {loading ? 'Creating...' : 'Update Procurement Saga'}
                 </Button>
                 {onCancel && (
@@ -518,222 +1360,95 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
         </Card>
       )}
 
-      {/* Create Bidding Dialog */}
-      <Dialog open={showBiddingDialog} onOpenChange={setShowBiddingDialog}>
-        <DialogContent className="max-w-2xl !h-[90vh] p-0 !overflow-hidden flex flex-col">
-          <div className="px-6 pt-5 pb-3 flex-shrink-0 border-b">
-            <h3 className="text-lg font-semibold">Create Bidding/Tender</h3>
-            <p className="text-sm text-muted-foreground">
-              Create a bidding saga related to this procurement request.
-              The bidding saga will track the tender process from vendor invitations through award.
-            </p>
+      {/* Vendor Assignment Modal */}
+      <Modal
+        open={showVendorAssignModal}
+        onClose={() => {
+          setShowVendorAssignModal(false);
+          setSelectedVendorId('');
+          setSelectedVendor(null);
+        }}
+        title="Assign Vendor to Procurement"
+      >
+        <div className="text-sm text-muted-foreground mb-4">
+          A vendor must be assigned before you can proceed to the next step. This vendor will be responsible for delivering the materials.
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm mb-4">
+            {error}
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-4 overflow-x-hidden min-h-0">
-            {/* Procurement Reference */}
-            <Card>
-              <CardContent className="pt-4">
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Related to Procurement: </span>
-                  <span className="font-mono">{createdSaga?.sagaId.slice(0, 8) || saga?.sagaId.slice(0, 8)}...</span>
-                </div>
-                {selectedProject && (
-                  <div className="text-sm mt-1">
-                    <span className="text-muted-foreground">Project: </span>
-                    <span>{selectedProject.name}</span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        )}
 
-            {/* Bidding Mode - Simple Radio Implementation */}
-            <div className="space-y-2">
-              <Label>Bidding Mode</Label>
-              <div className="space-y-2">
-                <div
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
-                    biddingConfig.biddingMode === 'INVITED' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
-                  )}
-                  onClick={() => setBiddingConfig(prev => ({
-                    ...prev,
-                    biddingMode: 'INVITED',
-                    vendorIds: prev.vendorIds,
-                  }))}
-                >
-                  <div className={cn(
-                    "w-4 h-4 rounded-full border flex items-center justify-center",
-                    biddingConfig.biddingMode === 'INVITED' ? "bg-primary border-primary" : "border-input"
-                  )}>
-                    {biddingConfig.biddingMode === 'INVITED' && (
-                      <div className="w-2 h-2 rounded-full bg-primary-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Invited Bidding</span>
-                      <Badge variant="outline" className="text-xs">INVITED</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Specific vendors are invited to submit bids
-                    </p>
-                  </div>
-                </div>
+        {/* Vendor Selection */}
+        <div className="space-y-2 mb-4">
+          <Label htmlFor="vendor-select">
+            Vendor
+            <span className="text-destructive ml-1">*</span>
+          </Label>
+          <VendorSelect
+            mode="single"
+            value={selectedVendorId ? [selectedVendorId] : []}
+            onChange={(vendorIds: string[], vendorList: VendorPartnerSummary[]) => {
+              if (vendorIds.length > 0) {
+                setSelectedVendorId(vendorIds[0] ?? '');
+                setSelectedVendor(vendorList[0] ?? null);
+              } else {
+                setSelectedVendorId('');
+                setSelectedVendor(null);
+              }
+            }}
+            placeholder="Select a vendor for this procurement..."
+            required
+            helpText="Select the vendor who will deliver the materials"
+            disabled={loading}
+          />
+          {loadingVendors && (
+            <div className="text-xs text-muted-foreground">Loading vendors...</div>
+          )}
+          {!loadingVendors && vendors.length === 0 && (
+            <div className="text-xs text-muted-foreground">No vendors available. Please add vendors first.</div>
+          )}
+        </div>
 
-                <div
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
-                    biddingConfig.biddingMode === 'OPEN_TENDER' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
-                  )}
-                  onClick={() => setBiddingConfig(prev => ({
-                    ...prev,
-                    biddingMode: 'OPEN_TENDER',
-                    vendorIds: [],
-                  }))}
-                >
-                  <div className={cn(
-                    "w-4 h-4 rounded-full border flex items-center justify-center",
-                    biddingConfig.biddingMode === 'OPEN_TENDER' ? "bg-primary border-primary" : "border-input"
-                  )}>
-                    {biddingConfig.biddingMode === 'OPEN_TENDER' && (
-                      <div className="w-2 h-2 rounded-full bg-primary-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">Open Tender</span>
-                      <Badge variant="outline" className="text-xs">OPEN_TENDER</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      All approved vendors in the system can submit bids
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {biddingConfig.biddingMode === 'INVITED'
-                  ? 'Select specific vendors to invite for bidding.'
-                  : 'All approved vendors in the system can submit bids.'}
-              </p>
-            </div>
+        {/* Selected vendor preview */}
+        {selectedVendor && (
+          <Card className="border-muted mb-4">
+            <CardContent className="pt-4 space-y-2">
+              <div className="text-sm font-medium">Selected Vendor</div>
+              <div className="text-sm">{selectedVendor.legalName}</div>
+              {selectedVendor.city && (
+                <div className="text-xs text-muted-foreground">{selectedVendor.city}</div>
+              )}
+              {selectedVendor.status === 'approved' && (
+                <Badge variant="outline" className="text-xs">Approved</Badge>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
-            {/* Vendor Selection (only for INVITED mode) */}
-            {biddingConfig.biddingMode === 'INVITED' && (
-              <VendorSelect
-                value={biddingConfig.vendorIds}
-                onChange={(vendorIds, _vendors) => setBiddingConfig(prev => ({
-                  ...prev,
-                  vendorIds,
-                }))}
-                label="Invited Vendors"
-                placeholder="Select vendors to invite..."
-                mode="multi"
-                required
-                helpText="Select vendors to invite for this bidding"
-              />
-            )}
-
-            {/* Bid Deadline */}
-            <div className="space-y-2">
-              <Label htmlFor="bidDeadline">Bid Deadline (Optional)</Label>
-              <Input
-                id="bidDeadline"
-                type="datetime-local"
-                value={biddingConfig.bidDeadline || ''}
-                onChange={(e) => setBiddingConfig(prev => ({
-                  ...prev,
-                  bidDeadline: e.target.value || undefined,
-                }))}
-              />
-              <p className="text-xs text-muted-foreground">Deadline for vendors to submit their bids</p>
-            </div>
-
-            {/* Description */}
-            <div className="space-y-2">
-              <Label htmlFor="biddingDescription">Bidding Description (Optional)</Label>
-              <Textarea
-                id="biddingDescription"
-                value={biddingConfig.description || ''}
-                onChange={(e) => setBiddingConfig(prev => ({
-                  ...prev,
-                  description: e.target.value,
-                }))}
-                placeholder="Additional details about the bidding requirements..."
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <div className="flex-shrink-0 border-t px-6 py-4">
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowBiddingDialog(false)}
-                disabled={creatingBidding}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateBidding}
-                disabled={creatingBidding || (biddingConfig.biddingMode === 'INVITED' && biddingConfig.vendorIds.length === 0)}
-              >
-                {creatingBidding ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <ArrowRight className="w-4 h-4 mr-2" />
-                    Create Bidding
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Created Bidding Saga Status */}
-      {createdBiddingSaga && (
-        <Card className="border-green-200 bg-green-50/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Bidding Saga Created</CardTitle>
-              <SagaStatusBadge status={createdBiddingSaga.status} />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-muted-foreground">Bidding Saga ID: </span>
-                <span className="font-mono">{createdBiddingSaga.sagaId.slice(0, 8)}...</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Mode: </span>
-                <Badge variant="outline">{biddingConfig.biddingMode}</Badge>
-              </div>
-              <div className="flex gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(`/sagas/${createdBiddingSaga.sagaId}`, '_blank')}
-                >
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  View Bidding Details
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setCreatedBiddingSaga(null);
-                    setShowBiddingDialog(false);
-                  }}
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {/* Action buttons */}
+        <div className="flex gap-2 justify-end mt-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setShowVendorAssignModal(false);
+              setSelectedVendorId('');
+              setSelectedVendor(null);
+            }}
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAssignVendor}
+            disabled={loading || !selectedVendorId}
+          >
+            {loading ? 'Assigning...' : 'Assign Vendor'}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

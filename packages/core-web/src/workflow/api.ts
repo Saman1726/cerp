@@ -68,13 +68,37 @@ export const workflowApi = {
     return apiClient.post<CreateSagaRequest, Saga>(SAGA_API_BASE, request);
   },
 
+  /**
+   * Update an existing saga's data without changing its state.
+   */
+  updateSaga: async (sagaId: string, data: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    return apiClient.put<Record<string, unknown>, Record<string, unknown>>(`${SAGA_API_BASE}/${sagaId}`, data);
+  },
+
   // ── Saga Actions ──
 
   /**
    * Execute the next step in a saga.
    */
   executeStep: async (sagaId: string, request: ExecuteSagaStepRequest): Promise<Saga> => {
-    return apiClient.post<ExecuteSagaStepRequest, Saga>(`${SAGA_API_BASE}/${sagaId}/execute`, request);
+    const response = await apiClient.post<ExecuteSagaStepRequest, Record<string, unknown>>(`${SAGA_API_BASE}/${sagaId}/execute`, request);
+    // Transform the backend response into a Saga object
+    const contextData = (response.context as Record<string, unknown>) || {};
+    return {
+      sagaId: response.sagaId as string,
+      sagaType: (response.sagaType as string) || (contextData.sagaType as string) || '',
+      sagaTypeName: (response.sagaTypeName as string) || (contextData.sagaType as string) || '',
+      status: (response.status as Saga['status']) || 'RUNNING',
+      currentStep: (response.currentStep as string) || (contextData.currentStep as string) || '',
+      tenantId: (response.tenantId as string) || '',
+      createdAt: (response.createdAt as string) || new Date().toISOString(),
+      updatedAt: (response.updatedAt as string) || new Date().toISOString(),
+      steps: (response.steps as unknown[][]) || [],
+      data: {
+        ...(response.data as Record<string, unknown>) || {},
+        ...contextData,
+      },
+    } as unknown as Saga;
   },
 
   /**
@@ -88,14 +112,44 @@ export const workflowApi = {
    * Manually compensate a saga (rollback).
    */
   compensateSaga: async (sagaId: string, reason?: string): Promise<Saga> => {
-    return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/compensate`, {
+    const response = await apiClient.post<SagaAction, Record<string, unknown>>(`${SAGA_API_BASE}/${sagaId}/compensate`, {
       action: 'compensate',
       reason,
     } as SagaAction);
+    const contextData = (response.context as Record<string, unknown>) || {};
+    return {
+      sagaId: response.sagaId as string,
+      sagaType: (response.sagaType as string) || (contextData.sagaType as string) || '',
+      sagaTypeName: (response.sagaTypeName as string) || (contextData.sagaType as string) || '',
+      status: (response.status as Saga['status']) || 'COMPLETED',
+      currentStep: (response.currentStep as string) || (contextData.currentStep as string) || '',
+      tenantId: (response.tenantId as string) || '',
+      createdAt: (response.createdAt as string) || new Date().toISOString(),
+      updatedAt: (response.updatedAt as string) || new Date().toISOString(),
+      steps: (response.steps as unknown[][]) || [],
+      data: {
+        ...(response.data as Record<string, unknown>) || {},
+        ...contextData,
+      },
+    } as unknown as Saga;
   },
 
   /**
-   * Resume a paused saga.
+   * Pause a running saga.
+   */
+  pauseSaga: async (sagaId: string): Promise<Record<string, unknown>> => {
+    return apiClient.post(`${SAGA_API_BASE}/${sagaId}/pause`, {});
+  },
+
+  /**
+   * Start/resume a paused saga (transition from PAUSED to RUNNING).
+   */
+  startSaga: async (sagaId: string): Promise<Record<string, unknown>> => {
+    return apiClient.post(`${SAGA_API_BASE}/${sagaId}/start`, {});
+  },
+
+  /**
+   * Resume a paused saga (legacy resume for REQUIRES_MANUAL_INTERVENTION sagas).
    */
   resumeSaga: async (sagaId: string, stepCode?: string): Promise<Saga> => {
     return apiClient.post<SagaAction, Saga>(`${SAGA_API_BASE}/${sagaId}/resume`, {

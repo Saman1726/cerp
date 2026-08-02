@@ -18,6 +18,8 @@ export function ProcurementPageBody() {
   const [selectedBiddingSaga, setSelectedBiddingSaga] = useState<Saga | null>(null);
   const [activeTab, setActiveTab] = useState('procurement');
   const [isEditing, setIsEditing] = useState(false);
+  // Track when Create Bidding button is clicked from procurement form
+  const [viewingBiddingFromProcurement, setViewingBiddingFromProcurement] = useState(false);
 
   const handleProcurementSuccess = useCallback((saga: Saga) => {
     setSelectedProcurementSaga(saga);
@@ -37,7 +39,16 @@ export function ProcurementPageBody() {
     setIsBiddingModalOpen(false);
     setSelectedBiddingSaga(null);
     setIsEditing(false);
+    setViewingBiddingFromProcurement(false);
   }, []);
+
+  // Handler for "Create Bidding" button from the procurement saga view form
+  const handleViewBiddingFromProcurement = useCallback(() => {
+    if (selectedProcurementSaga) {
+      setViewingBiddingFromProcurement(true);
+      setIsBiddingModalOpen(true);
+    }
+  }, [selectedProcurementSaga]);
 
   const handleProcurementSelect = useCallback((saga: Saga) => {
     setSelectedProcurementSaga(saga);
@@ -100,11 +111,9 @@ export function ProcurementPageBody() {
               <h2 className="text-lg font-semibold">Bidding Workflows</h2>
               <p className="text-sm text-muted-foreground">
                 Manage tenders, vendor invitations, and bid evaluations. Supports Invited Bidding and Open Tender modes.
+                Create bidding from completed procurement sagas via the context menu.
               </p>
             </div>
-            <Button onClick={() => setIsBiddingModalOpen(true)}>
-              Create Bidding
-            </Button>
           </div>
 
           <BiddingSagaList
@@ -114,29 +123,75 @@ export function ProcurementPageBody() {
         </TabsContent>
       </Tabs>
 
-      {/* Procurement Create/Edit Modal */}
+      {/* Procurement View Modal */}
       <Modal
-        open={isProcurementModalOpen}
+        open={isProcurementModalOpen && !isEditing}
         onClose={handleProcurementCancel}
-        title={isEditing && selectedProcurementSaga ? 'Edit Procurement Saga' : 'Create Procurement'}
+        title="View Procurement Saga"
       >
         <ProcurementSagaForm
           tenantId=""
           saga={selectedProcurementSaga}
           onSuccess={handleProcurementSuccess}
           onCancel={handleProcurementCancel}
+          onViewBidding={handleViewBiddingFromProcurement}
+          viewOnly
         />
       </Modal>
 
-      {/* Bidding Create/Edit Modal */}
+      {/* Procurement Edit Modal */}
       <Modal
-        open={isBiddingModalOpen}
+        open={isProcurementModalOpen && isEditing}
+        onClose={handleProcurementCancel}
+        title="Edit Procurement Saga"
+      >
+        <ProcurementSagaForm
+          tenantId=""
+          saga={selectedProcurementSaga}
+          onSuccess={handleProcurementSuccess}
+          onCancel={handleProcurementCancel}
+          onViewBidding={handleViewBiddingFromProcurement}
+        />
+      </Modal>
+
+      {/* Bidding View Modal */}
+      <Modal
+        open={isBiddingModalOpen && !isEditing}
         onClose={handleBiddingCancel}
-        title={isEditing && selectedBiddingSaga ? 'Edit Bidding Saga' : 'Create Bidding'}
+        title="View Bidding Saga"
       >
         <BiddingSagaForm
           tenantId=""
           saga={selectedBiddingSaga}
+          onSuccess={handleBiddingSuccess}
+          onCancel={handleBiddingCancel}
+          viewOnly
+        />
+      </Modal>
+
+      {/* Bidding Edit Modal */}
+      <Modal
+        open={isBiddingModalOpen && isEditing}
+        onClose={handleBiddingCancel}
+        title="Edit Bidding Saga"
+      >
+        <BiddingSagaForm
+          tenantId=""
+          saga={selectedBiddingSaga}
+          onSuccess={handleBiddingSuccess}
+          onCancel={handleBiddingCancel}
+        />
+      </Modal>
+
+      {/* Create Bidding from Procurement Saga Modal */}
+      <Modal
+        open={isBiddingModalOpen && viewingBiddingFromProcurement && !isEditing}
+        onClose={handleBiddingCancel}
+        title="Create Bidding from Procurement"
+      >
+        <BiddingSagaForm
+          tenantId=""
+          initialProcurementSagaId={selectedProcurementSaga?.sagaId}
           onSuccess={handleBiddingSuccess}
           onCancel={handleBiddingCancel}
         />

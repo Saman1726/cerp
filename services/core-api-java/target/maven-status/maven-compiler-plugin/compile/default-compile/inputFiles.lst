@@ -1,8 +1,0 @@
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/CoreApiApplication.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/auth/AuthController.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/config/SecurityConfig.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/construction/ConstructionEngineeringController.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/constructionsites/ConstructionSitesController.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/constructionsites/PropertiesAliasController.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/procurement/ProcurementController.java
-/Users/saman.anvari/Documents/GitHub/cerp/services/core-api-java/src/main/java/io/cerp/core/properties/PropertiesController.java

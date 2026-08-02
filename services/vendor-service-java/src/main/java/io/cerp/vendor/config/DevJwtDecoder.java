@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.jwt.JwtException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
 
@@ -54,10 +55,18 @@ public class DevJwtDecoder {
                 String roles = payload.has("roles") ? payload.get("roles").asText() : "";
                 long exp = payload.has("exp") ? payload.get("exp").asLong() : Instant.now().getEpochSecond() + 3600;
 
-                // Check expiration
+                // Check expiration with a grace period for development
+                // In dev mode, allow a 5-minute grace period after expiration to handle
+                // clock skew, token caching, and slow test execution
                 Instant expiresAt = Instant.ofEpochSecond(exp);
-                if (expiresAt.isBefore(Instant.now())) {
-                    throw new JwtException("JWT has expired");
+                Instant now = Instant.now();
+                Duration gracePeriod = Duration.ofMinutes(5);
+                if (expiresAt.isBefore(now.minus(gracePeriod))) {
+                    throw new JwtException("JWT has expired (grace period of " + gracePeriod.toMinutes() + " minutes exceeded)");
+                }
+                // If within grace period, extend the expiresAt for the Jwt object
+                if (expiresAt.isBefore(now)) {
+                    expiresAt = now;
                 }
 
                 Instant issuedAt = payload.has("iat") ? Instant.ofEpochSecond(payload.get("iat").asLong()) : Instant.now();
