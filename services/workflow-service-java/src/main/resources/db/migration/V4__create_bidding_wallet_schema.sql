@@ -1,5 +1,7 @@
 -- Bidding Wallet Schema: Bid currency system for Project Owners and Vendors
 -- Schema: bidding
+-- 
+-- Type mapping: Long → BIGINT, BigDecimal → NUMERIC(p, s)
 
 CREATE SCHEMA IF NOT EXISTS bidding;
 
@@ -20,15 +22,16 @@ INSERT INTO bidding.pricing_config (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- Bid Wallets: One wallet per user
+-- Long fields (totalBids, spentBids, availableBids) map to BIGINT
 CREATE TABLE IF NOT EXISTS bidding.bid_wallets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
     user_id UUID NOT NULL UNIQUE,
     entity_type TEXT NOT NULL CHECK (entity_type IN ('PROJECT_OWNER', 'VENDOR')),
     entity_id UUID NOT NULL,
-    total_bids NUMERIC(10, 0) NOT NULL DEFAULT 0,
-    spent_bids NUMERIC(10, 0) NOT NULL DEFAULT 0,
-    available_bids NUMERIC(10, 0) NOT NULL DEFAULT 0,
+    total_bids BIGINT NOT NULL DEFAULT 0,
+    spent_bids BIGINT NOT NULL DEFAULT 0,
+    available_bids BIGINT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
@@ -38,6 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_bid_wallets_entity ON bidding.bid_wallets (entity
 CREATE INDEX IF NOT EXISTS idx_bid_wallets_tenant_id ON bidding.bid_wallets (tenant_id);
 
 -- Bid Transactions: Audit trail for all bid movements
+-- Long fields (amount, balanceAfter) map to BIGINT
+-- BigDecimal fields (unitPrice, totalPrice) map to NUMERIC(10, 2)
 CREATE TABLE IF NOT EXISTS bidding.bid_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL,
@@ -46,10 +51,10 @@ CREATE TABLE IF NOT EXISTS bidding.bid_transactions (
     bidding_saga_id UUID,
     tender_id TEXT,
     transaction_type TEXT NOT NULL CHECK (transaction_type IN ('ALLOCATION', 'SPEND', 'REFUND')),
-    amount NUMERIC(10, 0) NOT NULL,
+    amount BIGINT NOT NULL,
     unit_price NUMERIC(10, 2),
     total_price NUMERIC(10, 2),
-    balance_after NUMERIC(10, 0) NOT NULL,
+    balance_after BIGINT NOT NULL,
     reference_type TEXT,
     reference_id TEXT,
     description TEXT,
@@ -63,6 +68,7 @@ CREATE INDEX IF NOT EXISTS idx_bid_transactions_tender_id ON bidding.bid_transac
 CREATE INDEX IF NOT EXISTS idx_bid_transactions_type ON bidding.bid_transactions (transaction_type);
 
 -- Vendor Bid Submissions: Actual bids (price, quantity) submitted by vendors
+-- All numeric fields are BigDecimal, mapped to NUMERIC(15, 2)
 CREATE TABLE IF NOT EXISTS bidding.vendor_bid_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tender_id TEXT NOT NULL,
