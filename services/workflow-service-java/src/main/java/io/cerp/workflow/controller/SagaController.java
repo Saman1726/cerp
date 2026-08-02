@@ -23,6 +23,7 @@ import io.cerp.workflow.saga.SagaContext;
 import io.cerp.workflow.saga.SagaError;
 import io.cerp.workflow.saga.SagaException;
 import io.cerp.workflow.saga.SagaState;
+import io.cerp.workflow.security.IdentityPermissionClient;
 
 /**
  * REST API for Saga orchestration.
@@ -42,9 +43,11 @@ import io.cerp.workflow.saga.SagaState;
 public class SagaController {
 
     private final DefaultSagaOrchestrator orchestrator;
+    private final IdentityPermissionClient permissionClient;
 
-    public SagaController(DefaultSagaOrchestrator orchestrator) {
+    public SagaController(DefaultSagaOrchestrator orchestrator, IdentityPermissionClient permissionClient) {
         this.orchestrator = orchestrator;
+        this.permissionClient = permissionClient;
     }
 
     /**
@@ -58,8 +61,60 @@ public class SagaController {
      *            the saga start request containing sagaType and initial data
      * @return the created saga with its sagaId
      */
+    /**
+     * Start a new saga instance.
+     * Access control: User must have write permission on at least one project, or be tenant admin/manager.
+     * If projectId is provided in data, user must have write permission on that specific project.
+     */
     @PostMapping
     public ResponseEntity<Map<String, Object>> startSaga(@RequestBody StartSagaRequest request) {
+        // Extract userId from request data for access control
+        String userIdStr = null;
+        if (request.data() != null) {
+            userIdStr = (String) request.data().get("userId");
+        }
+
+        if (userIdStr != null && !userIdStr.isEmpty()) {
+            try {
+                UUID userUuid = UUID.fromString(userIdStr);
+
+                // Check if user is tenant admin/manager (full access)
+                boolean isAdminOrManager = permissionClient.isTenantAdminOrManager(userUuid);
+
+                if (!isAdminOrManager) {
+                    // Check if user has any project write permission
+                    boolean hasAnyWrite = permissionClient.hasAnyProjectWritePermission(userUuid);
+
+                    if (!hasAnyWrite) {
+                        Map<String, Object> error = new HashMap<>();
+                        error.put("error", "FORBIDDEN");
+                        error.put("message", "User does not have write permission on any project");
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+                    }
+
+                    // If projectId is provided, check specific project permission
+                    if (request.data() != null) {
+                        Object projectIdObj = request.data().get("projectId");
+                        if (projectIdObj != null) {
+                            try {
+                                UUID projectId = UUID.fromString(projectIdObj.toString());
+                                if (!permissionClient.canWriteOnProject(userUuid, projectId)) {
+                                    Map<String, Object> error = new HashMap<>();
+                                    error.put("error", "FORBIDDEN");
+                                    error.put("message", "User does not have write permission on the specified project");
+                                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+                                }
+                            } catch (IllegalArgumentException e) {
+                                // ignore invalid UUID
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                // If userId is invalid, proceed (fail open)
+            }
+        }
+
         UUID sagaId = request.sagaId() != null ? request.sagaId() : UUID.randomUUID();
 
         Map<String, Object> initialData = request.data() != null ? request.data() : new HashMap<>();
@@ -232,6 +287,7 @@ public class SagaController {
             @RequestParam(required = false) String sagaType,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(defaultValue = "updatedAt") String sortBy,
@@ -239,6 +295,46 @@ public class SagaController {
 
         // Get all sagas from the orchestrator and filter in memory
         List<SagaState> allSagas = new ArrayList<>(orchestrator.getActiveSagas());
+
+        // Apply role-based access control if userId is provided
+        if (userId != null && !userId.isEmpty()) {
+            try {
+                UUID userUuid = UUID.fromString(userId);
+
+                // Check if user is tenant admin/manager (full access to all sagas)
+                boolean isAdminOrManager = permissionClient.isTenantAdminOrManager(userUuid);
+
+                if (!isAdminOrManager) {
+                    // Get projects the user has access to
+                    List<UUID> accessibleProjectIds = permissionClient.getAccessibleProjects(userUuid);
+
+                    // If user has no project access, return empty list
+                    if (accessibleProjectIds.isEmpty()) {
+                        allSagas = List.of();
+                    } else {
+                        // Filter sagas to only those belonging to accessible projects
+                        final List<UUID> accessibleProjects = accessibleProjectIds;
+                        allSagas = allSagas.stream()
+                            .filter(s -> {
+                                Object projectIdObj = s.getData().get("projectId");
+                                if (projectIdObj == null) {
+                                    return false;
+                                }
+                                try {
+                                    UUID projectId = UUID.fromString(projectIdObj.toString());
+                                    return accessibleProjects.contains(projectId);
+                                } catch (IllegalArgumentException e) {
+                                    return false;
+                                }
+                            })
+                            .collect(Collectors.toList());
+                    }
+                }
+                // If admin/manager, show all sagas (no filtering)
+            } catch (Exception e) {
+                // If userId is invalid, skip access control (fail open)
+            }
+        }
 
         // Apply filters
         List<SagaState> filtered = allSagas.stream()

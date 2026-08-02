@@ -160,6 +160,7 @@ services:
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      IDENTITY_SERVICE_URL: http://identity-service-java:8090
     ports:
       - '8089:8089'
       - '5005:5005'

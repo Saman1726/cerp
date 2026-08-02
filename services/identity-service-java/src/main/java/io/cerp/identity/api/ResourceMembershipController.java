@@ -108,6 +108,70 @@ public class ResourceMembershipController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Service-to-Service Endpoints for Workflow Service ──
+
+    /**
+     * Get all project resource IDs that a user has access to.
+     * Returns empty list if user is admin/manager (full access).
+     * Used by workflow-service for saga listing access control.
+     * Internal endpoint - called service-to-service.
+     */
+    @GetMapping("/users/{userId}/accessible-projects")
+    public ResponseEntity<List<UUID>> getAccessibleProjects(
+            @PathVariable UUID userId) {
+        List<UUID> projectIds = resourceAccessService.getAccessibleResourceIds(userId, ResourceType.PROJECT);
+        return ResponseEntity.ok(projectIds);
+    }
+
+    /**
+     * Check if a user has write permission on a specific project.
+     * Returns true if user is admin/manager at tenant level OR has write permission on the project.
+     * Internal endpoint - called service-to-service.
+     */
+    @GetMapping("/users/{userId}/can-write-project")
+    public ResponseEntity<Map<String, Boolean>> canWriteOnProject(
+            @PathVariable UUID userId,
+            @RequestParam UUID projectId) {
+        boolean canWrite = resourceAccessService.canWrite(userId, ResourceType.PROJECT, projectId);
+        return ResponseEntity.ok(Map.of("canWrite", canWrite));
+    }
+
+    /**
+     * Check if a user has read permission on a specific project.
+     * Returns true if user is admin/manager at tenant level OR has read permission on the project.
+     * Internal endpoint - called service-to-service.
+     */
+    @GetMapping("/users/{userId}/can-read-project")
+    public ResponseEntity<Map<String, Boolean>> canReadOnProject(
+            @PathVariable UUID userId,
+            @RequestParam UUID projectId) {
+        boolean canRead = resourceAccessService.canRead(userId, ResourceType.PROJECT, projectId);
+        return ResponseEntity.ok(Map.of("canRead", canRead));
+    }
+
+    /**
+     * Check if a user has delete permission on a specific project.
+     * Internal endpoint - called service-to-service.
+     */
+    @GetMapping("/users/{userId}/can-delete-project")
+    public ResponseEntity<Map<String, Boolean>> canDeleteOnProject(
+            @PathVariable UUID userId,
+            @RequestParam UUID projectId) {
+        boolean canDelete = resourceAccessService.canDelete(userId, ResourceType.PROJECT, projectId);
+        return ResponseEntity.ok(Map.of("canDelete", canDelete));
+    }
+
+    /**
+     * Check if a user is admin or manager at the tenant level (full access to all resources).
+     * Internal endpoint - called service-to-service.
+     */
+    @GetMapping("/users/{userId}/is-tenant-admin-or-manager")
+    public ResponseEntity<Map<String, Boolean>> isTenantAdminOrManager(
+            @PathVariable UUID userId) {
+        boolean isAdminOrManager = resourceAccessService.isTenantAdminOrManager(userId);
+        return ResponseEntity.ok(Map.of("isAdminOrManager", isAdminOrManager));
+    }
+
     // ── Quick Role Assignment ──
 
     /**

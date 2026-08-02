@@ -99,8 +99,9 @@ public class ResourceAccessService {
 
     /**
      * Check if a user is admin or manager at the tenant level.
+     * Public for use by controllers and clients.
      */
-    private boolean isTenantAdminOrManager(UUID userId) {
+    public boolean isTenantAdminOrManager(UUID userId) {
         List<String> roles = membershipRepo.findRolesByUserId(userId);
         if (roles == null) {
             return false;

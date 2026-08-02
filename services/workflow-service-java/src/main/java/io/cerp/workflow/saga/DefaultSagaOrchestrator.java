@@ -63,6 +63,14 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         String tenantId = TenantContext.get().map(Object::toString)
             .orElse(TenantSeedInitializer.DEFAULT_TENANT_ID.toString());
 
+        // Build initial data map with userId and projectId from context
+        Map<String, Object> initialData = new HashMap<>();
+        initialData.put("sagaId", sagaId.toString());
+        initialData.put("sagaType", sagaType);
+        if (context.getData() != null) {
+            initialData.putAll(context.getData());
+        }
+
         SagaState state = new SagaState(
             sagaId,
             sagaType,
@@ -73,7 +81,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             new ArrayList<>(),
             null,
             Instant.now(),
-            Instant.now());
+            Instant.now(),
+            initialData);
 
         activeSagas.put(sagaId, state);
         sagaRepository.save(toEntity(state));
@@ -191,6 +200,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             return;
         }
 
+        // Preserve the original data map (including userId, projectId) for toEntity extraction
         SagaState newState = new SagaState(
             state.getSagaId(),
             state.getSagaType(),
@@ -201,7 +211,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getSteps(),
             state.getLastError(),
             state.getCreatedAt(),
-            Instant.now());
+            Instant.now(),
+            state.getData()); // Preserve original data for userId/projectId extraction
 
         activeSagas.put(sagaId, newState);
         sagaRepository.save(toEntity(newState));
@@ -224,6 +235,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             return;
         }
 
+        // Preserve the original data map (including userId, projectId) for toEntity extraction
         SagaState newState = new SagaState(
             state.getSagaId(),
             state.getSagaType(),
@@ -234,7 +246,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getSteps(),
             error,
             state.getCreatedAt(),
-            Instant.now());
+            Instant.now(),
+            state.getData()); // Preserve original data for userId/projectId extraction
 
         activeSagas.put(sagaId, newState);
         sagaRepository.save(toEntity(newState));
@@ -295,9 +308,29 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
     /**
      * Get all active saga states (for listing endpoint).
+     * Loads from in-memory cache first, then from database for any sagas not in memory.
      */
     public List<SagaState> getActiveSagas() {
-        return new ArrayList<>(activeSagas.values());
+        // Start with in-memory sagas
+        List<SagaState> result = new ArrayList<>(activeSagas.values());
+
+        // For sagas that exist in the database but not in memory, load them
+        // This ensures sagas are visible after server restarts
+        List<UUID> inMemoryIds = result.stream()
+            .map(SagaState::getSagaId)
+            .collect(java.util.stream.Collectors.toList());
+
+        List<SagaEntity> allEntities = sagaRepository.findAll();
+        for (SagaEntity entity : allEntities) {
+            if (!inMemoryIds.contains(entity.getId())) {
+                SagaState state = toState(entity);
+                // Cache in memory for future lookups
+                activeSagas.put(state.getSagaId(), state);
+                result.add(state);
+            }
+        }
+
+        return result;
     }
 
     // --- Entity/State conversion ---
@@ -338,7 +371,20 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             LocalDateTime.now());
     }
 
+    /**
+     * Convert a SagaEntity to SagaState, populating data from entity fields.
+     */
     private SagaState toState(SagaEntity entity) {
+        Map<String, Object> data = new HashMap<>();
+        if (entity.getProjectId() != null) {
+            data.put("projectId", entity.getProjectId().toString());
+        }
+        if (entity.getUserId() != null) {
+            data.put("userId", entity.getUserId());
+        }
+        // Store sagaType in data for frontend access
+        data.put("sagaType", entity.getSagaType());
+
         return new SagaState(
             entity.getId(),
             entity.getSagaType(),
@@ -348,8 +394,9 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             entity.getNextStep(),
             deserializeSteps(entity.getStepsJson()),
             deserializeError(entity.getLastErrorJson()),
-            Instant.now(),
-            Instant.now());
+            entity.getCreatedAt() != null ? entity.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
+            entity.getUpdatedAt() != null ? entity.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
+            data);
     }
 
     private String serializeSteps(List<SagaStep> steps) {
@@ -443,6 +490,17 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         Map<String, Object> data = new HashMap<>();
         data.put("sagaStatus", state.getStatus());
         data.put("currentStep", state.getCurrentStep());
+        // Propagate userId and projectId from state data to saga context
+        if (state.getData() != null) {
+            Object userIdObj = state.getData().get("userId");
+            if (userIdObj != null) {
+                data.put("userId", userIdObj);
+            }
+            Object projectIdObj = state.getData().get("projectId");
+            if (projectIdObj != null) {
+                data.put("projectId", projectIdObj);
+            }
+        }
         return new SagaContext(
             state.getSagaId(),
             state.getSagaType(),
@@ -460,6 +518,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             error == null ? Instant.now() : null,
             error));
 
+        // Preserve the original data map (including userId, projectId) for toEntity extraction
         SagaState newState = new SagaState(
             state.getSagaId(),
             state.getSagaType(),
@@ -470,7 +529,8 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             steps,
             error,
             state.getCreatedAt(),
-            Instant.now());
+            Instant.now(),
+            state.getData()); // Preserve original data for userId/projectId extraction
 
         activeSagas.put(newState.getSagaId(), newState);
         sagaRepository.save(toEntity(newState));

@@ -16,7 +16,8 @@ import {
 import { SagaStatusBadge } from '../workflow/SagaStatusBadge';
 import { workflowApi } from '../workflow/api';
 import { SAGA_TYPE_LABELS } from '../workflow/types';
-import type { Saga, SagaQuery, SagaQueryResponse } from '../workflow/types';
+import type { Saga, SagaQuery, SagaQueryResponse, ProjectSummary } from '@cerp/shared-types';
+import { apiClient } from '../lib/api-client';
 
 interface ProcurementSagaListProps {
   tenantId?: string;
@@ -26,11 +27,32 @@ interface ProcurementSagaListProps {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
+// Cache for projects fetched from the API
+let projectCache: ProjectSummary[] | null = null;
+let projectCachePromise: Promise<ProjectSummary[]> | null = null;
+
+async function getProjects(): Promise<ProjectSummary[]> {
+  if (projectCache) return projectCache;
+  if (!projectCachePromise) {
+    projectCachePromise = (async () => {
+      try {
+        const projectList = await apiClient.get<ProjectSummary[]>('/api/projects');
+        projectCache = Array.isArray(projectList) ? projectList : [];
+      } catch {
+        projectCache = [];
+      }
+      return projectCache!;
+    })();
+  }
+  return projectCachePromise;
+}
+
 export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEdit }: ProcurementSagaListProps) {
   const [sagas, setSagas] = useState<Saga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
 
   const [filters, setFilters] = useState<SagaQuery>({
     sagaType: 'PROCUREMENT_WORKFLOW',
@@ -62,6 +84,7 @@ export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSa
   useEffect(() => {
     if (!initialized.current) {
       initialized.current = true;
+      getProjects().then(setProjects);
       fetchSagas();
     }
   }, [fetchSagas]);
@@ -95,6 +118,13 @@ export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSa
   ];
 
   const totalPages = Math.ceil(total / (filters.pageSize ?? 25));
+
+  // Lookup project name by ID
+  const getProjectName = useCallback((projectId: string | undefined): string => {
+    if (!projectId) return '-';
+    const project = projects.find((p) => p.id === projectId);
+    return project?.name || projectId?.slice(0, 8) + '...';
+  }, [projects]);
 
   return (
     <div className="space-y-6">
@@ -187,38 +217,43 @@ export function ProcurementSagaList({ tenantId: propTenantId, onSagaSelect, onSa
             <div className="text-center py-8 text-muted-foreground">Loading procurement sagas...</div>
           ) : (
             <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Saga ID</TableHead>
-                    <TableHead>Project</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Current Step</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Updated</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sagas.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
-                        No procurement sagas found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    sagas.map((saga) => {
-                      const projectName = saga.data?.projectName as string | undefined;
-                      const projectCode = saga.data?.projectCode as string | undefined;
-                      const projectId = saga.data?.projectId as string | undefined;
-                      const projectNameOrCode = projectName || projectCode || projectId;
-                      
-                      return (
-                        <TableRow key={saga.sagaId}>
-                          <TableCell className="font-mono text-xs">{saga.sagaId.slice(0, 8)}...</TableCell>
-                          <TableCell className="text-sm">
-                            {projectNameOrCode || '-'}
-                          </TableCell>
+               <Table>
+                 <TableHeader>
+                   <TableRow>
+                     <TableHead>Project Name</TableHead>
+                     <TableHead>Material ID</TableHead>
+                     <TableHead>Description</TableHead>
+                     <TableHead>Status</TableHead>
+                     <TableHead>Current Step</TableHead>
+                     <TableHead>Created</TableHead>
+                     <TableHead>Updated</TableHead>
+                     <TableHead>Actions</TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+                   {sagas.length === 0 ? (
+                     <TableRow>
+                       <TableCell colSpan={8} className="text-center text-muted-foreground">
+                         No procurement sagas found
+                       </TableCell>
+                     </TableRow>
+                   ) : (
+                     sagas.map((saga) => {
+                       const projectId = saga.data?.projectId as string | undefined;
+                       const materialId = saga.data?.materialId as string | undefined;
+                       const description = saga.data?.description as string | undefined;
+
+                       return (
+                         <TableRow key={saga.sagaId}>
+                           <TableCell className="text-sm">
+                             {getProjectName(projectId)}
+                           </TableCell>
+                           <TableCell className="font-mono text-xs">
+                             {materialId ? materialId.slice(0, 8) + '...' : '-'}
+                           </TableCell>
+                           <TableCell className="text-sm">
+                             {description || '-'}
+                           </TableCell>
                           <TableCell>
                             <SagaStatusBadge status={saga.status} />
                           </TableCell>

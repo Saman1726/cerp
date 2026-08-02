@@ -22,10 +22,6 @@ import { VendorSelect } from './VendorSelect';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '../components/ui/modal/dialog';
 import { Input } from '../components/ui/input';
 import { ArrowRight, Plus, Loader2, ExternalLink } from 'lucide-react';
@@ -524,16 +520,15 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
 
       {/* Create Bidding Dialog */}
       <Dialog open={showBiddingDialog} onOpenChange={setShowBiddingDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create Bidding/Tender</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-w-2xl !h-[90vh] p-0 !overflow-hidden flex flex-col">
+          <div className="px-6 pt-5 pb-3 flex-shrink-0 border-b">
+            <h3 className="text-lg font-semibold">Create Bidding/Tender</h3>
+            <p className="text-sm text-muted-foreground">
               Create a bidding saga related to this procurement request.
               The bidding saga will track the tender process from vendor invitations through award.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
+            </p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-4 overflow-x-hidden min-h-0">
             {/* Procurement Reference */}
             <Card>
               <CardContent className="pt-4">
@@ -668,31 +663,33 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel }: Pro
             </div>
           </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowBiddingDialog(false)}
-              disabled={creatingBidding}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleCreateBidding}
-              disabled={creatingBidding || (biddingConfig.biddingMode === 'INVITED' && biddingConfig.vendorIds.length === 0)}
-            >
-              {creatingBidding ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <ArrowRight className="w-4 h-4 mr-2" />
-                  Create Bidding
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          <div className="flex-shrink-0 border-t px-6 py-4">
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowBiddingDialog(false)}
+                disabled={creatingBidding}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateBidding}
+                disabled={creatingBidding || (biddingConfig.biddingMode === 'INVITED' && biddingConfig.vendorIds.length === 0)}
+              >
+                {creatingBidding ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Create Bidding
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

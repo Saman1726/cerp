@@ -76,3 +76,8 @@ logging:
     root: WARN
   pattern:
     console: '%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{correlationId:-}] %-5level %logger{36} - %msg%n%ex'
+
+# Custom CERP configuration
+cerp:
+  identity-service:
+    url: ${IDENTITY_SERVICE_URL:http://localhost:8090}
