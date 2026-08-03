@@ -37,7 +37,7 @@ public class BidWallet {
     private UUID id;
 
     @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
+    private UUID tenantId;
 
     @Column(name = "user_id", nullable = false, unique = true)
     private UUID userId;
@@ -49,13 +49,13 @@ public class BidWallet {
     @Column(name = "entity_id", nullable = false)
     private UUID entityId;
 
-    @Column(name = "total_bids", nullable = false, precision = 10, scale = 0)
+    @Column(name = "total_bids", nullable = false)
     private Long totalBids = 0L;
 
-    @Column(name = "spent_bids", nullable = false, precision = 10, scale = 0)
+    @Column(name = "spent_bids", nullable = false)
     private Long spentBids = 0L;
 
-    @Column(name = "available_bids", nullable = false, precision = 10, scale = 0)
+    @Column(name = "available_bids", nullable = false)
     private Long availableBids = 0L;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -75,7 +75,7 @@ public class BidWallet {
     protected BidWallet() {
     }
 
-    public BidWallet(UUID userId, EntityType entityType, UUID entityId, String tenantId) {
+    public BidWallet(UUID userId, EntityType entityType, UUID entityId, UUID tenantId) {
         this.userId = userId;
         this.entityType = entityType;
         this.entityId = entityId;
@@ -143,11 +143,11 @@ public class BidWallet {
         this.id = id;
     }
 
-    public String getTenantId() {
+    public UUID getTenantId() {
         return tenantId;
     }
 
-    public void setTenantId(String tenantId) {
+    public void setTenantId(UUID tenantId) {
         this.tenantId = tenantId;
     }
 

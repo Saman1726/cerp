@@ -28,7 +28,7 @@ public class VendorBidSubmissionService {
      */
     @Transactional
     public VendorBidSubmission submitBid(String tenderId, UUID biddingSagaId, UUID vendorId, UUID vendorUserId,
-            String tenantId, java.math.BigDecimal price, java.math.BigDecimal quantity,
+            UUID tenantId, java.math.BigDecimal price, java.math.BigDecimal quantity,
             java.math.BigDecimal unitPrice, java.math.BigDecimal totalPrice,
             String timeline, String notes) {
         VendorBidSubmission submission = new VendorBidSubmission(

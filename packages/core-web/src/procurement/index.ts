@@ -12,6 +12,10 @@ export * from './BiddingSagaForm';
 export * from './ProcurementSagaList';
 export * from './BiddingSagaList';
 
+// ── Wallet Components ──
+
+export * from './BidWalletBalance';
+
 // ── Selection Components ──
 
 export * from './ProjectSelect';

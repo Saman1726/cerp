@@ -10,8 +10,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import io.cerp.workflow.domain.bidding.BidWallet;
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 
 /**
@@ -62,10 +64,13 @@ public class BiddingSagaHandler implements SagaHandler {
 
     private final EventPublisher eventPublisher;
     private final VendorBidSubmissionService bidSubmissionService;
+    private final BidWalletService bidWalletService;
 
-    public BiddingSagaHandler(final EventPublisher eventPublisher, VendorBidSubmissionService bidSubmissionService) {
+    public BiddingSagaHandler(final EventPublisher eventPublisher, VendorBidSubmissionService bidSubmissionService,
+            BidWalletService bidWalletService) {
         this.eventPublisher = eventPublisher;
         this.bidSubmissionService = bidSubmissionService;
+        this.bidWalletService = bidWalletService;
     }
 
     @Override
@@ -236,6 +241,32 @@ public class BiddingSagaHandler implements SagaHandler {
         final String tenantId = context.getTenantId();
         final String tenderId = (String) context.getData().get("tenderId");
 
+        // Deduct 1 bid from project owner's wallet when bidding starts
+        final String projectOwnerId = context.getUserId();
+        if (projectOwnerId != null) {
+            try {
+                UUID projectOwnerUUID = UUID.fromString(projectOwnerId);
+                bidWalletService.spendForBiddingCreation(
+                        projectOwnerUUID,
+                        BidWallet.EntityType.PROJECT_OWNER,
+                        projectOwnerUUID,
+                        UUID.fromString(tenantId),
+                        sagaId,
+                        tenderId);
+                log.info("Deducted 1 bid from project owner: userId={}, tenderId={}", projectOwnerId, tenderId);
+            } catch (BidWalletService.InsufficientBidsException e) {
+                final Map<String, Object> errorDetails = new HashMap<>();
+                errorDetails.put("tenderId", tenderId);
+                errorDetails.put("projectOwnerId", projectOwnerId);
+                errorDetails.put("availableBids", e.getAvailable());
+                errorDetails.put("requiredBids", e.getRequired());
+                throw new SagaException("INSUFFICIENT_BIDS", e.getMessage(), errorDetails);
+            } catch (IllegalArgumentException e) {
+                log.warn("Could not deduct bids: {}", e.getMessage());
+                // Continue anyway if user ID parsing fails
+            }
+        }
+
         // Extract bidding saga ID from context
         Object sagaIdObj = context.getData().get("biddingSagaId");
         UUID biddingSagaId = null;
@@ -248,7 +279,7 @@ public class BiddingSagaHandler implements SagaHandler {
         } else if (sagaIdObj instanceof UUID u) {
             biddingSagaId = u;
         }
-        
+
         // Use the context sagaId if biddingSagaId is not set
         if (biddingSagaId == null) {
             biddingSagaId = sagaId;
@@ -271,7 +302,7 @@ public class BiddingSagaHandler implements SagaHandler {
             errorDetails.put("tenderId", tenderId);
             errorDetails.put("invitedCount", invitedCountVal);
             errorDetails.put("biddingSagaId", biddingSagaId.toString());
-            throw new SagaException("NO_BIDS_RECEIVED", "No bids received for tender: " + tenderId 
+            throw new SagaException("NO_BIDS_RECEIVED", "No bids received for tender: " + tenderId
                     + " (sagaId: " + biddingSagaId + "). Vendors have not submitted bids yet.", errorDetails);
         }
 
@@ -443,7 +474,7 @@ public class BiddingSagaHandler implements SagaHandler {
     private String getNextStepCode(final String executedStep) {
         return switch (executedStep) {
             case CREATE_TENDER -> INVITE_VENDORS;
-            case INVITE_VENDORS -> COLLECT_BIDS;
+            case INVITE_VENDORS -> null; // pause here; advance to CollectBids via Resume once bid deadline passes
             case COLLECT_BIDS -> EVALUATE_BIDS;
             case EVALUATE_BIDS -> AWARD_TENDER;
             case AWARD_TENDER -> null; // Saga complete
@@ -460,7 +491,7 @@ public class BiddingSagaHandler implements SagaHandler {
         if (currentStepObj instanceof String currentStep) {
             return switch (currentStep) {
                 case CREATE_TENDER -> INVITE_VENDORS;
-                case INVITE_VENDORS -> COLLECT_BIDS;
+                case INVITE_VENDORS -> null; // paused; caller must supply stepCode in Resume payload
                 case COLLECT_BIDS -> EVALUATE_BIDS;
                 case EVALUATE_BIDS -> AWARD_TENDER;
                 default -> null;

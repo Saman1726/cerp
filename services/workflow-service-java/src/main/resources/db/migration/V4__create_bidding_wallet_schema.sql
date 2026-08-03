@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS bidding.bid_transactions (
     amount BIGINT NOT NULL,
     unit_price NUMERIC(10, 2),
     total_price NUMERIC(10, 2),
-    balance_after BIGINT NOT NULL,
+    balance_after BIGINT NOT NULL DEFAULT 0,
     reference_type TEXT,
     reference_id TEXT,
     description TEXT,
@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS bidding.vendor_bid_submissions (
     awarded_at TIMESTAMPTZ,
     purchase_order_id TEXT,
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ
 );
 

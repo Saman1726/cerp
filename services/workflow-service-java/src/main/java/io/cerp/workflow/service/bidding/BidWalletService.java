@@ -6,6 +6,8 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -62,7 +64,7 @@ public class BidWalletService {
      * @throws IllegalArgumentException if amount is not positive
      */
     @Transactional
-    public BidWallet allocateBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, String tenantId,
+    public BidWallet allocateBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, UUID tenantId,
             Long amount) {
         if (amount <= 0) {
             throw new IllegalArgumentException("Allocation amount must be positive");
@@ -100,7 +102,7 @@ public class BidWalletService {
      */
     @Transactional
     public BidTransaction spendForBiddingCreation(UUID userId, BidWallet.EntityType entityType, UUID entityId,
-            String tenantId, UUID biddingSagaId, String tenderId) {
+            UUID tenantId, UUID biddingSagaId, String tenderId) {
         return spendBids(userId, entityType, entityId, tenantId, BIDDING_CREATION_COST,
                 biddingSagaId, tenderId, "BIDDING_CREATION",
                 "Bid creation cost for bidding saga " + biddingSagaId);
@@ -112,7 +114,7 @@ public class BidWalletService {
      */
     @Transactional
     public BidTransaction spendForOpenTenderParticipation(UUID userId, BidWallet.EntityType entityType, UUID entityId,
-            String tenantId, UUID biddingSagaId, String tenderId, UUID vendorId) {
+            UUID tenantId, UUID biddingSagaId, String tenderId, UUID vendorId) {
         return spendBids(userId, entityType, entityId, tenantId, OPEN_TENDER_PARTICIPATION_COST,
                 biddingSagaId, tenderId, "VENDOR_PARTICIPATION",
                 "Open tender participation cost for tender " + tenderId + " (vendor: " + vendorId + ")");
@@ -122,7 +124,7 @@ public class BidWalletService {
      * Refund bids back to wallet (e.g., when bidding is cancelled).
      */
     @Transactional
-    public BidTransaction refundBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, String tenantId,
+    public BidTransaction refundBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, UUID tenantId,
             Long amount, UUID biddingSagaId, String tenderId, String referenceId, String description) {
         BidWallet wallet = walletRepository.findByUserIdAndEntityType(userId, entityType)
                 .orElseThrow(() -> new IllegalArgumentException(
@@ -167,6 +169,35 @@ public class BidWalletService {
                 .orElse(false);
     }
 
+    /**
+     * Get bid transactions for a user's wallet, optionally filtered by transaction type.
+     * Returns transactions sorted by creation date (newest first).
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<BidTransaction> getTransactions(
+            UUID userId,
+            BidWallet.EntityType entityType,
+            String transactionType,
+            int page,
+            int size) {
+        // First get the wallet to get the wallet ID
+        var walletOpt = walletRepository.findByUserIdAndEntityType(userId, entityType);
+        if (walletOpt.isEmpty()) {
+            return java.util.List.of();
+        }
+
+        BidWallet wallet = walletOpt.get();
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        PageRequest pageRequest = PageRequest.of(page, size, sort);
+
+        if (transactionType != null && !transactionType.isEmpty()) {
+            TransactionType type = TransactionType.valueOf(transactionType.toUpperCase());
+            return transactionRepository.findByWalletIdAndTransactionType(wallet.getId(), type, pageRequest);
+        } else {
+            return transactionRepository.findByWalletId(wallet.getId(), pageRequest);
+        }
+    }
+
     // ── Custom Exception ──
 
     public static class InsufficientBidsException extends RuntimeException {
@@ -195,7 +226,7 @@ public class BidWalletService {
 
     // ── Private Methods ──
 
-    private BidTransaction spendBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, String tenantId,
+    private BidTransaction spendBids(UUID userId, BidWallet.EntityType entityType, UUID entityId, UUID tenantId,
             long amount, UUID biddingSagaId, String tenderId, String referenceType, String description) {
         BidWallet wallet = ensureWalletExists(userId, entityType, entityId, tenantId);
 
@@ -226,7 +257,7 @@ public class BidWalletService {
         return transactionRepository.save(transaction);
     }
 
-    private BidWallet ensureWalletExists(UUID userId, BidWallet.EntityType entityType, UUID entityId, String tenantId) {
+    private BidWallet ensureWalletExists(UUID userId, BidWallet.EntityType entityType, UUID entityId, UUID tenantId) {
         return walletRepository.findByUserIdAndEntityType(userId, entityType)
                 .orElseGet(() -> {
                     BidWallet newWallet = new BidWallet(userId, entityType, entityId, tenantId);

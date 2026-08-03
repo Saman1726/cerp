@@ -1,6 +1,7 @@
 package io.cerp.workflow.controller;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import io.cerp.workflow.domain.bidding.BidTransaction;
 
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.bidding.BidWallet;
@@ -54,7 +57,7 @@ public class BiddingController {
     @PostMapping("/submissions")
     public ResponseEntity<Map<String, Object>> submitBid(@RequestBody SubmitBidRequest request) {
         try {
-            String tenantId = getTenantIdFromContext();
+            UUID tenantId = getCurrentTenantId();
             UUID vendorUserId = getCurrentUserId();
 
             // Check if vendor already submitted a bid for this saga
@@ -216,6 +219,7 @@ public class BiddingController {
 
     /**
      * Get bid wallet balance for the current user.
+     * Returns full wallet details including totalBids, spentBids, and availableBids.
      */
     @GetMapping("/wallet/balance")
     public ResponseEntity<Map<String, Object>> getWalletBalance(
@@ -226,19 +230,202 @@ public class BiddingController {
                     ? BidWallet.EntityType.valueOf(entityType.toUpperCase())
                     : BidWallet.EntityType.VENDOR;
 
-            Long availableBids = bidWalletService.getAvailableBids(userId, type);
+            var walletOpt = bidWalletService.getWallet(userId, type);
 
             Map<String, Object> response = new HashMap<>();
             response.put("userId", userId.toString());
             response.put("entityType", type.name());
-            response.put("availableBids", availableBids);
+
+            if (walletOpt.isPresent()) {
+                var wallet = walletOpt.get();
+                response.put("totalBids", wallet.getTotalBids());
+                response.put("spentBids", wallet.getSpentBids());
+                response.put("availableBids", wallet.getAvailableBids());
+            } else {
+                response.put("totalBids", 0);
+                response.put("spentBids", 0);
+                response.put("availableBids", 0);
+            }
+
             response.put("bidUnitPriceEur", BidWalletService.BID_UNIT_PRICE_EUR.toString());
+            response.put("bidPriceDescription",
+                "Each bid costs " + BidWalletService.BID_UNIT_PRICE_EUR + " EUR");
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "FETCH_FAILED");
             error.put("message", "Failed to fetch wallet balance: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Get bid transaction history for the current user.
+     * Returns paginated transactions from the bid wallet.
+     */
+    @GetMapping("/wallet/transactions")
+    public ResponseEntity<Map<String, Object>> getWalletTransactions(
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) String transactionType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        try {
+            UUID userId = getCurrentUserId();
+            BidWallet.EntityType type = entityType != null
+                    ? BidWallet.EntityType.valueOf(entityType.toUpperCase())
+                    : BidWallet.EntityType.VENDOR;
+
+            List<BidTransaction> transactions = bidWalletService.getTransactions(
+                    userId, type, transactionType, page, size);
+
+            List<Map<String, Object>> transactionList = transactions.stream().map(t -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", t.getId().toString());
+                map.put("transactionType", t.getTransactionType().name());
+                map.put("amount", t.getAmount());
+                map.put("unitPriceEur", t.getUnitPrice() != null ? t.getUnitPrice().toString() : null);
+                map.put("totalPriceEur", t.getTotalPrice() != null ? t.getTotalPrice().toString() : null);
+                map.put("balanceAfter", t.getBalanceAfter());
+                map.put("referenceType", t.getReferenceType());
+                map.put("referenceId", t.getReferenceId());
+                map.put("description", t.getDescription());
+                map.put("createdAt", t.getCreatedAt().toString());
+                return map;
+            }).toList();
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("userId", userId.toString());
+            response.put("entityType", type.name());
+            response.put("transactions", transactionList);
+            response.put("page", page);
+            response.put("size", size);
+            response.put("totalTransactions", transactionList.size());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "FETCH_FAILED");
+            error.put("message", "Failed to fetch transactions: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Allocate (purchase) bids to a user's wallet.
+     * This is an admin-only operation.
+     * 
+     * @param request Body containing userId, entityType, and amount
+     * @return Updated wallet details
+     */
+    @PostMapping("/wallet/allocate")
+    public ResponseEntity<Map<String, Object>> allocateBids(@RequestBody Map<String, Object> request) {
+        try {
+            // Parse userId
+            String userIdStr = (String) request.get("userId");
+            if (userIdStr == null || userIdStr.isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "VALIDATION_ERROR");
+                error.put("message", "userId is required");
+                return ResponseEntity.badRequest().body(error);
+            }
+            UUID userId = UUID.fromString(userIdStr);
+
+            // Parse entityType
+            String entityTypeStr = (String) request.get("entityType");
+            if (entityTypeStr == null || entityTypeStr.isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "VALIDATION_ERROR");
+                error.put("message", "entityType is required (PROJECT_OWNER or VENDOR)");
+                return ResponseEntity.badRequest().body(error);
+            }
+            BidWallet.EntityType type = BidWallet.EntityType.valueOf(entityTypeStr.toUpperCase());
+
+            // Parse amount
+            Long amount = ((Number) request.get("amount")).longValue();
+            if (amount <= 0) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "VALIDATION_ERROR");
+                error.put("message", "Amount must be positive");
+                return ResponseEntity.badRequest().body(error);
+            }
+
+            UUID tenantId = getCurrentTenantId();
+
+            // For allocation, we use userId as entityId initially
+            // In production, you'd resolve the proper entity ID
+            var wallet = bidWalletService.allocateBids(
+                    userId, type, userId, tenantId, amount);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            
+            Map<String, Object> walletData = new HashMap<>();
+            walletData.put("id", wallet.getId().toString());
+            walletData.put("userId", wallet.getUserId().toString());
+            walletData.put("entityType", wallet.getEntityType().name());
+            walletData.put("totalBids", wallet.getTotalBids());
+            walletData.put("spentBids", wallet.getSpentBids());
+            walletData.put("availableBids", wallet.getAvailableBids());
+            
+            response.put("wallet", walletData);
+            response.put("allocatedAmount", amount);
+            response.put("costEur", BidWalletService.BID_UNIT_PRICE_EUR.multiply(BigDecimal.valueOf(amount)));
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (IllegalArgumentException e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "VALIDATION_ERROR");
+            error.put("message", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "ALLOCATION_FAILED");
+            error.put("message", "Failed to allocate bids: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Get wallet details by user ID (for admin to view any user's wallet).
+     */
+    @GetMapping("/wallet/user")
+    public ResponseEntity<Map<String, Object>> getUserWallet(
+            @RequestParam UUID userId,
+            @RequestParam(required = false) String entityType) {
+        try {
+            BidWallet.EntityType type = entityType != null
+                    ? BidWallet.EntityType.valueOf(entityType.toUpperCase())
+                    : BidWallet.EntityType.VENDOR;
+
+            var walletOpt = bidWalletService.getWallet(userId, type);
+
+            if (walletOpt.isEmpty()) {
+                Map<String, Object> error = new HashMap<>();
+                error.put("error", "WALLET_NOT_FOUND");
+                error.put("message", "No wallet found for user: " + userId);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+            }
+
+            var wallet = walletOpt.get();
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("wallet", Map.of(
+                "id", wallet.getId().toString(),
+                "userId", wallet.getUserId().toString(),
+                "entityType", wallet.getEntityType().name(),
+                "totalBids", wallet.getTotalBids(),
+                "spentBids", wallet.getSpentBids(),
+                "availableBids", wallet.getAvailableBids(),
+                "createdAt", wallet.getCreatedAt(),
+                "updatedAt", wallet.getUpdatedAt()
+            ));
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "FETCH_FAILED");
+            error.put("message", "Failed to fetch wallet: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
@@ -260,11 +447,19 @@ public class BiddingController {
             String notes) {
     }
 
+    /**
+     * Request body for allocating bids to a wallet.
+     */
+    public record AllocateBidsRequest(
+            UUID userId,
+            String entityType,
+            Long amount) {
+    }
+
     // ── Helper Methods ──
 
-    private String getTenantIdFromContext() {
-        UUID tenantId = TenantContext.getCurrentTenantId();
-        return tenantId != null ? tenantId.toString() : null;
+    private UUID getCurrentTenantId() {
+        return TenantContext.getCurrentTenantId();
     }
 
     private UUID getCurrentUserId() {

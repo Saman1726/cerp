@@ -47,7 +47,7 @@ public class VendorBidSubmission {
     private UUID vendorUserId;
 
     @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
+    private UUID tenantId;
 
     @Column(name = "price", nullable = false, precision = 15, scale = 2)
     private BigDecimal price;
@@ -98,7 +98,7 @@ public class VendorBidSubmission {
     }
 
     public VendorBidSubmission(String tenderId, UUID biddingSagaId, UUID vendorId, UUID vendorUserId,
-            String tenantId, BigDecimal price, BigDecimal quantity, BigDecimal unitPrice, BigDecimal totalPrice,
+            UUID tenantId, BigDecimal price, BigDecimal quantity, BigDecimal unitPrice, BigDecimal totalPrice,
             String timeline, String notes) {
         this.tenderId = tenderId;
         this.biddingSagaId = biddingSagaId;
@@ -185,11 +185,11 @@ public class VendorBidSubmission {
         this.vendorUserId = vendorUserId;
     }
 
-    public String getTenantId() {
+    public UUID getTenantId() {
         return tenantId;
     }
 
-    public void setTenantId(String tenantId) {
+    public void setTenantId(UUID tenantId) {
         this.tenantId = tenantId;
     }
 

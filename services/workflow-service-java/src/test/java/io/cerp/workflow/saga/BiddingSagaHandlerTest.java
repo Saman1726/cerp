@@ -2,6 +2,7 @@ package io.cerp.workflow.saga;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,6 +23,7 @@ import org.mockito.Mockito;
 
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 import io.cerp.workflow.domain.bidding.VendorBidSubmission;
 
@@ -30,12 +32,14 @@ class BiddingSagaHandlerTest {
     private BiddingSagaHandler handler;
     private MockEventPublisher eventPublisher;
     private VendorBidSubmissionService bidSubmissionService;
+    private BidWalletService bidWalletService;
 
     @BeforeEach
     void setUp() {
         eventPublisher = new MockEventPublisher();
         bidSubmissionService = mock(VendorBidSubmissionService.class);
-        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService);
+        bidWalletService = mock(BidWalletService.class);
+        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService, bidWalletService);
     }
 
     @Test
@@ -184,7 +188,7 @@ class BiddingSagaHandlerTest {
         assertEquals("Tender.InviteVendors", next);
 
         next = handler.getNextStep(context, "Tender.InviteVendors");
-        assertEquals("Bidding.CollectBids", next);
+        assertNull(next); // saga pauses here; ResumeSaga with stepCode=Bidding.CollectBids advances it
 
         next = handler.getNextStep(context, "Bidding.CollectBids");
         assertEquals("Bidding.Evaluate", next);
@@ -235,7 +239,7 @@ class BiddingSagaHandlerTest {
             sagaId,
             UUID.randomUUID(), // vendorId
             UUID.randomUUID(), // vendorUserId
-            "tenant-1",
+            UUID.randomUUID(),
             new BigDecimal(price),
             BigDecimal.ONE,
             new BigDecimal(price),

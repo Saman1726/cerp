@@ -22,7 +22,7 @@ import jakarta.persistence.Table;
  * </p>
  */
 @Entity
-@Table(name = "workflow_template_step_assignee_roles")
+@Table(name = "workflow_template_step_assignee_roles", schema = "workflow")
 public class WorkflowTemplateStepAssigneeRole {
 
     @Id

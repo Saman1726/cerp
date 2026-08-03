@@ -43,7 +43,7 @@ public class BidTransaction {
     private UUID id;
 
     @Column(name = "tenant_id", nullable = false)
-    private String tenantId;
+    private UUID tenantId;
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
@@ -62,7 +62,7 @@ public class BidTransaction {
     @Column(name = "transaction_type", nullable = false, length = 16)
     private TransactionType transactionType;
 
-    @Column(name = "amount", nullable = false, precision = 10, scale = 0)
+    @Column(name = "amount", nullable = false)
     private Long amount;
 
     @Column(name = "unit_price", precision = 10, scale = 2)
@@ -71,7 +71,7 @@ public class BidTransaction {
     @Column(name = "total_price", precision = 10, scale = 2)
     private BigDecimal totalPrice;
 
-    @Column(name = "balance_after", nullable = false, precision = 10, scale = 0)
+    @Column(name = "balance_after", nullable = false)
     private Long balanceAfter;
 
     @Column(name = "reference_type", length = 64)
@@ -97,7 +97,7 @@ public class BidTransaction {
     protected BidTransaction() {
     }
 
-    public BidTransaction(String tenantId, UUID userId, BidWallet wallet, UUID biddingSagaId, String tenderId,
+    public BidTransaction(UUID tenantId, UUID userId, BidWallet wallet, UUID biddingSagaId, String tenderId,
             TransactionType transactionType, Long amount, BigDecimal unitPrice, BigDecimal totalPrice,
             Long balanceAfter, String referenceType, String referenceId, String description) {
         this.tenantId = tenantId;
@@ -132,11 +132,11 @@ public class BidTransaction {
         this.id = id;
     }
 
-    public String getTenantId() {
+    public UUID getTenantId() {
         return tenantId;
     }
 
-    public void setTenantId(String tenantId) {
+    public void setTenantId(UUID tenantId) {
         this.tenantId = tenantId;
     }
 
