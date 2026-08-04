@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.hibernate.annotations.BatchSize;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
@@ -15,6 +16,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -30,7 +32,7 @@ import jakarta.persistence.UniqueConstraint;
  * Used to instantiate Workflow instances per SubProject. One template is reusable across Projects within a Tenant.
  */
 @Entity
-@Table(name = "workflow_templates", uniqueConstraints = @UniqueConstraint(name = "uk_template_tenant_code_version", columnNames = { "tenant_id", "code",
+@Table(name = "workflow_templates", schema = "workflow", uniqueConstraints = @UniqueConstraint(name = "uk_template_tenant_code_version", columnNames = { "tenant_id", "code",
         "version" }), indexes = {
                 @Index(name = "idx_template_tenant_code", columnList = "tenant_id, code"),
                 @Index(name = "idx_template_status", columnList = "status"),
@@ -66,8 +68,13 @@ public class WorkflowTemplate {
     @Column(name = "default_sla")
     private String defaultSla;
 
-    @ElementCollection
-    @Column(name = "required_documents", length = 64)
+    @ElementCollection(fetch = jakarta.persistence.FetchType.EAGER)
+    @CollectionTable(
+        name = "workflow_template_required_documents",
+        joinColumns = @JoinColumn(name = "workflow_template_id"),
+        schema = "workflow"
+    )
+    @Column(name = "required_document", length = 64)
     private List<String> requiredDocuments = new ArrayList<>();
 
     /**
@@ -76,7 +83,12 @@ public class WorkflowTemplate {
      */
     @ElementCollection(fetch = jakarta.persistence.FetchType.LAZY)
     @BatchSize(size = 20)
-    @Column(name = "applicable_scope_levels", length = 16)
+    @CollectionTable(
+        name = "workflow_template_applicable_scope_levels",
+        joinColumns = @JoinColumn(name = "workflow_template_id"),
+        schema = "workflow"
+    )
+    @Column(name = "applicable_scope_level", length = 16)
     private List<String> applicableScopeLevels = new ArrayList<>();
 
     /**

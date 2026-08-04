@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
@@ -19,6 +20,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -31,7 +33,7 @@ import jakarta.persistence.Table;
  * Instantiated from a WorkflowTemplate. Each workflow is scoped to a tenant/project/subproject triad.
  */
 @Entity
-@Table(name = "workflows", indexes = {
+@Table(name = "workflows", schema = "workflow", indexes = {
         @Index(name = "idx_workflow_tenant_project_subproject", columnList = "tenant_id, project_id, subproject_id"),
         @Index(name = "idx_workflow_tenant_status", columnList = "tenant_id, status"),
         @Index(name = "idx_workflow_template", columnList = "template_id")
@@ -108,14 +110,24 @@ public class Workflow {
      * Floor identifiers for FLOOR scope level workflows. Examples: "F1", "F2", "GROUND", "FIRST", etc.
      */
     @ElementCollection(fetch = FetchType.EAGER)
-    @Column(name = "floor_ids", length = 64)
+    @CollectionTable(
+        name = "workflow_floor_ids",
+        joinColumns = @JoinColumn(name = "workflow_id"),
+        schema = "workflow"
+    )
+    @Column(name = "floor_id", length = 64)
     private List<String> floorIds = new ArrayList<>();
 
     /**
      * Building part identifiers for PART scope level workflows. Examples: "facade", "basement", "roof", "elevator_shaft", "hvac_room", etc.
      */
     @ElementCollection(fetch = FetchType.EAGER)
-    @Column(name = "part_ids", length = 64)
+    @CollectionTable(
+        name = "workflow_part_ids",
+        joinColumns = @JoinColumn(name = "workflow_id"),
+        schema = "workflow"
+    )
+    @Column(name = "part_id", length = 64)
     private List<String> partIds = new ArrayList<>();
 
     @Column(name = "created_by", length = 128)

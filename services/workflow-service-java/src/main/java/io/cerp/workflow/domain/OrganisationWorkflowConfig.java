@@ -30,7 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * Controls auto-generation behavior and allows custom template selection/overrides per organization within a tenant.
  */
 @Entity
-@Table(name = "organisation_workflow_config", uniqueConstraints = @UniqueConstraint(name = "uk_organisation_workflow_config", columnNames = {
+@Table(name = "organisation_workflow_config", schema = "workflow", uniqueConstraints = @UniqueConstraint(name = "uk_organisation_workflow_config", columnNames = {
         "tenant_id", "org_id" }), indexes = {
                 @Index(name = "idx_owc_tenant", columnList = "tenant_id"),
                 @Index(name = "idx_owc_org", columnList = "org_id")

@@ -23,6 +23,7 @@ import org.mockito.Mockito;
 
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.NotificationServiceClient;
 import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 import io.cerp.workflow.domain.bidding.VendorBidSubmission;
@@ -33,13 +34,15 @@ class BiddingSagaHandlerTest {
     private MockEventPublisher eventPublisher;
     private VendorBidSubmissionService bidSubmissionService;
     private BidWalletService bidWalletService;
+    private NotificationServiceClient notificationServiceClient;
 
     @BeforeEach
     void setUp() {
         eventPublisher = new MockEventPublisher();
         bidSubmissionService = mock(VendorBidSubmissionService.class);
         bidWalletService = mock(BidWalletService.class);
-        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService, bidWalletService);
+        notificationServiceClient = mock(NotificationServiceClient.class);
+        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService, bidWalletService, notificationServiceClient);
     }
 
     @Test

@@ -21,7 +21,7 @@ import java.util.UUID;
  * @see <a href="https://microservices.io/patterns/data/transactional-outbox.html">Transactional Outbox Pattern</a>
  */
 @Entity
-@Table(name = "outbox_events")
+@Table(name = "outbox_events", schema = "workflow")
 public class OutboxEvent {
 
     @Id

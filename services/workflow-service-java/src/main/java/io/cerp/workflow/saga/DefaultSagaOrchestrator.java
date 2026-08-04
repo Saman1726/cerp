@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -222,7 +223,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         pauseData.put("action", "pause");
 
         // Use status-only update to preserve all other fields (user_id, project_id, steps_json, current_step, data_json)
-        sagaRepository.updateStatusOnlyBySagaId(sagaId.toString(), "PAUSED", java.time.LocalDateTime.now());
+        sagaRepository.updateStatusOnlyById(sagaId.toString(), "PAUSED", java.time.LocalDateTime.now());
 
         // Update in-memory cache
         SagaState newState = new SagaState(
@@ -276,7 +277,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         resumeData.put("action", "resume");
 
         // Use status-only update to preserve all other fields (user_id, project_id, steps_json, current_step, data_json)
-        sagaRepository.updateStatusOnlyBySagaId(sagaId.toString(), "RUNNING", java.time.LocalDateTime.now());
+        sagaRepository.updateStatusOnlyById(sagaId.toString(), "RUNNING", java.time.LocalDateTime.now());
 
         // Update in-memory cache
         SagaState newState = new SagaState(
@@ -382,7 +383,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     public SagaState getSagaState(UUID sagaId) {
         SagaState state = activeSagas.get(sagaId);
         if (state == null) {
-            Optional<SagaEntity> entityOpt = sagaRepository.findById(sagaId);
+            Optional<SagaEntity> entityOpt = sagaRepository.findById(sagaId.toString());
             state = entityOpt.map(this::toState).orElse(null);
             if (state != null) {
                 activeSagas.put(sagaId, state);
@@ -473,7 +474,9 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         List<SagaEntity> allEntities = sagaRepository.findAll();
         for (SagaEntity entity : allEntities) {
-            if (!inMemoryIds.contains(entity.getId())) {
+            // entity.getId() returns String (saga identifier), convert to UUID for comparison
+            UUID entityId = UUID.fromString(entity.getId());
+            if (!inMemoryIds.contains(entityId)) {
                 SagaState state = toState(entity);
                 // Cache in memory for future lookups
                 activeSagas.put(state.getSagaId(), state);
@@ -489,27 +492,23 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     private SagaEntity toEntity(SagaState state) {
         // Extract userId and projectId from state data if available
         String userId = null;
-        UUID projectId = null;
+        String projectId = null;
         if (state.getData() != null) {
             Object userIdObj = state.getData().get("userId");
             if (userIdObj instanceof String s) {
                 userId = s;
             }
             Object projectIdObj = state.getData().get("projectId");
-            if (projectIdObj instanceof String ps) {
-                try {
-                    projectId = UUID.fromString(ps);
-                } catch (IllegalArgumentException e) {
-                    // ignore
-                }
-            } else if (projectIdObj instanceof UUID pu) {
-                projectId = pu;
+            if (projectIdObj != null) {
+                projectId = projectIdObj.toString();
             }
         }
         // Serialize the complete data map to JSON
         String dataJson = serializeStateData(state.getData());
+        // Use sagaId.toString() as the primary key (id) - this is the saga identifier
+        // JPA will UPDATE existing records when the same id is saved, instead of INSERT
         return new SagaEntity(
-            state.getSagaId(),
+            state.getSagaId().toString(),  // id (primary key = saga identifier)
             state.getSagaType(),
             state.getTenantId(),
             state.getStatus(),
@@ -517,10 +516,9 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getNextStep(),
             serializeSteps(state.getSteps()),
             state.getLastError() != null ? serializeError(state.getLastError()) : null,
-            state.getSagaId().toString(),
+            dataJson,
             userId,
             projectId,
-            dataJson,
             LocalDateTime.now(),
             LocalDateTime.now());
     }
@@ -546,8 +544,10 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             data.put("sagaType", entity.getSagaType());
         }
 
+        // Convert String id (saga identifier) back to UUID for SagaState
+        UUID sagaId = UUID.fromString(entity.getId());
         return new SagaState(
-            entity.getId(),
+            sagaId,
             entity.getSagaType(),
             entity.getTenantId(),
             entity.getStatus(),

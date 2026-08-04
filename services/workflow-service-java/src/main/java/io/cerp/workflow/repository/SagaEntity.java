@@ -2,24 +2,23 @@ package io.cerp.workflow.repository;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 /**
  * JPA entity for saga state persistence.
+ * 
+ * <p>The {@code id} field stores the saga identifier (sagaId) and serves as the primary key.
+ * This ensures JPA performs UPDATE instead of INSERT when saving existing saga state.
  */
 @Entity
-@Table(name = "saga_events")
+@Table(name = "saga_events", schema = "workflow")
 public class SagaEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "id")
-    private UUID id;
+    @Column(name = "id", nullable = false)
+    private String id;
 
     @Column(name = "saga_type", nullable = false)
     private String sagaType;
@@ -42,9 +41,6 @@ public class SagaEntity {
     @Column(name = "last_error_json", columnDefinition = "TEXT")
     private String lastErrorJson;
 
-    @Column(name = "saga_id")
-    private String sagaId;
-
     @Column(name = "data_json", columnDefinition = "TEXT")
     private String dataJson;
 
@@ -52,7 +48,7 @@ public class SagaEntity {
     private String userId;
 
     @Column(name = "project_id")
-    private UUID projectId;
+    private String projectId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -63,25 +59,10 @@ public class SagaEntity {
     public SagaEntity() {
     }
 
-    public SagaEntity(UUID id, String sagaType, String tenantId, String status,
+    public SagaEntity(String id, String sagaType, String tenantId, String status,
             String currentStep, String nextStep, String stepsJson,
-            String lastErrorJson, LocalDateTime createdAt, LocalDateTime updatedAt) {
-        this(id, sagaType, tenantId, status, currentStep, nextStep, stepsJson,
-            lastErrorJson, null, null, null, null, createdAt, updatedAt);
-    }
-
-    public SagaEntity(UUID id, String sagaType, String tenantId, String status,
-            String currentStep, String nextStep, String stepsJson,
-            String lastErrorJson, String sagaId, String userId, UUID projectId,
+            String lastErrorJson, String dataJson, String userId, String projectId,
             LocalDateTime createdAt, LocalDateTime updatedAt) {
-        this(id, sagaType, tenantId, status, currentStep, nextStep, stepsJson,
-            lastErrorJson, sagaId, userId, projectId, null, createdAt, updatedAt);
-    }
-
-    public SagaEntity(UUID id, String sagaType, String tenantId, String status,
-            String currentStep, String nextStep, String stepsJson,
-            String lastErrorJson, String sagaId, String userId, UUID projectId,
-            String dataJson, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.sagaType = sagaType;
         this.tenantId = tenantId;
@@ -90,19 +71,18 @@ public class SagaEntity {
         this.nextStep = nextStep;
         this.stepsJson = stepsJson;
         this.lastErrorJson = lastErrorJson;
-        this.sagaId = sagaId;
+        this.dataJson = dataJson;
         this.userId = userId;
         this.projectId = projectId;
-        this.dataJson = dataJson;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
 
-    public UUID getId() {
+    public String getId() {
         return id;
     }
 
-    public void setId(UUID id) {
+    public void setId(String id) {
         this.id = id;
     }
 
@@ -178,12 +158,12 @@ public class SagaEntity {
         this.updatedAt = updatedAt;
     }
 
-    public String getSagaId() {
-        return sagaId;
+    public String getDataJson() {
+        return dataJson;
     }
 
-    public void setSagaId(String sagaId) {
-        this.sagaId = sagaId;
+    public void setDataJson(String dataJson) {
+        this.dataJson = dataJson;
     }
 
     public String getUserId() {
@@ -194,19 +174,11 @@ public class SagaEntity {
         this.userId = userId;
     }
 
-    public UUID getProjectId() {
+    public String getProjectId() {
         return projectId;
     }
 
-    public void setProjectId(UUID projectId) {
+    public void setProjectId(String projectId) {
         this.projectId = projectId;
-    }
-
-    public String getDataJson() {
-        return dataJson;
-    }
-
-    public void setDataJson(String dataJson) {
-        this.dataJson = dataJson;
     }
 }

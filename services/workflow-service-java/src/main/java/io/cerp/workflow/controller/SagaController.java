@@ -134,13 +134,20 @@ public class SagaController {
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("sagaId", startedId);
         responseData.put("sagaType", request.sagaType());
-        responseData.put("status", "RUNNING");
-        responseData.put("createdAt", java.time.Instant.now().toString());
-        if (initialState != null && initialState.getData() != null) {
+        // If the saga was returned from idempotency check, use its actual status
+        String sagaStatus = "RUNNING";
+        if (initialState != null) {
+            sagaStatus = initialState.getStatus();
             responseData.put("data", initialState.getData());
         }
+        responseData.put("status", sagaStatus);
+        responseData.put("createdAt", java.time.Instant.now().toString());
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(responseData);
+        // Return 200 OK if saga already existed (idempotent), 201 CREATED if new
+        HttpStatus httpStatus = sagaStatus.equals("RUNNING") && initialState != null && 
+            !initialState.getCreatedAt().equals(java.time.Instant.now()) ? HttpStatus.OK : HttpStatus.CREATED;
+
+        return ResponseEntity.status(httpStatus).body(responseData);
     }
 
     /**

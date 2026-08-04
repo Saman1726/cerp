@@ -5,10 +5,10 @@
 -- JPA @ElementCollection creates separate join tables for applicableScopeLevels and requiredDocuments
 CREATE TABLE workflow.workflow_template_applicable_scope_levels (
     workflow_template_id UUID NOT NULL REFERENCES workflow.workflow_templates (id) ON DELETE CASCADE,
-    applicable_scope_levels VARCHAR(16) NOT NULL,
+    applicable_scope_level VARCHAR(16) NOT NULL,
     PRIMARY KEY (
         workflow_template_id,
-        applicable_scope_levels
+        applicable_scope_level
     )
 );
 
@@ -16,10 +16,10 @@ CREATE INDEX idx_template_scope_levels_template ON workflow.workflow_template_ap
 
 CREATE TABLE workflow.workflow_template_required_documents (
     workflow_template_id UUID NOT NULL REFERENCES workflow.workflow_templates (id) ON DELETE CASCADE,
-    required_documents VARCHAR(64) NOT NULL,
+    required_document VARCHAR(64) NOT NULL,
     PRIMARY KEY (
         workflow_template_id,
-        required_documents
+        required_document
     )
 );
 

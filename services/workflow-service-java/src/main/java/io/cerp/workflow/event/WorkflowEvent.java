@@ -40,10 +40,45 @@ public class WorkflowEvent {
         this.aggregateType = builder.aggregateType;
         this.tenantId = builder.tenantId;
         this.userId = builder.userId;
-        this.data = builder.data != null ? Map.copyOf(builder.data) : Map.of();
-        this.metadata = builder.metadata != null ? Map.copyOf(builder.metadata) : Map.of();
+        this.data = builder.data != null ? filterNullValues(builder.data) : Map.of();
+        this.metadata = builder.metadata != null ? filterNullMetadata(builder.metadata) : Map.of();
         this.occurredAt = builder.occurredAt != null ? builder.occurredAt : Instant.now();
         this.version = builder.version;
+    }
+
+    /**
+     * Create an immutable copy of the data map, filtering out null values.
+     * Map.copyOf() throws NPE when the source map contains null values.
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> filterNullValues(Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        java.util.Map<String, Object> filtered = new java.util.HashMap<>();
+        for (var entry : source.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Map.copyOf(filtered);
+    }
+
+    /**
+     * Create an immutable copy of the metadata map, filtering out null values.
+     * Map.copyOf() throws NPE when the source map contains null values.
+     */
+    private static Map<String, String> filterNullMetadata(Map<String, String> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        java.util.Map<String, String> filtered = new java.util.HashMap<>();
+        for (var entry : source.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return Map.copyOf(filtered);
     }
 
     public UUID getEventId() {

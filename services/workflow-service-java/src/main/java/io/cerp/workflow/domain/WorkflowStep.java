@@ -23,7 +23,7 @@ import jakarta.persistence.Table;
  * WorkflowStep – A single step instance within a Workflow.
  */
 @Entity
-@Table(name = "workflow_steps")
+@Table(name = "workflow_steps", schema = "workflow")
 public class WorkflowStep {
 
     @Id

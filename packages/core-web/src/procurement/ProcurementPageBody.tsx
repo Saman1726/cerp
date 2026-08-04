@@ -21,6 +21,8 @@ export function ProcurementPageBody() {
   const [isEditing, setIsEditing] = useState(false);
   // Track when Create Bidding button is clicked from procurement form
   const [viewingBiddingFromProcurement, setViewingBiddingFromProcurement] = useState(false);
+  // Trigger to refresh the bidding list after edit
+  const [biddingListKey, setBiddingListKey] = useState(0);
 
   const handleProcurementSuccess = useCallback((saga: Saga) => {
     setSelectedProcurementSaga(saga);
@@ -41,6 +43,11 @@ export function ProcurementPageBody() {
     setSelectedBiddingSaga(null);
     setIsEditing(false);
     setViewingBiddingFromProcurement(false);
+  }, []);
+
+  // Refresh the bidding list after edit
+  const handleBiddingListRefresh = useCallback(() => {
+    setBiddingListKey((prev) => prev + 1);
   }, []);
 
   // Handler for "Create Bidding" button from the procurement saga view form
@@ -119,8 +126,10 @@ export function ProcurementPageBody() {
           </div>
 
           <BiddingSagaList
+            key={biddingListKey}
             onSagaSelect={handleBiddingSelect}
             onSagaEdit={handleBiddingEdit}
+            onSagaUpdated={handleBiddingListRefresh}
           />
         </TabsContent>
 

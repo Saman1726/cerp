@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import io.cerp.workflow.domain.bidding.BidWallet;
 import io.cerp.workflow.event.WorkflowEvent;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.service.NotificationServiceClient;
 import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 
@@ -65,12 +66,14 @@ public class BiddingSagaHandler implements SagaHandler {
     private final EventPublisher eventPublisher;
     private final VendorBidSubmissionService bidSubmissionService;
     private final BidWalletService bidWalletService;
+    private final NotificationServiceClient notificationServiceClient;
 
     public BiddingSagaHandler(final EventPublisher eventPublisher, VendorBidSubmissionService bidSubmissionService,
-            BidWalletService bidWalletService) {
+            BidWalletService bidWalletService, NotificationServiceClient notificationServiceClient) {
         this.eventPublisher = eventPublisher;
         this.bidSubmissionService = bidSubmissionService;
         this.bidWalletService = bidWalletService;
+        this.notificationServiceClient = notificationServiceClient;
     }
 
     @Override

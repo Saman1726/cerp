@@ -27,7 +27,7 @@ import jakarta.persistence.UniqueConstraint;
  * </ul>
  */
 @Entity
-@Table(name = "template_phase_mappings", uniqueConstraints = @UniqueConstraint(name = "uk_template_phase_mapping", columnNames = {
+@Table(name = "template_phase_mappings", schema = "workflow", uniqueConstraints = @UniqueConstraint(name = "uk_template_phase_mapping", columnNames = {
         "tenant_id", "phase_type", "building_type_group", "workflow_template_code" }), indexes = {
                 @Index(name = "idx_template_phase_mapping_tenant", columnList = "tenant_id"),
                 @Index(name = "idx_template_phase_mapping_phase", columnList = "phase_type"),

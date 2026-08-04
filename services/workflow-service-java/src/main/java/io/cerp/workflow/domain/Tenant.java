@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
  * </p>
  */
 @Entity
-@Table(name = "tenants")
+@Table(name = "tenants", schema = "workflow")
 public class Tenant {
 
     @Id

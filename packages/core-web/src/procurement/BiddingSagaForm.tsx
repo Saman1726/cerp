@@ -17,6 +17,7 @@ import type {
   ExecuteBiddingSagaStepRequest,
 } from '@cerp/shared-types';
 import { VendorSelect } from './VendorSelect';
+import { generateDeterministicSagaId, normalizeSagaName } from '../lib/sagaIdUtils';
 
 interface BiddingSagaFormProps {
   tenantId: string;
@@ -27,11 +28,52 @@ interface BiddingSagaFormProps {
   viewOnly?: boolean;
 }
 
+const getInitialProjectIdForCreate = (saga: Saga | undefined, inheritedProjectId: string): string => {
+  if (saga?.data?.projectId) return saga.data.projectId as string;
+  if (inheritedProjectId) return inheritedProjectId;
+  return '';
+};
+
 export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialProcurementSagaId, viewOnly }: BiddingSagaFormProps) {
+  const isEditMode = !!saga;
   // Project ID is inherited from the related procurement saga when creating from ProcurementPageBody
   // For creation mode, projectId comes from the procurement saga context
   // For edit mode, projectId comes from the existing saga data
   const [inheritedProjectId, setInheritedProjectId] = useState<string>('');
+  const [sagaName, setSagaName] = useState(() => (saga?.data?.sagaName as string) || '');
+  const [sagaNameError, setSagaNameError] = useState<string | null>(null);
+  const [sagaId, setSagaId] = useState<string | null>(saga?.sagaId || null);
+
+  const getInitialBiddingMode = () => ((saga?.data?.biddingMode as string) || 'INVITED') as 'INVITED' | 'OPEN_TENDER';
+  const getInitialVendorIds = () => {
+    // Check both vendorIds and invitedVendorIds as the field name may vary
+    const vendorIds = saga?.data?.vendorIds as string[] | undefined;
+    const invitedVendorIds = saga?.data?.invitedVendorIds as string[] | undefined;
+    if (vendorIds && vendorIds.length > 0) return vendorIds;
+    if (invitedVendorIds && invitedVendorIds.length > 0) return invitedVendorIds;
+    return [];
+  };
+  const getInitialBidDeadline = () => {
+    const inviteConfig = saga?.data?.inviteConfig as { bidDeadline?: string } | undefined;
+    return inviteConfig?.bidDeadline || '';
+  };
+  const getInitialDescription = () => {
+    // Check both description fields for backwards compatibility
+    const desc = saga?.data?.description as string | undefined;
+    if (desc) return desc;
+    return '';
+  };
+
+  const [biddingMode, setBiddingMode] = useState<'INVITED' | 'OPEN_TENDER'>(getInitialBiddingMode);
+  const [selectedVendorIds, setSelectedVendorIds] = useState<string[]>(getInitialVendorIds);
+  const [bidDeadline, setBidDeadline] = useState(getInitialBidDeadline);
+  const [description, setDescription] = useState(getInitialDescription);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [createdSaga, setCreatedSaga] = useState<Saga | null>(null);
+
+  // Check if this is for creating a bidding from procurement (has initialProcurementSagaId)
+  const isBiddingFromProcurement = !!initialProcurementSagaId && !isEditMode;
 
   // Load projectId from the procurement saga when initialProcurementSagaId is provided
   useEffect(() => {
@@ -49,31 +91,31 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
   }, [initialProcurementSagaId, saga?.data?.projectId]);
 
-  const projectId = (() => {
-    // If editing an existing saga that has projectId, use it
-    if (saga?.data?.projectId) return saga.data.projectId as string;
-    // If we have inherited projectId from procurement saga, use it
-    if (inheritedProjectId) return inheritedProjectId;
-    return '';
-  })();
-  const getInitialBiddingMode = () => ((saga?.data?.biddingMode as string) || 'INVITED') as 'INVITED' | 'OPEN_TENDER';
-  const getInitialVendorIds = () => {
-    const vendorIds = saga?.data?.vendorIds as string[] | undefined;
-    return vendorIds || [];
-  };
-  const getInitialBidDeadline = () => {
-    const inviteConfig = saga?.data?.inviteConfig as { bidDeadline?: string } | undefined;
-    return inviteConfig?.bidDeadline || '';
-  };
-  const getInitialDescription = () => (saga?.data?.description as string) || '';
+  const projectId = getInitialProjectIdForCreate(saga, inheritedProjectId);
 
-  const [selectedVendorIds, setSelectedVendorIds] = useState<string[]>(getInitialVendorIds);
-  const [biddingMode, setBiddingMode] = useState<'INVITED' | 'OPEN_TENDER'>(getInitialBiddingMode);
-  const [bidDeadline, setBidDeadline] = useState(getInitialBidDeadline);
-  const [description, setDescription] = useState(getInitialDescription);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [createdSaga, setCreatedSaga] = useState<Saga | null>(null);
+  // Generate deterministic saga ID when name, projectId, or biddingMode changes (only on create)
+  useEffect(() => {
+    if (isEditMode || !projectId) return;
+    
+    const generateId = async () => {
+      if (sagaName && projectId) {
+        try {
+          const generatedId = await generateDeterministicSagaId(
+            normalizeSagaName(sagaName),
+            String(projectId),
+            biddingMode
+          );
+          setSagaId(generatedId);
+        } catch {
+          // silently fail
+        }
+      } else {
+        setSagaId(null);
+      }
+    };
+    
+    generateId();
+  }, [sagaName, projectId, biddingMode, isEditMode]);
 
   // Bid collection state
   const [bids, setBids] = useState<Array<{ vendorId: string; price: string; timeline: string; notes: string }>>([
@@ -121,23 +163,23 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
 
     try {
-      if (saga) {
-        const biddingData: Record<string, unknown> = {
-          biddingMode,
-          projectId,
-        };
+       if (saga) {
+         const biddingData: Record<string, unknown> = {
+           biddingMode,
+           projectId,
+         };
 
-        if (biddingMode === 'INVITED' && selectedVendorIds.length > 0) {
-          biddingData.vendorIds = selectedVendorIds;
-        }
+         // Always include vendorIds when in INVITED mode (even if empty to clear)
+         if (biddingMode === 'INVITED') {
+           biddingData.vendorIds = selectedVendorIds;
+         }
 
-        if (bidDeadline) {
-          biddingData.inviteConfig = { bidDeadline };
-        }
+         if (bidDeadline) {
+           biddingData.inviteConfig = { bidDeadline };
+         }
 
-        if (description) {
-          biddingData.description = description;
-        }
+         // Always include description (even if empty string) to ensure it's saved
+         biddingData.description = description;
 
         const updatedSaga = await workflowApi.updateSaga(saga.sagaId, biddingData);
         // Parse the response to build a Saga-like object
@@ -180,11 +222,24 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
           biddingData.procurementSagaId = initialProcurementSagaId;
         }
 
-        const request: CreateBiddingSagaRequest = {
+        const request: CreateBiddingSagaRequest & { sagaId?: string } = {
           sagaType: 'BIDDING_WORKFLOW',
           tenantId,
           data: biddingData as CreateBiddingSagaRequest['data'],
         };
+
+        // Include sagaId if generated (deterministic ID for idempotency)
+        if (sagaId) {
+          request.sagaId = sagaId;
+        }
+
+        // Include sagaName if provided
+        if (sagaName) {
+          request.data = {
+            ...biddingData,
+            sagaName: sagaName,
+          } as unknown as CreateBiddingSagaRequest['data'];
+        }
 
         const sagaResult = await workflowApi.createSaga(request as unknown as Parameters<typeof workflowApi.createSaga>[0]);
         setCreatedSaga(sagaResult);
@@ -773,140 +828,235 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
         </Card>
       )}
 
-      {/* Creation/Form - hide in viewOnly mode when there's createdSaga to show action buttons */}
+      {/* Creation/Form */}
       {!createdSaga && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{viewOnly ? 'View Bidding Saga' : saga ? 'Edit Bidding Saga' : 'Create New Bidding Saga'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleCreateSaga} className="space-y-4">
-              {/* Project info display when inherited from procurement saga */}
-              {initialProcurementSagaId && relatedProcurementSaga && (
-                <Card className="border-blue-200 bg-blue-50/50">
-                  <CardContent className="pt-4">
-                    <div className="text-sm font-medium">Related Procurement Saga</div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Project: {relatedProcurementSaga.data?.projectId || initialProcurementSagaId.slice(0, 8)}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Bidding Mode Selection */}
-              <div className="space-y-2">
-                <Label>Bidding Mode</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
-                      biddingMode === 'INVITED' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
-                    )}
-                    onClick={() => setBiddingMode('INVITED')}
-                  >
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border flex items-center justify-center",
-                      biddingMode === 'INVITED' ? "bg-primary border-primary" : "border-input"
-                    )}>
-                      {biddingMode === 'INVITED' && (
-                        <div className="w-2 h-2 rounded-full bg-primary-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Invited Bidding</span>
-                        <Badge variant="outline" className="text-xs">INVITED</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Specific vendors are invited to submit bids
-                      </p>
+        <>
+          {/* View Mode - Read-only display, no editable inputs */}
+          {viewOnly && saga ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>View Bidding Saga</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Bidding Mode - Read only */}
+                  <div className="space-y-2">
+                    <Label>Bidding Mode</Label>
+                    <div className="text-sm">
+                      <Badge variant="outline">{saga.data?.biddingMode as string || 'INVITED'}</Badge>
                     </div>
                   </div>
 
-                  <div
-                    className={cn(
-                      "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
-                      biddingMode === 'OPEN_TENDER' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
-                    )}
-                    onClick={() => setBiddingMode('OPEN_TENDER')}
-                  >
-                    <div className={cn(
-                      "w-4 h-4 rounded-full border flex items-center justify-center",
-                      biddingMode === 'OPEN_TENDER' ? "bg-primary border-primary" : "border-input"
-                    )}>
-                      {biddingMode === 'OPEN_TENDER' && (
-                        <div className="w-2 h-2 rounded-full bg-primary-foreground" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Open Tender</span>
-                        <Badge variant="outline" className="text-xs">OPEN_TENDER</Badge>
+                  {/* Invited Vendors - Read only */}
+                  {(() => {
+                    const vendorIds = (saga.data?.invitedVendorIds as string[]) || (saga.data?.vendorIds as string[]) || [];
+                    return vendorIds.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label>Invited Vendors</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {vendorIds.map((vendorId) => (
+                            <Badge key={vendorId} variant="secondary" className="text-xs">
+                              {vendorId.slice(0, 8)}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        All approved vendors can submit bids
-                      </p>
-                    </div>
+                    ) : null;
+                  })()}
+
+                  {/* Bid Deadline - Read only */}
+                  {(() => {
+                    const inviteConfig = saga.data?.inviteConfig as { bidDeadline?: string } | undefined;
+                    const deadline = inviteConfig?.bidDeadline;
+                    return deadline ? (
+                      <div className="space-y-2">
+                        <Label>Bid Deadline</Label>
+                        <div className="text-sm">{new Date(deadline).toLocaleString()}</div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Description - Read only */}
+                  {(() => {
+                    const desc = saga.data?.description as string | undefined;
+                    return desc ? (
+                      <div className="space-y-2">
+                        <Label>Description</Label>
+                        <div className="text-sm rounded-md border p-3 bg-muted/30">{desc}</div>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Saga metadata */}
+                  <div className="pt-4 border-t text-xs text-muted-foreground space-y-1">
+                    <div>Saga ID: <span className="font-mono">{saga.sagaId}</span></div>
+                    <div>Created: <span className="font-mono">{new Date(saga.createdAt).toLocaleString()}</span></div>
+                    <div>Updated: <span className="font-mono">{new Date(saga.updatedAt).toLocaleString()}</span></div>
                   </div>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          ) : (
+            /* Edit/Create Mode - Full editable form */
+            <Card>
+              <CardHeader>
+                <CardTitle>{saga ? 'Edit Bidding Saga' : 'Create New Bidding Saga'}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleCreateSaga} className="space-y-4">
+                  {/* Project info display when inherited from procurement saga */}
+                  {initialProcurementSagaId && relatedProcurementSaga && (
+                    <Card className="border-blue-200 bg-blue-50/50">
+                      <CardContent className="pt-4">
+                        <div className="text-sm font-medium">Related Procurement Saga</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Project: {relatedProcurementSaga.data?.projectId || initialProcurementSagaId.slice(0, 8)}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
 
-              {/* Vendor Selection (only for INVITED mode) */}
-              {biddingMode === 'INVITED' && (
-                <VendorSelect
-                  value={selectedVendorIds}
-                  onChange={setSelectedVendorIds}
-                  label="Invited Vendors"
-                  placeholder="Select vendors to invite..."
-                  mode="multi"
-                  required
-                  helpText="Select vendors to invite for this bidding"
-                />
-              )}
+                  {/* Saga Name (only for create mode) */}
+                  {!saga && (
+                    <div className="space-y-2">
+                      <Label htmlFor="sagaName">Name (Required - used to prevent duplicates)</Label>
+                      <Input
+                        id="sagaName"
+                        value={sagaName}
+                        onChange={(e) => {
+                          setSagaName(e.target.value);
+                          setSagaNameError(null);
+                        }}
+                        placeholder="e.g., Q4 2025 Cement Procurement"
+                        maxLength={100}
+                        required
+                      />
+                      {sagaNameError && (
+                        <div className="text-xs text-red-600">{sagaNameError}</div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        This name will be used to create a unique identifier for this saga. You cannot change it after creation.
+                      </p>
+                    </div>
+                  )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="bidDeadline">Bid Deadline (Optional)</Label>
-                  <Input
-                    id="bidDeadline"
-                    type="datetime-local"
-                    value={bidDeadline}
-                    onChange={(e) => setBidDeadline(e.target.value)}
-                  />
-                </div>
-              </div>
+                  {/* Bidding Mode Selection */}
+                  <div className="space-y-2">
+                    <Label>Bidding Mode</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div
+                        className={cn(
+                          "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
+                          biddingMode === 'INVITED' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
+                        )}
+                        onClick={() => setBiddingMode('INVITED')}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded-full border flex items-center justify-center",
+                          biddingMode === 'INVITED' ? "bg-primary border-primary" : "border-input"
+                        )}>
+                          {biddingMode === 'INVITED' && (
+                            <div className="w-2 h-2 rounded-full bg-primary-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Invited Bidding</span>
+                            <Badge variant="outline" className="text-xs">INVITED</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Specific vendors are invited to submit bids
+                          </p>
+                        </div>
+                      </div>
 
-              <div>
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Brief description of the bidding requirements..."
-                  rows={3}
-                  maxLength={500}
-                />
-              </div>
+                      <div
+                        className={cn(
+                          "flex items-center gap-2 rounded-md border p-3 cursor-pointer transition-colors",
+                          biddingMode === 'OPEN_TENDER' ? "border-primary bg-primary/5" : "border-input hover:bg-accent"
+                        )}
+                        onClick={() => setBiddingMode('OPEN_TENDER')}
+                      >
+                        <div className={cn(
+                          "w-4 h-4 rounded-full border flex items-center justify-center",
+                          biddingMode === 'OPEN_TENDER' ? "bg-primary border-primary" : "border-input"
+                        )}>
+                          {biddingMode === 'OPEN_TENDER' && (
+                            <div className="w-2 h-2 rounded-full bg-primary-foreground" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">Open Tender</span>
+                            <Badge variant="outline" className="text-xs">OPEN_TENDER</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            All approved vendors can submit bids
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
-                  {error}
-                </div>
-              )}
+                  {/* Vendor Selection (only for INVITED mode) */}
+                  {biddingMode === 'INVITED' && (
+                    <VendorSelect
+                      value={selectedVendorIds}
+                      onChange={setSelectedVendorIds}
+                      label="Invited Vendors"
+                      placeholder="Select vendors to invite..."
+                      mode="multi"
+                      required
+                      helpText="Select vendors to invite for this bidding"
+                    />
+                  )}
 
-              <div className="flex gap-2">
-                  <Button type="submit" disabled={loading || (saga ? false : !projectId) || (biddingMode === 'INVITED' && selectedVendorIds.length === 0)}>
-                  {loading ? 'Updating...' : 'Update Bidding Saga'}
-                </Button>
-                {onCancel && (
-                  <Button type="button" variant="outline" onClick={onCancel}>
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="bidDeadline">Bid Deadline (Optional)</Label>
+                      <Input
+                        id="bidDeadline"
+                        type="datetime-local"
+                        value={bidDeadline}
+                        onChange={(e) => setBidDeadline(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="description">Description (Optional)</Label>
+                    <Textarea
+                      id="description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Brief description of the bidding requirements..."
+                      rows={3}
+                      maxLength={500}
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={loading || (saga ? false : !projectId) || (biddingMode === 'INVITED' && selectedVendorIds.length === 0)}>
+                      {loading ? 'Updating...' : saga ? 'Update Bidding Saga' : 'Create Bidding Saga'}
+                      {isBiddingFromProcurement && !sagaName && !isEditMode && <span className="ml-2 text-xs text-muted-foreground">(Enter a name first)</span>}
+                    </Button>
+                    {onCancel && (
+                      <Button type="button" variant="outline" onClick={onCancel}>
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
     </div>
   );

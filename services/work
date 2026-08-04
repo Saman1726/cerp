@@ -1,0 +1,53 @@
+-- Move public schema entities to their proper schemas
+-- outbox_events -> workflow schema
+-- bidding entities -> bidding schema
+
+-- Move outbox_events to workflow schema
+ALTER TABLE outbox_events SET SCHEMA workflow;
+
+-- Recreate indexes after schema move
+DROP INDEX IF EXISTS idx_outbox_events_status_created;
+DROP INDEX IF EXISTS idx_outbox_events_saga_id;
+DROP INDEX IF EXISTS idx_outbox_events_aggregate;
+DROP INDEX IF EXISTS idx_outbox_events_tenant;
+CREATE INDEX idx_outbox_events_status_created ON workflow.outbox_events (status, created_at);
+CREATE INDEX idx_outbox_events_saga_id ON workflow.outbox_events (saga_id);
+CREATE INDEX idx_outbox_events_aggregate ON workflow.outbox_events (aggregate_type, aggregate_id);
+CREATE INDEX idx_outbox_events_tenant ON workflow.outbox_events (tenant_id);
+
+-- Move bidding entities to bidding schema
+ALTER TABLE bid_wallets SET SCHEMA bidding;
+ALTER TABLE bid_transactions SET SCHEMA bidding;
+ALTER TABLE vendor_bid_submissions SET SCHEMA bidding;
+ALTER TABLE pricing_config SET SCHEMA bidding;
+
+-- Recreate bidding indexes after schema move
+DROP INDEX IF EXISTS idx_bid_wallets_user_id;
+DROP INDEX IF EXISTS idx_bid_wallets_entity;
+DROP INDEX IF EXISTS idx_bid_wallets_tenant_id;
+CREATE INDEX idx_bid_wallets_user_id ON bidding.bid_wallets (user_id);
+CREATE INDEX idx_bid_wallets_entity ON bidding.bid_wallets (entity_type, entity_id);
+CREATE INDEX idx_bid_wallets_tenant_id ON bidding.bid_wallets (tenant_id);
+
+DROP INDEX IF EXISTS idx_bid_transactions_wallet_id;
+DROP INDEX IF EXISTS idx_bid_transactions_saga_id;
+DROP INDEX IF EXISTS idx_bid_transactions_user_id;
+DROP INDEX IF EXISTS idx_bid_transactions_tender_id;
+DROP INDEX IF EXISTS idx_bid_transactions_type;
+CREATE INDEX idx_bid_transactions_wallet_id ON bidding.bid_transactions (wallet_id);
+CREATE INDEX idx_bid_transactions_saga_id ON bidding.bid_transactions (bidding_saga_id);
+CREATE INDEX idx_bid_transactions_user_id ON bidding.bid_transactions (user_id);
+CREATE INDEX idx_bid_transactions_tender_id ON bidding.bid_transactions (tender_id);
+CREATE INDEX idx_bid_transactions_type ON bidding.bid_transactions (transaction_type);
+
+DROP INDEX IF EXISTS idx_vendor_submissions_saga_id;
+DROP INDEX IF EXISTS idx_vendor_submissions_tender_id;
+DROP INDEX IF EXISTS idx_vendor_submissions_vendor;
+DROP INDEX IF EXISTS idx_vendor_submissions_status;
+CREATE INDEX idx_vendor_submissions_saga_id ON bidding.vendor_bid_submissions (bidding_saga_id);
+CREATE INDEX idx_vendor_submissions_tender_id ON bidding.vendor_bid_submissions (tender_id);
+CREATE INDEX idx_vendor_submissions_vendor ON bidding.vendor_bid_submissions (vendor_id);
+CREATE INDEX idx_vendor_submissions_status ON bidding.vendor_bid_submissions (status);
+
+-- Recreate bidding schema
+CREATE SCHEMA IF NOT EXISTS bidding;

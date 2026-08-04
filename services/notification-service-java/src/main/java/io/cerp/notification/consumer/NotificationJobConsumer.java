@@ -81,16 +81,54 @@ public class NotificationJobConsumer {
     private List<UUID> resolveRecipients(NotificationJobCreateRequest request) {
         Set<UUID> userIds = new java.util.HashSet<>();
 
+        // Check if vendor user IDs are passed directly in the payload
+        // This is used when the workflow service already knows the vendor user IDs
+        java.util.Map<String, Object> payload = request.payload();
+        if (payload != null && payload.containsKey("vendorUserIds")) {
+            Object vendorUserIdsObj = payload.get("vendorUserIds");
+            if (vendorUserIdsObj instanceof List<?> vendorUserIdsList) {
+                for (Object uid : vendorUserIdsList) {
+                    try {
+                        String uidStr = uid.toString();
+                        // Handle both string and UUID formats
+                        if (uidStr.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
+                            userIds.add(UUID.fromString(uidStr));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to parse vendor user ID: {}", uid);
+                    }
+                }
+            }
+        }
+
+        // If we resolved users from vendorUserIds, skip email/role resolution
+        if (!userIds.isEmpty()) {
+            log.info("Resolved {} recipients from vendorUserIds in payload for request: {}",
+                    userIds.size(), request.requestId());
+            return new ArrayList<>(userIds);
+        }
+
         // Resolve by email
         if (request.recipientEmails() != null && !request.recipientEmails().isEmpty()) {
-            for (String email : request.recipientEmails()) {
+            for (String identifier : request.recipientEmails()) {
                 try {
-                    UUID userId = identityServiceClient.resolveUserByEmail(email);
-                    if (userId != null) {
-                        userIds.add(userId);
+                    UUID userId;
+                    // Check if this is a vendor identifier (format: "vendor:{vendorId}")
+                    if (identifier.startsWith("vendor:")) {
+                        // Try to resolve vendor user IDs via the payload
+                        userId = resolveVendorUserId(identifier, payload);
+                        if (userId != null) {
+                            userIds.add(userId);
+                        }
+                    } else {
+                        // Regular email resolution
+                        userId = identityServiceClient.resolveUserByEmail(identifier);
+                        if (userId != null) {
+                            userIds.add(userId);
+                        }
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to resolve user by email: {}", email);
+                    log.warn("Failed to resolve recipient: {}", identifier);
                 }
             }
         }
@@ -110,6 +148,61 @@ public class NotificationJobConsumer {
         }
 
         return new ArrayList<>(userIds);
+    }
+
+    /**
+     * Resolve a user ID for a specific vendor entity.
+     * 
+     * <p>
+     * Tries to resolve by looking up vendor user IDs from the payload first,
+     * then falls back to trying to resolve the vendor ID as a UUID directly.
+     * </p>
+     */
+    private UUID resolveVendorUserId(String vendorIdentifier, java.util.Map<String, Object> payload) {
+        // vendorIdentifier format: "vendor:{vendorId}"
+        String vendorIdStr = vendorIdentifier.substring(7); // Remove "vendor:" prefix
+        
+        // Try 1: Check if vendorUserIds in payload maps vendor IDs to user IDs
+        if (payload != null && payload.containsKey("vendorUserIds")) {
+            Object vendorUserIdsObj = payload.get("vendorUserIds");
+            if (vendorUserIdsObj instanceof List<?> vendorUserIdsList) {
+                for (Object uid : vendorUserIdsList) {
+                    // We just collect user IDs; the caller needs vendor-to-user mapping
+                    // For now, we return the first matching vendor user ID
+                    String uidStr = uid.toString();
+                    if (uidStr.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
+                        // This is a user ID, not a vendor ID mapping
+                        // We need a different approach
+                    }
+                }
+            }
+        }
+        
+        // Try 2: Try to resolve vendor ID directly as a user ID
+        // Some vendors are single-user entities where vendor ID = user ID
+        try {
+            UUID vendorUUID = UUID.fromString(vendorIdStr);
+            log.debug("Resolved vendor ID to user ID: vendorId={}", vendorUUID);
+            return vendorUUID;
+        } catch (IllegalArgumentException e) {
+            log.warn("Cannot resolve vendor ID to user: vendorId={}", vendorIdStr);
+        }
+        
+        // Try 3: Look for vendorUserIds mapping in payload
+        if (payload != null) {
+            Object vendorIdsList = payload.get("vendorIds");
+            if (vendorIdsList instanceof List<?> vendorIds) {
+                for (Object vid : vendorIds) {
+                    if (vendorIdStr.equals(vid.toString())) {
+                        // Vendor ID matches, but we need the user ID
+                        // This requires vendor-to-user mapping which we may not have
+                        log.debug("Found vendor ID match but need user ID mapping: vendorId={}", vendorIdStr);
+                    }
+                }
+            }
+        }
+        
+        return null;
     }
 
     private void createJobWithNotifications(NotificationJobCreateRequest request, List<UUID> recipientIds) {

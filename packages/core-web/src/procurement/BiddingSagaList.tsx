@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Eye, Pencil } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
@@ -23,6 +24,7 @@ interface BiddingSagaListProps {
   tenantId?: string;
   onSagaSelect?: (saga: Saga) => void;
   onSagaEdit?: (saga: Saga) => void;
+  onSagaUpdated?: () => void;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -67,7 +69,7 @@ async function getProcurementSagas(): Promise<Saga[]> {
   return procurementSagaCachePromise;
 }
 
-export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEdit }: BiddingSagaListProps) {
+export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEdit, onSagaUpdated }: BiddingSagaListProps) {
   const [sagas, setSagas] = useState<Saga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -294,41 +296,45 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
                            <TableCell className="text-sm">
                              {description || '-'}
                            </TableCell>
-                           <TableCell>
-                             <SagaStatusBadge status={saga.status} />
-                           </TableCell>
-                           <TableCell className="text-sm">
-                             {SAGA_TYPE_LABELS[saga.currentStep ?? ''] ?? saga.currentStep ?? 'N/A'}
-                           </TableCell>
-                           <TableCell className="text-sm">
-                             {invitedVendorCount > 0 ? (
-                               <Badge variant="outline">{invitedVendorCount} vendors</Badge>
-                             ) : (
-                               <span className="text-muted-foreground">-</span>
-                             )}
-                           </TableCell>
-                           <TableCell className="text-sm text-muted-foreground">
-                             {new Date(saga.createdAt).toLocaleString()}
-                           </TableCell>
-                           <TableCell className="text-sm text-muted-foreground">
-                             {new Date(saga.updatedAt).toLocaleString()}
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex items-center gap-1">
-                               <Button
-                                 variant="ghost"
-                                 size="sm"
-                                 onClick={() => onSagaSelect?.(saga)}
-                               >
-                                 View
-                               </Button>
-                               <Button
-                                 variant="ghost"
-                                 size="sm"
-                                 onClick={() => onSagaEdit?.(saga)}
-                               >
-                                 Edit
-                               </Button>
+                  <TableCell>
+                    <SagaStatusBadge status={saga.status} />
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {SAGA_TYPE_LABELS[saga.currentStep ?? ''] ?? saga.currentStep ?? 'N/A'}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {invitedVendorCount > 0 ? (
+                      <Badge variant="outline">{invitedVendorCount} vendors</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(saga.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {new Date(saga.updatedAt).toLocaleString()}
+                  </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onSagaSelect?.(saga)}
+                                  title="View bidding saga details"
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => onSagaEdit?.(saga)}
+                                  title="Edit bidding saga"
+                                >
+                                  <Pencil className="h-4 w-4 mr-1" />
+                                  Edit
+                                </Button>
                                 {/* Pause/Resume button - depends on saga status */}
                                 {(saga.status === 'RUNNING' || saga.status === 'PAUSED') && (
                                   <Button

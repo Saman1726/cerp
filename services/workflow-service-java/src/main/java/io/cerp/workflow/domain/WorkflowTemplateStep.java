@@ -31,7 +31,7 @@ import jakarta.persistence.Table;
  * StepTemplate – A single step definition within a WorkflowTemplate.
  */
 @Entity
-@Table(name = "workflow_template_steps")
+@Table(name = "workflow_template_steps", schema = "workflow")
 public class WorkflowTemplateStep {
 
     @Id

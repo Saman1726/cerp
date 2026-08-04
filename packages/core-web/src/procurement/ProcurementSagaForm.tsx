@@ -19,6 +19,7 @@ import type {
 } from '@cerp/shared-types';
 import { ProjectSelect } from './ProjectSelect';
 import { VendorSelect } from './VendorSelect';
+import { generateDeterministicSagaId, validateSagaName, normalizeSagaName } from '../lib/sagaIdUtils';
 
 interface ProcurementSagaFormProps {
   tenantId: string;
@@ -30,18 +31,46 @@ interface ProcurementSagaFormProps {
 }
 
 export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onViewBidding, viewOnly }: ProcurementSagaFormProps) {
+  const isEditMode = !!saga;
   const getInitialProjectId = () => saga?.data?.projectId || '';
   const getInitialDescription = () => (saga?.data?.description as string) || '';
   const getInitialMaterialId = () => (saga?.data?.materialId as string) || '';
   const getInitialQuantity = () => (saga?.data?.quantity?.toString()) || '';
+  const getInitialSagaName = () => (saga?.data?.sagaName as string) || '';
   const [projectId, setProjectId] = useState(getInitialProjectId);
   const [materialId, setMaterialId] = useState(getInitialMaterialId);
   const [quantity, setQuantity] = useState(getInitialQuantity);
   const [description, setDescription] = useState(getInitialDescription);
+  const [sagaName, setSagaName] = useState(getInitialSagaName);
+  const [sagaNameError, setSagaNameError] = useState<string | null>(null);
+  const [sagaId, setSagaId] = useState<string | null>(saga?.sagaId || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdSaga, setCreatedSaga] = useState<Saga | null>(null);
   const [approvalReason, setApprovalReason] = useState('');
+  // Generate deterministic saga ID when name, projectId, or materialId changes (only on create)
+  useEffect(() => {
+    if (isEditMode || !projectId) return;
+    
+    const generateId = async () => {
+      if (sagaName && projectId && materialId) {
+        try {
+          const generatedId = await generateDeterministicSagaId(
+            normalizeSagaName(sagaName),
+            String(projectId),
+            String(materialId)
+          );
+          setSagaId(generatedId);
+        } catch {
+          // silently fail
+        }
+      } else {
+        setSagaId(null);
+      }
+    };
+    
+    generateId();
+  }, [sagaName, projectId, materialId, isEditMode]);
 
   // Vendor assignment state
   const [showVendorAssignModal, setShowVendorAssignModal] = useState(false);
@@ -125,11 +154,11 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     return s.status === 'PAUSED' || s.status === 'REQUIRES_MANUAL_INTERVENTION';
   };
 
-  // Check if bidding can be created: ONLY on IssuePurchaseOrder step (vendor not required - bidding is how you assign vendors)
+  // Check if bidding can be created: on ApproveRequest (after approval) or IssuePurchaseOrder step
   const canCreateBidding = (s: Saga | null | undefined): boolean => {
     if (!s) return false;
     const effectiveStep = getEffectiveStep(s);
-    return effectiveStep === 'IssuePurchaseOrder';
+    return effectiveStep === 'ApproveRequest' || effectiveStep === 'IssuePurchaseOrder';
   };
 
   // Check if a bidding saga exists and is in a terminal state (COMPLETED or ABORTED/FAILED)
@@ -199,9 +228,21 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSagaNameError(null);
 
     try {
+      // Validate saga name on create
+      if (!isEditMode) {
+        const nameValidation = validateSagaName(sagaName);
+        if (!nameValidation.valid) {
+          setSagaNameError(nameValidation.error || 'Invalid saga name');
+          setLoading(false);
+          return;
+        }
+      }
+
       if (saga) {
+        // Edit mode: update existing saga (name and materialId are locked)
         const updateData: Record<string, unknown> = {
           projectId,
           ...(materialId ? { materialId } : {}),
@@ -227,10 +268,51 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
         setCreatedSaga(sagaResult);
         onSuccess?.(sagaResult);
       } else {
+        // Create mode: generate deterministic saga ID and include saga name
+        if (!sagaName || !projectId || !materialId) {
+          setSagaNameError('Saga name, project, and material are required to create a procurement request.');
+          setLoading(false);
+          return;
+        }
+
+        const generatedSagaId = await generateDeterministicSagaId(
+          normalizeSagaName(sagaName),
+          String(projectId),
+          String(materialId)
+        );
+
+        // Check if a saga with this ID already exists
+        try {
+          const existingSagas = await workflowApi.listSagas({
+            sagaType: 'PROCUREMENT_WORKFLOW',
+            tenantId,
+            pageSize: 50,
+          });
+          
+          const existing = existingSagas.items.find(
+            (s: Saga) => {
+              const data = s.data as Record<string, unknown>;
+              return String(data?.sagaName ?? '') === normalizeSagaName(sagaName) &&
+                     String(data?.projectId ?? '') === String(projectId) &&
+                     String(data?.materialId ?? '') === String(materialId);
+            }
+          );
+
+          if (existing && (existing.status === 'RUNNING' || existing.status === 'PAUSED' || existing.status === 'REQUIRES_MANUAL_INTERVENTION')) {
+            setError(`A procurement request with this name already exists for project "${projectId}". Please use a different name.`);
+            setLoading(false);
+            return;
+          }
+        } catch {
+          // Silently fail - we'll let the creation handle duplicate key errors
+        }
+
         const request: CreateProcurementSagaRequest = {
           sagaType: 'PROCUREMENT_WORKFLOW',
           tenantId,
+          sagaId: generatedSagaId,
           data: {
+            sagaName: normalizeSagaName(sagaName),
             projectId,
             ...(materialId ? { materialId } : {}),
             ...(quantity ? { quantity: Number(quantity) } : {}),
@@ -243,11 +325,16 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
         onSuccess?.(createdSagaResult);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save procurement saga');
+      const message = err instanceof Error ? err.message : 'Failed to save procurement saga';
+      if (message.includes('duplicate') || message.includes('unique') || message.includes('already exists')) {
+        setSagaNameError('A procurement request with this name already exists for this project. Please use a different name.');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [saga, tenantId, projectId, materialId, quantity, description, onSuccess]);
+  }, [saga, tenantId, projectId, materialId, quantity, description, sagaName, onSuccess, isEditMode]);
 
   const handleExecuteStep = useCallback(async (command: ExecuteProcurementSagaStepRequest['command'], data?: Record<string, unknown>) => {
     if (!createdSaga) return;
@@ -261,7 +348,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
       };
 
       const updatedSaga = await workflowApi.executeStep(createdSaga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-      setCreatedSaga(updatedSaga);
+      // Force refresh to get the latest currentStep value from backend
+      const refreshed = await refreshSaga(updatedSaga.sagaId);
+      setCreatedSaga(refreshed);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to execute step: ${command}`);
     } finally {
@@ -327,29 +416,24 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     setError(null);
 
     try {
-      // First check for in-progress bidding regardless of vendor assignment
+      // Reload fresh related bidding sagas for this procurement
+      await reloadRelatedBiddingSagas(createdSaga.sagaId);
+
+      // Check for in-progress bidding
       const hasInProgress = hasInProgressBidding(createdSaga);
       if (hasInProgress) {
         setError('A bidding is currently in progress for this procurement. Please wait for it to complete before proceeding.');
         return;
       }
 
-      // Check if vendor is already assigned
+      // Main condition: vendor must be non-null before executing the step
+      // Vendor is assigned via Bidding (COMPLETED/ABORTED) OR manually
       if (hasVendor(createdSaga)) {
-        // Vendor is assigned, check for completed bidding
-        const hasCompleted = hasCompletedBidding(createdSaga);
-
-        if (hasCompleted) {
-          // Bidding is completed, proceed to next step
-          await handleExecuteStep('ReceiveDelivery');
-          await reloadRelatedBiddingSagas(createdSaga.sagaId);
-        } else {
-          // No bidding or bidding not started - vendor already assigned, go to next step
-          await handleExecuteStep('ReceiveDelivery');
-          await reloadRelatedBiddingSagas(createdSaga.sagaId);
-        }
+        // Vendor is assigned, proceed to next step
+        await handleExecuteStep('ReceiveDelivery');
+        await reloadRelatedBiddingSagas(createdSaga.sagaId);
       } else {
-        // No vendor assigned and no in-progress bidding, show vendor assignment modal
+        // No vendor assigned - show vendor assignment modal
         setShowVendorAssignModal(true);
       }
     } catch (err) {
@@ -365,50 +449,27 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     setError(null);
 
     try {
-      // Fetch fresh related bidding sagas
-      const response = await workflowApi.listSagas({
-        sagaType: 'BIDDING_WORKFLOW',
-        tenantId: s.tenantId,
-        pageSize: 50,
-      });
-      const relatedBidding = response.items.filter(
-        (biddingSaga) => {
-          const data = biddingSaga.data as Record<string, unknown>;
-          return String(data?.procurementSagaId ?? '') === s.sagaId || String(data?.relatedProcurementSagaId ?? '') === s.sagaId;
-        }
-      );
+      // Reload fresh related bidding sagas for this procurement
+      await reloadRelatedBiddingSagas(s.sagaId);
 
-      const hasInProgress = relatedBidding.some(
-        (b) => b.status === 'RUNNING' || b.status === 'PAUSED' || b.status === 'REQUIRES_MANUAL_INTERVENTION'
-      );
-
-      // First check for in-progress bidding regardless of vendor assignment
+      // Check for in-progress bidding
+      const hasInProgress = hasInProgressBidding(s);
       if (hasInProgress) {
         setError('A bidding is currently in progress for this procurement. Please wait for it to complete before proceeding.');
         return;
       }
 
-      // Check if vendor is already assigned
-      const sData = s.data as Record<string, unknown>;
-      if (sData?.vendorId) {
-        // Vendor is assigned, check for completed bidding
-        const hasCompleted = relatedBidding.some(
-          (b) => b.status === 'COMPLETED' || b.status === 'FAILED' || b.status === 'COMPENSATED'
-        );
-
-        if (hasCompleted) {
-          // Bidding is completed, proceed to next step
-          const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
-          const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-          setCreatedSaga(updatedSaga);
-        } else {
-          // No bidding or bidding not started - vendor already assigned, go to next step
-          const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
-          const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-          setCreatedSaga(updatedSaga);
-        }
+      // Main condition: vendor must be non-null before executing the step
+      // Vendor is assigned via Bidding (COMPLETED/ABORTED) OR manually
+      if (hasVendor(s)) {
+        // Vendor is assigned, proceed to next step with force refresh
+        const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
+        const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
+        // Force refresh to get the latest currentStep value from backend
+        const refreshed = await refreshSaga(updatedSaga.sagaId);
+        setCreatedSaga(refreshed);
       } else {
-        // No vendor assigned and no in-progress bidding, show vendor assignment modal
+        // No vendor assigned - show vendor assignment modal
         setShowVendorAssignModal(true);
       }
     } catch (err) {
@@ -416,7 +477,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [reloadRelatedBiddingSagas]);
 
   const currentStepIndex = createdSaga
     ? PROCUREMENT_SAGA_STEPS.findIndex((s) => s.code === createdSaga.currentStep)
@@ -540,7 +601,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                               command: 'SubmitForApproval',
                             };
                             const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                            setCreatedSaga(updatedSaga);
+                            // Force refresh to get the latest currentStep value from backend
+                            const refreshed = await refreshSaga(updatedSaga.sagaId);
+                            setCreatedSaga(refreshed);
                           } catch (err) {
                             setError(err instanceof Error ? err.message : `Failed to execute step: SubmitForApproval`);
                           } finally {
@@ -573,7 +636,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                                 data: { approvalData: { approved: true } },
                               };
                               const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                              setCreatedSaga(updatedSaga);
+                              // Force refresh to get the latest currentStep value from backend
+                              const refreshed = await refreshSaga(updatedSaga.sagaId);
+                              setCreatedSaga(refreshed);
                             } catch (err) {
                               setError(err instanceof Error ? err.message : `Failed to execute step: ApproveRequest`);
                             } finally {
@@ -596,7 +661,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                                 data: { approvalData: { approved: false, rejectionReason: approvalReason || 'Rejected during viewing' } },
                               };
                               const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                              setCreatedSaga(updatedSaga);
+                              // Force refresh to get the latest currentStep value from backend
+                              const refreshed = await refreshSaga(updatedSaga.sagaId);
+                              setCreatedSaga(refreshed);
                             } catch (err) {
                               setError(err instanceof Error ? err.message : `Failed to execute step: ApproveRequest`);
                             } finally {
@@ -627,19 +694,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                       <Button
                         size="sm"
                         onClick={async () => {
-                          setLoading(true);
-                          setError(null);
-                          try {
-                            const request: ExecuteProcurementSagaStepRequest = {
-                              command: 'IssuePurchaseOrder',
-                            };
-                            const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                            setCreatedSaga(updatedSaga);
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : `Failed to execute step: IssuePurchaseOrder`);
-                          } finally {
-                            setLoading(false);
-                          }
+                          await handleIssuePurchaseOrderViewMode(saga);
                         }}
                         disabled={loading}
                       >
@@ -703,7 +758,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                               command: 'ConfirmDelivery',
                             };
                             const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                            setCreatedSaga(updatedSaga);
+                            // Force refresh to get the latest currentStep value from backend
+                            const refreshed = await refreshSaga(updatedSaga.sagaId);
+                            setCreatedSaga(refreshed);
                           } catch (err) {
                             setError(err instanceof Error ? err.message : `Failed to execute step: ConfirmDelivery`);
                           } finally {
@@ -734,7 +791,9 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                               command: 'CloseProcurement',
                             };
                             const updatedSaga = await workflowApi.executeStep(saga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-                            setCreatedSaga(updatedSaga);
+                            // Force refresh to get the latest currentStep value from backend
+                            const refreshed = await refreshSaga(updatedSaga.sagaId);
+                            setCreatedSaga(refreshed);
                           } catch (err) {
                             setError(err instanceof Error ? err.message : `Failed to execute step: CloseProcurement`);
                           } finally {
@@ -1088,12 +1147,31 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                   const effectiveStep = getEffectiveStep(createdSaga);
                   if (effectiveStep === 'ApproveRequest') {
                     return (
-                      <Button
-                        onClick={() => handleExecuteStep('IssuePurchaseOrder')}
-                        disabled={loading}
-                      >
-                        Issue Purchase Order
-                      </Button>
+                      <>
+                        {/* Create Bidding button - show when no completed bidding exists */}
+                        {!hasCompletedBidding(createdSaga) && onViewBidding && (
+                          <Button
+                            variant="secondary"
+                            onClick={onViewBidding}
+                            disabled={loading}
+                          >
+                            Create Bidding
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => {
+                            // Check vendor before proceeding - show modal if not assigned
+                            if (hasVendor(createdSaga)) {
+                              handleExecuteStep('IssuePurchaseOrder');
+                            } else {
+                              setShowVendorAssignModal(true);
+                            }
+                          }}
+                          disabled={loading}
+                        >
+                          Issue Purchase Order
+                        </Button>
+                      </>
                     );
                   }
                   return null;
@@ -1291,8 +1369,39 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreateSaga} className="space-y-4">
+              {/* Saga Name - required field for deterministic ID generation */}
+              <div>
+                <Label htmlFor="sagaName">
+                  {isEditMode ? 'Procurement Name' : 'Procurement Name'}
+                  {!isEditMode && <span className="text-destructive ml-1">*</span>}
+                </Label>
+                <Input
+                  id="sagaName"
+                  value={sagaName}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSagaName(e.target.value)}
+                  placeholder="e.g., Foundation Concrete Order #1"
+                  disabled={isEditMode}
+                  readOnly={isEditMode}
+                  className={isEditMode ? 'bg-muted cursor-not-allowed' : ''}
+                  autoComplete="off"
+                />
+                {!isEditMode && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This name will be used to create a unique identifier. Special characters are supported.
+                  </p>
+                )}
+                {isEditMode && sagaName && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    🔒 This field is part of the saga identifier and cannot be changed
+                  </p>
+                )}
+                {sagaNameError && (
+                  <p className="text-xs text-destructive mt-1">{sagaNameError}</p>
+                )}
+              </div>
+
               {/* Project Selection - only show when creating new procurement, not when editing */}
-              {!saga && (
+              {!isEditMode && (
                 <ProjectSelect
                   onChange={(pId: string, _project: unknown) => {
                     setProjectId(pId);
@@ -1306,13 +1415,24 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="materialId">Material ID</Label>
+                  <Label htmlFor="materialId">
+                    Material ID
+                    {!isEditMode && <span className="text-destructive ml-1">*</span>}
+                  </Label>
                   <Input
                     id="materialId"
                     value={materialId}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaterialId(e.target.value)}
                     placeholder="uuid or material identifier"
+                    disabled={isEditMode}
+                    readOnly={isEditMode}
+                    className={isEditMode ? 'bg-muted cursor-not-allowed' : ''}
                   />
+                  {isEditMode && materialId && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      🔒 This field is part of the saga identifier and cannot be changed
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="quantity">Quantity</Label>
@@ -1339,14 +1459,20 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                 />
               </div>
 
-              {error && (
+              {!isEditMode && sagaId && (
+                <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded text-xs">
+                  <span className="font-medium">Generated Saga ID:</span> <span className="font-mono">{sagaId}</span>
+                </div>
+              )}
+
+              {error && !sagaNameError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
                   {error}
                 </div>
               )}
 
               <div className="flex gap-2">
-                <Button type="submit" disabled={loading || (!saga && !projectId)}>
+                <Button type="submit" disabled={loading || (!saga && !projectId) || (!isEditMode && (!sagaName || !projectId || !materialId))}>
                   {loading ? 'Creating...' : 'Update Procurement Saga'}
                 </Button>
                 {onCancel && (

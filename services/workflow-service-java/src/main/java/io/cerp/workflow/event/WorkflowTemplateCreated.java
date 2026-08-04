@@ -1,5 +1,6 @@
 package io.cerp.workflow.event;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,14 +28,7 @@ public class WorkflowTemplateCreated extends WorkflowEvent {
             .aggregateType("WorkflowTemplate")
             .tenantId(null)
             .userId(null)
-            .data(Map.of(
-                "templateId", templateId,
-                "code", code,
-                "name", name,
-                "phaseType", phaseType,
-                "templateVersion", templateVersion,
-                "parametersSchema", parametersSchema,
-                "requiredDocuments", requiredDocuments)));
+            .data(buildData(templateId, code, name, phaseType, templateVersion, parametersSchema, requiredDocuments)));
         this.templateId = templateId;
         this.code = code;
         this.name = name;
@@ -70,5 +64,22 @@ public class WorkflowTemplateCreated extends WorkflowEvent {
 
     public List<String> getRequiredDocuments() {
         return requiredDocuments;
+    }
+
+    private static Map<String, Object> buildData(UUID templateId, String code, String name,
+            String phaseType, Integer templateVersion, String parametersSchema, List<String> requiredDocuments) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("templateId", templateId);
+        data.put("code", code);
+        data.put("name", name);
+        data.put("phaseType", phaseType);
+        data.put("templateVersion", templateVersion);
+        if (parametersSchema != null) {
+            data.put("parametersSchema", parametersSchema);
+        }
+        if (requiredDocuments != null) {
+            data.put("requiredDocuments", requiredDocuments);
+        }
+        return data;
     }
 }

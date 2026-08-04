@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
  * WorkflowNote – A log entry attached to a workflow or step.
  */
 @Entity
-@Table(name = "workflow_notes")
+@Table(name = "workflow_notes", schema = "workflow")
 public class WorkflowNote {
 
     @Id

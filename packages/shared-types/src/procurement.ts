@@ -100,8 +100,10 @@ export const vendorPartnerSummarySchema = z.object({
 export const createProcurementSagaRequestSchema = z.object({
   sagaType: z.literal('PROCUREMENT_WORKFLOW'),
   tenantId: z.string(),
+  sagaId: z.string().optional(), // Deterministic saga ID for idempotent creation
   aggregateId: z.string().optional(),
   data: z.object({
+    sagaName: z.string().optional(), // Human-readable name for the saga
     projectId: z.string(),
     materialId: z.string().optional(),
     quantity: z.number().positive().optional(),

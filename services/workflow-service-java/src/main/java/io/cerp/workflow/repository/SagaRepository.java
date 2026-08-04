@@ -3,7 +3,6 @@ package io.cerp.workflow.repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -21,9 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <li>Step execution history</li>
  * <li>Last error information</li>
  * </ul>
+ *
+ * <p>The primary key (id) is the saga identifier (sagaId), which ensures JPA
+ * performs UPDATE instead of INSERT when saving existing saga state.
  */
 @Repository
-public interface SagaRepository extends JpaRepository<SagaEntity, UUID> {
+public interface SagaRepository extends JpaRepository<SagaEntity, String> {
 
         /**
          * Find all active (non-completed, non-aborted) sagas for a tenant.
@@ -59,11 +61,6 @@ public interface SagaRepository extends JpaRepository<SagaEntity, UUID> {
         List<Object[]> countSagasByTypeForTenant(@Param("tenantId") String tenantId);
 
         /**
-         * Find sagas by saga_id (explicit column).
-         */
-        List<SagaEntity> findBySagaId(String sagaId);
-
-        /**
          * Find sagas by user_id.
          */
         List<SagaEntity> findByUserId(String userId);
@@ -71,26 +68,31 @@ public interface SagaRepository extends JpaRepository<SagaEntity, UUID> {
         /**
          * Find sagas by project_id.
          */
-        List<SagaEntity> findByProjectId(UUID projectId);
+        List<SagaEntity> findByProjectId(String projectId);
 
         /**
-         * Find sagas by saga_id and tenant.
+         * Find saga by its ID (saga identifier).
          */
-        Optional<SagaEntity> findBySagaIdAndTenantId(String sagaId, String tenantId);
+        Optional<SagaEntity> findById(String sagaId);
 
         /**
-         * Update only the status and updatedAt fields for a saga by saga_id (external identifier).
+         * Find saga by ID and tenant.
+         */
+        Optional<SagaEntity> findByIdAndTenantId(String sagaId, String tenantId);
+
+        /**
+         * Update only the status and updatedAt fields for a saga by ID.
          * This preserves all other fields including user_id, project_id, steps_json, current_step, and data_json.
          *
-         * @param sagaId the saga_id external identifier (String, e.g. "9ac2141a-fa70-482f-9aa2-81419d5a1bdc")
-         * @param status the new status value
+         * @param sagaId    the saga ID (primary key)
+         * @param status    the new status value
          * @param updatedAt the new updated timestamp
          * @return number of rows affected
          */
         @Modifying
         @Transactional
-        @Query("UPDATE SagaEntity s SET s.status = :status, s.updatedAt = :updatedAt WHERE s.sagaId = :sagaId")
-        int updateStatusOnlyBySagaId(@Param("sagaId") String sagaId,
-                                     @Param("status") String status,
-                                     @Param("updatedAt") LocalDateTime updatedAt);
+        @Query("UPDATE SagaEntity s SET s.status = :status, s.updatedAt = :updatedAt WHERE s.id = :sagaId")
+        int updateStatusOnlyById(@Param("sagaId") String sagaId,
+                                 @Param("status") String status,
+                                 @Param("updatedAt") LocalDateTime updatedAt);
 }

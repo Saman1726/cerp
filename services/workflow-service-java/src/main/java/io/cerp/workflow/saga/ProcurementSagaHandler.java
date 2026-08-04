@@ -253,6 +253,12 @@ public class ProcurementSagaHandler implements SagaHandler {
     }
 
     private SagaContext executeIssuePO(SagaContext context, Map<String, Object> payload) throws Exception {
+        // Validate that a vendor is assigned before allowing PO issuance
+        Object vendorIdObj = context.getData().get("vendorId");
+        if (vendorIdObj == null || (vendorIdObj instanceof String s && s.isBlank())) {
+            throw new SagaException("VENDOR_REQUIRED", "Vendor must be assigned before issuing a purchase order. Please assign a vendor via the vendor assignment modal or complete/abort the related bidding.", Map.of("sagaId", context.getSagaId().toString()));
+        }
+
         @SuppressWarnings("unchecked")
         Map<String, Object> poData = (Map<String, Object>) context.getData().get("poData");
 
