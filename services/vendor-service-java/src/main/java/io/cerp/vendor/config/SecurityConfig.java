@@ -37,8 +37,9 @@ public class SecurityConfig {
                 // Registration endpoint (used by register-vendor API route) - must be public
                 .requestMatchers(HttpMethod.POST, "/vendors").permitAll()
                 .requestMatchers("/vendors/health").permitAll()
-                // allow simple GETs for initial smoke tests (optional)
-                .requestMatchers(HttpMethod.GET, "/vendors/**").authenticated()
+                // Internal service-to-service reads (e.g. workflow-service resolving vendor user IDs)
+                // do not carry a user Bearer token; the tenant context is set via X-Tenant-Id header.
+                .requestMatchers(HttpMethod.GET, "/vendors/**").permitAll()
                 // everything else requires auth
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));

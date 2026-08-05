@@ -90,15 +90,18 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         log.info("Saga started: sagaId={}, type={}, tenantId={}", sagaId, sagaType, tenantId);
 
-        // Publish saga started event
-        eventPublisher.publish(WorkflowEvent.builder()
-            .eventType(sagaType + ".SAGA_STARTED")
-            .sagaType(sagaType)
-            .sagaId(sagaId.toString())
-            .tenantId(tenantId)
-            .userId(context.getUserId())
-            .data(context.getData())
-            .build());
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(sagaType + ".SAGA_STARTED")
+                .sagaType(sagaType)
+                .sagaId(sagaId.toString())
+                .tenantId(tenantId)
+                .userId(context.getUserId())
+                .data(context.getData())
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish SAGA_STARTED event: sagaId={}", sagaId, e);
+        }
 
         return sagaId;
     }
@@ -123,27 +126,41 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         SagaContext context = createContextFromState(state);
 
         try {
-            // Execute the step
+            // Execute the step — only business logic exceptions should trigger retry/abort
             context = handler.execute(context, command, payload);
 
             // Determine next step
             String nextStep = handler.getNextStep(context, command);
 
-            // Update saga state — pass context so the updated currentStep is captured
-            updateSagaState(state, command, nextStep, null, context);
+            // Persist state — infrastructure failure here must not be reported as a saga business error.
+            // If the DB write fails we log and continue; the step already succeeded.
+            try {
+                updateSagaState(state, command, nextStep, null, context);
+            } catch (Exception persistEx) {
+                log.error("Failed to persist saga state after step (step still succeeded): sagaId={}, step={}", sagaId, command, persistEx);
+            }
 
             String stepTenantId = TenantContext.get().map(Object::toString)
                 .orElse(state.getTenantId());
 
-            // Publish step completed event
-            eventPublisher.publish(WorkflowEvent.builder()
-                .eventType(state.getSagaType() + ".STEP_COMPLETED")
-                .sagaType(state.getSagaType())
-                .sagaId(sagaId.toString())
-                .tenantId(stepTenantId)
-                .userId(context.getUserId())
-                .data(Map.of("step", command, "nextStep", nextStep))
-                .build());
+            // Build step data: Map.of() does not allow null values, so use HashMap when nextStep can be null
+            Map<String, Object> stepEventData = new HashMap<>();
+            stepEventData.put("step", command);
+            stepEventData.put("nextStep", nextStep);
+
+            // Publish step completed event — infrastructure failure must not abort a successful step.
+            try {
+                eventPublisher.publish(WorkflowEvent.builder()
+                    .eventType(state.getSagaType() + ".STEP_COMPLETED")
+                    .sagaType(state.getSagaType())
+                    .sagaId(sagaId.toString())
+                    .tenantId(stepTenantId)
+                    .userId(context.getUserId())
+                    .data(stepEventData)
+                    .build());
+            } catch (Exception publishEx) {
+                log.warn("Failed to publish step completed event (step still succeeded): sagaId={}, step={}", sagaId, command, publishEx);
+            }
 
             log.info("Saga step completed: sagaId={}, step={}, nextStep={}", sagaId, command, nextStep);
 
@@ -158,7 +175,13 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             handleStepFailure(state, command, e);
             throw new RuntimeException("Saga step failed: " + e.getMessage(), e);
         } catch (Exception e) {
-            SagaException sagaEx = new SagaException("EXECUTION_ERROR", e.getMessage(), Map.of("step", command));
+            log.error("Unhandled exception in saga step: sagaId={}, step={}, error={}", sagaId, command, e.getMessage(), e);
+            Map<String, Object> errorDetails = new HashMap<>();
+            errorDetails.put("step", command);
+            if (e.toString() != null) {
+                errorDetails.put("stackTrace", e.toString());
+            }
+            SagaException sagaEx = new SagaException("EXECUTION_ERROR", e.getMessage(), errorDetails);
             handleStepFailure(state, command, sagaEx);
             throw new RuntimeException("Saga step failed: " + e.getMessage(), e);
         }
@@ -242,14 +265,18 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         log.info("Saga paused: sagaId={}", sagaId);
 
-        eventPublisher.publish(WorkflowEvent.builder()
-            .eventType(state.getSagaType() + ".SAGA_PAUSED")
-            .sagaType(state.getSagaType())
-            .sagaId(sagaId.toString())
-            .tenantId(state.getTenantId())
-            .userId(userId)
-            .data(pauseData)
-            .build());
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(state.getSagaType() + ".SAGA_PAUSED")
+                .sagaType(state.getSagaType())
+                .sagaId(sagaId.toString())
+                .tenantId(state.getTenantId())
+                .userId(userId)
+                .data(pauseData)
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish SAGA_PAUSED event: sagaId={}", sagaId, e);
+        }
     }
 
     @Override
@@ -296,14 +323,18 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         log.info("Saga resumed: sagaId={}", sagaId);
 
-        eventPublisher.publish(WorkflowEvent.builder()
-            .eventType(state.getSagaType() + ".SAGA_RESUMED")
-            .sagaType(state.getSagaType())
-            .sagaId(sagaId.toString())
-            .tenantId(state.getTenantId())
-            .userId(userId)
-            .data(resumeData)
-            .build());
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(state.getSagaType() + ".SAGA_RESUMED")
+                .sagaType(state.getSagaType())
+                .sagaId(sagaId.toString())
+                .tenantId(state.getTenantId())
+                .userId(userId)
+                .data(resumeData)
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish SAGA_RESUMED event: sagaId={}", sagaId, e);
+        }
     }
 
     @Override
@@ -332,13 +363,17 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
         log.info("Saga completed: sagaId={}", sagaId);
 
-        eventPublisher.publish(WorkflowEvent.builder()
-            .eventType(state.getSagaType() + ".SAGA_COMPLETED")
-            .sagaType(state.getSagaType())
-            .sagaId(sagaId.toString())
-            .tenantId(state.getTenantId())
-            .data(result)
-            .build());
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(state.getSagaType() + ".SAGA_COMPLETED")
+                .sagaType(state.getSagaType())
+                .sagaId(sagaId.toString())
+                .tenantId(state.getTenantId())
+                .data(result)
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish SAGA_COMPLETED event: sagaId={}", sagaId, e);
+        }
     }
 
     @Override
@@ -370,13 +405,20 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         // Attempt to compensate all completed steps in reverse order
         compensateCompletedSteps(newState);
 
-        eventPublisher.publish(WorkflowEvent.builder()
-            .eventType(state.getSagaType() + ".SAGA_ABORTED")
-            .sagaType(state.getSagaType())
-            .sagaId(sagaId.toString())
-            .tenantId(state.getTenantId())
-            .data(Map.of("error", error.getErrorCode(), "message", error.getMessage()))
-            .build());
+        Map<String, Object> abortData = new HashMap<>();
+        abortData.put("error", error.getErrorCode());
+        abortData.put("message", error.getMessage());
+        try {
+            eventPublisher.publish(WorkflowEvent.builder()
+                .eventType(state.getSagaType() + ".SAGA_ABORTED")
+                .sagaType(state.getSagaType())
+                .sagaId(sagaId.toString())
+                .tenantId(state.getTenantId())
+                .data(abortData)
+                .build());
+        } catch (Exception e) {
+            log.warn("Failed to publish SAGA_ABORTED event: sagaId={}", sagaId, e);
+        }
     }
 
     @Override
@@ -690,10 +732,12 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     }
 
     private SagaContext createContextFromState(SagaState state) {
-        Map<String, Object> data = new HashMap<>();
+        // Start with a copy of all persisted data from state (includes vendorIds, inviteConfig, etc.)
+        Map<String, Object> data = state.getData() != null ? new HashMap<>(state.getData()) : new HashMap<>();
+        // Override with latest runtime values
         data.put("sagaStatus", state.getStatus());
         data.put("currentStep", state.getCurrentStep());
-        // Propagate userId and projectId from state data to saga context
+        // Ensure userId and projectId are present
         if (state.getData() != null) {
             Object userIdObj = state.getData().get("userId");
             if (userIdObj != null) {
@@ -728,7 +772,11 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             ? context.getCurrentStep()
             : state.getCurrentStep();
 
-        // Preserve the original data map (including userId, projectId) for toEntity extraction
+        // Use post-execution context data so handler output (e.g. tenderId) is persisted.
+        // context.getData() is a superset of state.getData() — userId and projectId are not lost.
+        Map<String, Object> persistedData = (context != null && context.getData() != null)
+            ? context.getData()
+            : state.getData();
         SagaState newState = new SagaState(
             state.getSagaId(),
             state.getSagaType(),
@@ -740,7 +788,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             error,
             state.getCreatedAt(),
             Instant.now(),
-            state.getData()); // Preserve original data for userId/projectId extraction
+            persistedData);
 
         activeSagas.put(newState.getSagaId(), newState);
         sagaRepository.save(toEntity(newState));

@@ -116,6 +116,27 @@ public class IdentityPermissionClient {
     }
 
     /**
+     * Resolve a user's UUID from their email address.
+     * Used to convert legacy email-based sub claims in JWT tokens to proper UUIDs.
+     * Returns null if not found or if the identity service is unavailable.
+     */
+    public UUID resolveUserIdByEmail(String email) {
+        try {
+            Map<String, Object> response = restClientNoRetry.get()
+                .uri("/api/v1/users?email={email}", email)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+            if (response != null && response.get("id") instanceof String idStr) {
+                return UUID.fromString(idStr);
+            }
+            log.warn("No id field in identity service response for email: {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to resolve userId by email {}: {}", email, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Check if a user has ANY project write permission (for saga creation).
      */
     public boolean hasAnyProjectWritePermission(UUID userId) {

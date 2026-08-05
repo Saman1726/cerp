@@ -113,7 +113,7 @@ public class UserNotificationController {
     }
 
     private UUID extractUserId() {
-        String userIdStr = TenantContext.getTenantId();
+        String userIdStr = TenantContext.getUserId();
         if (userIdStr != null && userIdStr.matches("[0-9a-fA-F-]{36}")) {
             return UUID.fromString(userIdStr);
         }

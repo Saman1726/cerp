@@ -22,11 +22,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.service.EventPublisher;
 import io.cerp.workflow.service.NotificationServiceClient;
+import io.cerp.workflow.service.VendorServiceClient;
 import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 import io.cerp.workflow.domain.bidding.VendorBidSubmission;
+
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 class BiddingSagaHandlerTest {
 
@@ -35,6 +40,9 @@ class BiddingSagaHandlerTest {
     private VendorBidSubmissionService bidSubmissionService;
     private BidWalletService bidWalletService;
     private NotificationServiceClient notificationServiceClient;
+    private VendorServiceClient vendorServiceClient;
+    private IdentityPermissionClient identityPermissionClient;
+    private org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate;
 
     @BeforeEach
     void setUp() {
@@ -42,7 +50,17 @@ class BiddingSagaHandlerTest {
         bidSubmissionService = mock(VendorBidSubmissionService.class);
         bidWalletService = mock(BidWalletService.class);
         notificationServiceClient = mock(NotificationServiceClient.class);
-        handler = new BiddingSagaHandler(eventPublisher, bidSubmissionService, bidWalletService, notificationServiceClient);
+        vendorServiceClient = mock(VendorServiceClient.class);
+        identityPermissionClient = mock(IdentityPermissionClient.class);
+        kafkaTemplate = mock(org.springframework.kafka.core.KafkaTemplate.class);
+        handler = new BiddingSagaHandler(
+                eventPublisher,
+                bidSubmissionService,
+                bidWalletService,
+                notificationServiceClient,
+                vendorServiceClient,
+                identityPermissionClient,
+                kafkaTemplate);
     }
 
     @Test

@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { extractSessionUser } from '../../workflows/utils';
 
-const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service-java:8082';
+const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8091';
 
-function getHeaders(req: NextRequest): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const tenantId = req.headers.get('X-Tenant-Id') || 'default';
-  headers['X-Tenant-Id'] = tenantId;
+async function getHeaders(req: NextRequest): Promise<Record<string, string>> {
+  const { userId, tenantId } = await extractSessionUser();
+  console.log('[notifications] session resolved: userId=%s, tenantId=%s', userId, tenantId);
+  const headers: Record<string, string> = {
+    'X-Tenant-Id': tenantId,
+  };
+  if (userId) {
+    headers['X-User-Id'] = userId;
+  }
   return headers;
 }
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
-  const tenantId = req.headers.get('X-Tenant-Id') || 'default';
   const status = url.searchParams.get('status') || undefined;
   const page = url.searchParams.get('page') || '0';
   const size = url.searchParams.get('size') || '20';
@@ -20,14 +25,10 @@ export async function GET(req: NextRequest) {
   if (status) params.set('status', status);
 
   try {
+    const headers = await getHeaders(req);
     const response = await fetch(
       `${NOTIFICATION_SERVICE_URL}/api/notifications/me?${params}`,
-      {
-        method: 'GET',
-        headers: { 'X-Tenant-Id': tenantId },
-        // Don't forward cookies/authorization to avoid CORS issues
-        // The notification service uses its own auth
-      }
+      { method: 'GET', headers }
     );
 
     if (!response.ok) {
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const url = new URL(req.url);
   const pathSegments = url.pathname.split('/').filter(Boolean); // ['api', 'notifications', 'me', ...]
-  
+
   // Extract notification ID from path: /api/notifications/me/{id}/ack, /api/notifications/me/{id}/action
   const notificationId = pathSegments[3];
   const action = pathSegments[4]; // 'ack' or 'action'
@@ -66,9 +67,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const tenantId = req.headers.get('X-Tenant-Id') || 'default';
 
   try {
+    const headers = await getHeaders(req);
+    headers['Content-Type'] = 'application/json';
+
     let endpoint: string;
     let method: string;
 
@@ -87,10 +90,7 @@ export async function POST(req: NextRequest) {
 
     const response = await fetch(endpoint, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Tenant-Id': tenantId,
-      },
+      headers,
       body: action === 'action' ? JSON.stringify(body) : undefined,
     });
 

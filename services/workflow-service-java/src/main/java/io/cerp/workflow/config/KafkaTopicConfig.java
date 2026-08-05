@@ -49,4 +49,7 @@ public class KafkaTopicConfig {
     public static final String TOPIC_STEP_TEMPLATE_ADDED = "collaboration.workflow.step.template.added.v1";
     public static final String TOPIC_STEP_TEMPLATE_UPDATED = "collaboration.workflow.step.template.updated.v1";
     public static final String TOPIC_STEP_TEMPLATE_REMOVED = "collaboration.workflow.step.template.removed.v1";
+
+    /** Marketplace bidding saga events */
+    public static final String TOPIC_VENDORS_INVITED = "collaboration.bidding.vendors.invited.v1";
 }

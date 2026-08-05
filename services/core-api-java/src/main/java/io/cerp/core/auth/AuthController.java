@@ -45,17 +45,14 @@ public class AuthController {
                 IdentityLoginResponse.class);
 
             if (resp.getStatusCode() == HttpStatus.OK && resp.getBody() != null) {
+                // Pass through identity-service tokens directly — they already contain UUID sub and tenantId
+                String accessToken = resp.getBody().accessToken();
+                String refreshToken = resp.getBody().refreshToken();
                 IdentityLoginResponse.IdentityUser identityUser = resp.getBody().user();
                 List<String> roles = identityUser.roles();
                 String primaryRole = roles != null && !roles.isEmpty() ? roles.get(0) : "user";
-                String userId = identityUser.id();
-                String email = identityUser.email();
 
-                long nowSec = Instant.now().getEpochSecond();
-                String accessToken = makeDevJwt(email, primaryRole, nowSec + 60L * 30L);
-                String refreshToken = makeDevJwt(email, primaryRole, nowSec + 60L * 60L * 24L * 7L);
-
-                return new LoginResponse(accessToken, refreshToken, new AuthUser(userId, email, primaryRole));
+                return new LoginResponse(accessToken, refreshToken, new AuthUser(identityUser.id(), identityUser.email(), primaryRole));
             }
         } catch (Exception e) {
             // identity-service not available or error
@@ -74,27 +71,28 @@ public class AuthController {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
         }
         String sub = extractJsonString(payloadJson, "sub");
+        // Support both old ("role") and new ("roles") token formats
         String role = extractJsonString(payloadJson, "role");
+        if (role == null) role = extractJsonString(payloadJson, "roles");
+        String tenantId = extractJsonString(payloadJson, "tenantId");
         if (sub == null || role == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
         }
 
         long nowSec = Instant.now().getEpochSecond();
-        String newAccess = makeDevJwt(sub, role, nowSec + 60L * 30L);
-        String newRefresh = makeDevJwt(sub, role, nowSec + 60L * 60L * 24L * 7L);
+        String newAccess = makeDevJwt(sub, role, tenantId, nowSec + 60L * 30L);
+        String newRefresh = makeDevJwt(sub, role, tenantId, nowSec + 60L * 60L * 24L * 7L);
 
-        // User object is not used by the refresh middleware, but we return a stable shape.
-        // sub is now always the email address since we fixed the login endpoint.
         AuthUser user = new AuthUser(sub, sub, role);
         return new LoginResponse(newAccess, newRefresh, user);
     }
 
     // ----- Helper: extremely simple unsigned JWT maker/decoder for dev -----
 
-    private static String makeDevJwt(String sub, String role, long expSeconds) {
+    private static String makeDevJwt(String sub, String role, String tenantId, long expSeconds) {
         String header = base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
-        // Note: usernames/roles are simple alphanumerics in seed data; minimal escaping suffices here.
-        String payload = base64Url(("{\"sub\":\"" + sub + "\",\"role\":\"" + role + "\",\"exp\":" + expSeconds + "}").getBytes(StandardCharsets.UTF_8));
+        String tenantPart = tenantId != null ? ",\"tenantId\":\"" + tenantId + "\"" : "";
+        String payload = base64Url(("{\"sub\":\"" + sub + "\",\"role\":\"" + role + "\"" + tenantPart + ",\"exp\":" + expSeconds + "}").getBytes(StandardCharsets.UTF_8));
         return header + "." + payload + ".dev";
     }
 

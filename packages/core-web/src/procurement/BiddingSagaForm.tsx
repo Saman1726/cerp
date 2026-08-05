@@ -123,6 +123,12 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
   ]);
   const [evaluationNotes, setEvaluationNotes] = useState('');
 
+  // Fetch fresh saga data
+  const refreshSaga = async (sagaId: string): Promise<Saga> => {
+    const refreshed = await workflowApi.getSaga(sagaId);
+    return refreshed;
+  };
+
   // Load related procurement saga reference if provided
   const [relatedProcurementSaga, setRelatedProcurementSaga] = useState<Saga | null>(null);
 
@@ -144,6 +150,16 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
       loadProcurementSaga();
     }
   }, [initialProcurementSagaId, saga]);
+
+  // Helper: extract vendor IDs from any saga object (check both field names)
+  const getVendorIdsFromSaga = (s: Saga | null | undefined): string[] => {
+    if (!s) return [];
+    const vendorIds = s.data?.vendorIds as string[] | undefined;
+    const invitedVendorIds = s.data?.invitedVendorIds as string[] | undefined;
+    if (vendorIds && vendorIds.length > 0) return vendorIds;
+    if (invitedVendorIds && invitedVendorIds.length > 0) return invitedVendorIds;
+    return [];
+  };
 
   // Helper: get effective current step (treat null/undefined as first step for legacy sagas)
   const getEffectiveStep = (s: Saga | null | undefined): string => {
@@ -181,25 +197,11 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
          // Always include description (even if empty string) to ensure it's saved
          biddingData.description = description;
 
-        const updatedSaga = await workflowApi.updateSaga(saga.sagaId, biddingData);
-        // Parse the response to build a Saga-like object
-        const body = updatedSaga as Record<string, unknown>;
-        const contextData = body.context as Record<string, unknown> | undefined;
-        const mergedData = { ...saga.data, ...contextData };
-        const sagaResult: Saga = {
-          sagaId: saga.sagaId,
-          sagaType: (body.sagaType as string) || 'BIDDING_WORKFLOW',
-          sagaTypeName: (body.sagaType as string) || 'BIDDING_WORKFLOW',
-          status: (body.status as Saga['status']) || 'RUNNING',
-          currentStep: (contextData?.currentStep as string) || saga.currentStep,
-          tenantId: saga.tenantId,
-          data: mergedData,
-          steps: saga.steps || [],
-          createdAt: saga.createdAt,
-          updatedAt: new Date().toISOString(),
-        };
-        setCreatedSaga(sagaResult);
-        onSuccess?.(sagaResult);
+        // Save the updated data first, then force refresh to get the latest state from backend
+        await workflowApi.updateSaga(saga.sagaId, biddingData);
+        const refreshed = await refreshSaga(saga.sagaId);
+        setCreatedSaga(refreshed);
+        onSuccess?.(refreshed);
       } else {
         const biddingData: Record<string, unknown> = {
           biddingMode,
@@ -264,7 +266,9 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
       };
 
       const updatedSaga = await workflowApi.executeStep(createdSaga.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
-      setCreatedSaga(updatedSaga);
+      // Force refresh to get the latest currentStep value from backend
+      const refreshed = await refreshSaga(updatedSaga.sagaId);
+      setCreatedSaga(refreshed);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to execute step: ${command}`);
     } finally {
@@ -377,7 +381,9 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
         ...(data ? { data } : {}),
       };
       const updatedSaga = await workflowApi.executeStep(saga.sagaId, request);
-      setCreatedSaga(updatedSaga);
+      // Force refresh to get the latest currentStep value from backend
+      const refreshed = await refreshSaga(updatedSaga.sagaId);
+      setCreatedSaga(refreshed);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to execute step: ${command}`);
     } finally {
@@ -492,21 +498,31 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
 
                   // Tender.CreateAndOpen -> Invite Vendors
                   if (effectiveStep === 'Tender.CreateAndOpen') {
+                    // Use the same extraction logic as the "Invited Vendors" display section below
+                    // This ensures consistency between what is displayed and what is used for the action
                     const vendorIds = (saga.data?.invitedVendorIds as string[]) || (saga.data?.vendorIds as string[]) || [];
                     const inviteConfig = saga.data?.inviteConfig as Record<string, unknown> | undefined;
+                    const hasVendors = vendorIds.length > 0;
                     return (
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          await handleViewModeExecuteStep('Tender.InviteVendors', {
-                            vendorIds,
-                            inviteConfig,
-                          });
-                        }}
-                        disabled={loading}
-                      >
-                        Invite Vendors
-                      </Button>
+                      <>
+                        {!hasVendors && (
+                          <div className="text-xs text-amber-600 mb-2">
+                            No vendors selected. Please assign vendors to the bidding saga first before inviting them.
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            await handleViewModeExecuteStep('Tender.InviteVendors', {
+                              vendorIds,
+                              inviteConfig,
+                            });
+                          }}
+                          disabled={loading || !hasVendors}
+                        >
+                          Invite Vendors
+                        </Button>
+                      </>
                     );
                   }
 
@@ -698,15 +714,29 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
             {createdSaga.status === 'RUNNING' && (
               <div className="space-y-4 mt-4">
                 {effectiveStep === 'Tender.CreateAndOpen' && (
-                  <Button
-                    onClick={() => handleExecuteStep('Tender.InviteVendors', {
-                      vendorIds: (createdSaga.data?.invitedVendorIds as string[]) || [],
-                      inviteConfig: createdSaga.data?.inviteConfig,
-                    })}
-                    disabled={loading}
-                  >
-                    Invite Vendors
-                  </Button>
+                  (() => {
+                    // Extract vendor IDs from createdSaga data (already persisted in database)
+                    const vendorIds = getVendorIdsFromSaga(createdSaga);
+                    const hasVendors = vendorIds.length > 0;
+                    return (
+                   <>
+                      {!hasVendors && (
+                        <div className="text-xs text-amber-600 mb-2">
+                          No vendors selected. Please assign vendors to the bidding saga first before inviting them.
+                        </div>
+                      )}
+                      <Button
+                        onClick={() => handleExecuteStep('Tender.InviteVendors', {
+                          vendorIds,
+                          inviteConfig: createdSaga.data?.inviteConfig,
+                        })}
+                        disabled={loading || !hasVendors}
+                      >
+                        Invite Vendors
+                      </Button>
+                    </>
+                    );
+                  })()
                 )}
 
                 {effectiveStep === 'Tender.InviteVendors' && (

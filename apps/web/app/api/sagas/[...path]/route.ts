@@ -1,56 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getBackendHeaders } from '../../workflows/utils';
-
-/**
- * Default tenant ID used when neither the session cookies nor the JWT contain a tenantId.
- * Matches the vendor tenant default from AuthController.makeDevJwt.
- */
-const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-
-/**
- * Extract user info from session cookies (x-user-id, x-tenant-id).
- * Falls back to JWT payload decoding, then to DEFAULT_TENANT_ID.
- */
-async function extractUserFromToken(): Promise<{ userId: string | null; tenantId: string }> {
-  const { cookies } = await import('next/headers');
-  const cookieStore = await cookies();
-
-  // Priority 1: Dedicated session cookies (set during login)
-  const userIdCookie = cookieStore.get('x-user-id')?.value;
-  const tenantIdCookie = cookieStore.get('x-tenant-id')?.value;
-  if (userIdCookie && tenantIdCookie) {
-    return {
-      userId: userIdCookie || null,
-      tenantId: tenantIdCookie || DEFAULT_TENANT_ID,
-    };
-  }
-
-  // Priority 2: JWT token payload (for backward compatibility with existing sessions)
-  const token = cookieStore.get('cerp_session')?.value;
-  if (!token) return { userId: userIdCookie || null, tenantId: tenantIdCookie || DEFAULT_TENANT_ID };
-
-  try {
-    const parts = token.split('.');
-    if (parts.length === 3 && parts[1]) {
-      const payload = parts[1];
-      const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-      const json = Buffer.from(base64, 'base64').toString('utf-8');
-      const jwtPayload = JSON.parse(json) as Record<string, unknown>;
-
-      const userId = jwtPayload.sub && typeof jwtPayload.sub === 'string' ? jwtPayload.sub : null;
-      let tenantId = tenantIdCookie || DEFAULT_TENANT_ID;
-      if (jwtPayload.tenantId && typeof jwtPayload.tenantId === 'string' && jwtPayload.tenantId.trim()) {
-        tenantId = jwtPayload.tenantId;
-      }
-      return { userId, tenantId };
-    }
-  } catch {
-    // JWT decode failed, fall through to defaults
-  }
-
-  return { userId: userIdCookie || null, tenantId: tenantIdCookie || DEFAULT_TENANT_ID };
-}
+import { getBackendHeaders, extractSessionUser } from '../../workflows/utils';
 
 /**
  * Proxy /api/sagas/* requests to the workflow service.
@@ -114,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Inject userId and tenantId into the request body for saga creation.
     // The backend SagaContext expects userId and projectId inside `data`,
     // and tenantId at the top level of StartSagaRequest.
-    const { userId, tenantId } = await extractUserFromToken();
+    const { userId, tenantId } = await extractSessionUser();
 
     // Always override tenantId (the form passes tenantId="" which is falsy)
     if (body && typeof body === 'object') {

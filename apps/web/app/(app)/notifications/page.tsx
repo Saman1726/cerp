@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@cerp/core-web/lib/session';
+import { extractSessionUser } from '../../api/workflows/utils';
 import { NotificationsClient } from './NotificationsClient';
 
 export default async function NotificationsPage() {
@@ -8,9 +9,7 @@ export default async function NotificationsPage() {
     redirect('/login');
   }
 
-  // Extract user/tenant from session token claims
-  const tenantId = 'default';
-  const userId = 'default';
+  const { userId, tenantId } = await extractSessionUser();
 
-  return <NotificationsClient tenantId={tenantId} userId={userId} />;
+  return <NotificationsClient tenantId={tenantId} userId={userId ?? ''} />;
 }

@@ -1,6 +1,7 @@
 package io.cerp.workflow.saga;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +13,11 @@ import org.springframework.stereotype.Component;
 
 import io.cerp.workflow.domain.bidding.BidWallet;
 import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.config.KafkaTopicConfig;
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.service.EventPublisher;
 import io.cerp.workflow.service.NotificationServiceClient;
+import io.cerp.workflow.service.VendorServiceClient;
 import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 
@@ -67,13 +71,24 @@ public class BiddingSagaHandler implements SagaHandler {
     private final VendorBidSubmissionService bidSubmissionService;
     private final BidWalletService bidWalletService;
     private final NotificationServiceClient notificationServiceClient;
+    private final VendorServiceClient vendorServiceClient;
+    private final IdentityPermissionClient identityPermissionClient;
+    private final org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate;
 
-    public BiddingSagaHandler(final EventPublisher eventPublisher, VendorBidSubmissionService bidSubmissionService,
-            BidWalletService bidWalletService, NotificationServiceClient notificationServiceClient) {
+    public BiddingSagaHandler(final EventPublisher eventPublisher,
+            VendorBidSubmissionService bidSubmissionService,
+            BidWalletService bidWalletService,
+            NotificationServiceClient notificationServiceClient,
+            VendorServiceClient vendorServiceClient,
+            IdentityPermissionClient identityPermissionClient,
+            org.springframework.kafka.core.KafkaTemplate<String, Object> kafkaTemplate) {
         this.eventPublisher = eventPublisher;
         this.bidSubmissionService = bidSubmissionService;
         this.bidWalletService = bidWalletService;
         this.notificationServiceClient = notificationServiceClient;
+        this.vendorServiceClient = vendorServiceClient;
+        this.identityPermissionClient = identityPermissionClient;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     @Override
@@ -188,18 +203,42 @@ public class BiddingSagaHandler implements SagaHandler {
             throws SagaException {
         final UUID sagaId = context.getSagaId();
         final String tenantId = context.getTenantId();
-        final String tenderId = (String) context.getData().get("tenderId");
+        String tenderId = (String) context.getData().get("tenderId");
+        if (tenderId == null) {
+            tenderId = UUID.randomUUID().toString();
+            context.getData().put("tenderId", tenderId);
+            log.info("Auto-generated tenderId for saga {}: {}", sagaId, tenderId);
+        }
 
         @SuppressWarnings("unchecked")
         final Map<String, Object> inviteConfig = (payload != null && payload.containsKey("inviteConfig"))
                 ? (Map<String, Object>) payload.get("inviteConfig")
                 : null;
 
-        final List<String> invitedVendorIds = (payload != null && payload.containsKey("vendorIds"))
-                ? (List<String>) payload.get("vendorIds")
-                : List.of();
+        // Try to get vendorIds from payload first, then fall back to saga context (persisted data)
+        final List<String> invitedVendorIds;
+        if (payload != null && payload.containsKey("vendorIds")) {
+            final Object v = payload.get("vendorIds");
+            invitedVendorIds = (v instanceof List<?> list) ? new ArrayList<>((List<String>) list) : List.of();
+        } else {
+            // Fall back to persisted vendor IDs stored in saga context
+            Object vendorIdsFromContext = context.getData().get("invitedVendorIds");
+            if (vendorIdsFromContext == null) {
+                vendorIdsFromContext = context.getData().get("vendorIds");
+            }
+            invitedVendorIds = (vendorIdsFromContext instanceof List<?> list)
+                    ? new ArrayList<>((List<String>) list)
+                    : List.of();
+        }
 
         final int invitedCount = invitedVendorIds.size();
+
+        // Validate that at least one vendor is provided
+        if (invitedVendorIds.isEmpty()) {
+            throw new SagaException("NO_VENDERS_TO_INVITE",
+                "At least one vendor must be invited. No vendors provided in this request.",
+                Map.of("vendorIds", List.of()));
+        }
 
         // Safely extract expectedBids with null handling
         Integer expectedBidsVal = invitedCount;
@@ -230,12 +269,52 @@ public class BiddingSagaHandler implements SagaHandler {
 
         context.getData().putAll(inviteData);
 
-        // Emit VendorsInvited event
+        // Emit VendorsInvited event (for outbox/event sourcing)
         publishEvent(sagaId, tenantId, "VendorsInvited", inviteData);
+
+        // Publish Kafka event for vendor invitation notifications
+        publishVendorInvitedNotificationEvent(sagaId, tenantId, tenderId, invitedVendorIds, inviteConfig, context.getData());
 
         log.info("Vendors invited for tender: tenderId={}, invitedCount={}, expectedBids={}",
             tenderId, invitedCount, expectedBidsVal);
         return context;
+    }
+
+    /**
+     * Publish a Kafka event to trigger vendor invitation notifications.
+     * This event is consumed by VendorsInvitedEventConsumer which sends notifications
+     * to each invited vendor and to the project owner.
+     */
+    private void publishVendorInvitedNotificationEvent(
+            final UUID sagaId,
+            final String tenantId,
+            final String tenderId,
+            final List<String> vendorIds,
+            final Map<String, Object> inviteConfig,
+            final Map<String, Object> contextData) {
+
+        try {
+            final Map<String, Object> eventData = new HashMap<>();
+            eventData.put("tenderId", tenderId);
+            eventData.put("sagaId", sagaId.toString());
+            eventData.put("tenantId", tenantId);
+            eventData.put("bidderUserId", resolveToUuid(contextData.get("userId")));
+            eventData.put("projectId", contextData.get("projectId"));
+            eventData.put("vendorIds", vendorIds);
+            eventData.put("bidDeadline", inviteConfig != null ? inviteConfig.get("bidDeadline") : null);
+            eventData.put("inviteConfig", inviteConfig != null ? inviteConfig : new HashMap<>());
+
+            kafkaTemplate.send(
+                    KafkaTopicConfig.TOPIC_VENDORS_INVITED,
+                    tenderId,
+                    eventData);
+
+            log.info("Published vendor invitation notification event: tenderId={}, vendorCount={}",
+                    tenderId, vendorIds.size());
+        } catch (Exception e) {
+            log.error("Failed to publish vendor invitation notification event: tenderId={}", tenderId, e);
+            // Don't fail the saga if notification event publishing fails
+        }
     }
 
     private SagaContext executeCollectBids(final SagaContext context, final Map<String, Object> payload)
@@ -477,7 +556,7 @@ public class BiddingSagaHandler implements SagaHandler {
     private String getNextStepCode(final String executedStep) {
         return switch (executedStep) {
             case CREATE_TENDER -> INVITE_VENDORS;
-            case INVITE_VENDORS -> null; // pause here; advance to CollectBids via Resume once bid deadline passes
+            case INVITE_VENDORS -> COLLECT_BIDS;
             case COLLECT_BIDS -> EVALUATE_BIDS;
             case EVALUATE_BIDS -> AWARD_TENDER;
             case AWARD_TENDER -> null; // Saga complete
@@ -555,6 +634,31 @@ public class BiddingSagaHandler implements SagaHandler {
         }
 
         return context;
+    }
+
+    // ── Helpers ──
+
+    /**
+     * Convert a raw userId value to UUID. If the value is already a UUID string it is parsed
+     * directly. If it looks like an email address (legacy JWT sub claim) the identity service
+     * is queried to resolve the corresponding account UUID. Returns null when resolution fails.
+     */
+    private UUID resolveToUuid(Object rawUserId) {
+        if (rawUserId == null) return null;
+        final String s = rawUserId.toString();
+        try {
+            return UUID.fromString(s);
+        } catch (IllegalArgumentException e) {
+            if (s.contains("@")) {
+                final UUID resolved = identityPermissionClient.resolveUserIdByEmail(s);
+                if (resolved != null) {
+                    log.debug("Resolved email {} to userId {}", s, resolved);
+                    return resolved;
+                }
+                log.warn("Could not resolve email {} to a userId — bidderUserId will be omitted", s);
+            }
+            return null;
+        }
     }
 
     // ── Event Publishing ──

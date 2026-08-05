@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
 
 const SESSION_COOKIE = 'cerp_session';
 
@@ -51,4 +52,77 @@ export function getBackendHeaders(request: NextRequest): HeadersInit {
   }
 
   return headers;
+}
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3 || !parts[1]) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(Buffer.from(base64, 'base64').toString('utf-8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveUserIdByEmail(email: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${IDENTITY_SERVICE_URL}/api/v1/users?email=${encodeURIComponent(email)}`,
+      { cache: 'no-store' },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    return typeof data.id === 'string' ? data.id : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract the authenticated user's UUID and tenant ID from the session cookie.
+ *
+ * Priority:
+ * 1. Dedicated `x-user-id` / `x-tenant-id` cookies (set at login in new sessions).
+ * 2. `cerp_session` JWT — when `sub` is already a UUID it is used directly;
+ *    when `sub` is an email (legacy dev token) the identity service is queried
+ *    to obtain the real user UUID.
+ */
+export async function extractSessionUser(): Promise<{ userId: string | null; tenantId: string }> {
+  const { cookies } = await import('next/headers');
+  const cookieStore = await cookies();
+
+  const userIdCookie = cookieStore.get('x-user-id')?.value ?? null;
+  const tenantIdCookie = cookieStore.get('x-tenant-id')?.value ?? null;
+
+  // Priority 1: dedicated cookies — only use if both are present and userId is a UUID.
+  if (userIdCookie && tenantIdCookie && UUID_REGEX.test(userIdCookie)) {
+    return { userId: userIdCookie, tenantId: tenantIdCookie };
+  }
+
+  // Priority 2: JWT session cookie.
+  const token = cookieStore.get('cerp_session')?.value;
+  if (!token) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID };
+
+  const payload = decodeJwtPayload(token);
+  if (!payload) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID };
+
+  let tenantId = tenantIdCookie ?? DEFAULT_TENANT_ID;
+  if (typeof payload.tenantId === 'string' && payload.tenantId.trim()) {
+    tenantId = payload.tenantId;
+  }
+
+  const sub = typeof payload.sub === 'string' ? payload.sub : null;
+  if (!sub) return { userId: null, tenantId };
+
+  // New token: sub is already a UUID.
+  if (UUID_REGEX.test(sub)) return { userId: sub, tenantId };
+
+  // Legacy token: sub is an email — resolve to UUID via identity service.
+  const resolved = await resolveUserIdByEmail(sub);
+  return { userId: resolved, tenantId };
 }

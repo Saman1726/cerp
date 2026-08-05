@@ -1,13 +1,17 @@
 package io.cerp.workflow.service;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 /**
  * Default implementation of {@link NotificationServiceClient} that communicates
@@ -18,13 +22,11 @@ public class NotificationServiceClientImpl implements NotificationServiceClient 
 
     private static final Logger log = LoggerFactory.getLogger(NotificationServiceClientImpl.class);
 
-    private final RestTemplate restTemplate;
-    private final String notificationServiceUrl;
+    private final RestClient restClient;
 
     public NotificationServiceClientImpl(
             @Value("${cerp.notification-service.url:http://localhost:8082}") String notificationServiceUrl) {
-        this.notificationServiceUrl = notificationServiceUrl;
-        this.restTemplate = new RestTemplate();
+        this.restClient = RestClient.builder().baseUrl(notificationServiceUrl).build();
     }
 
     @Override
@@ -36,20 +38,37 @@ public class NotificationServiceClientImpl implements NotificationServiceClient 
     public void sendNotification(String userId, UUID tenantId, String title, String message, String type,
             Map<String, Object> data) {
         try {
-            Map<String, Object> payload = Map.of(
-                    "userId", userId,
-                    "tenantId", tenantId != null ? tenantId.toString() : null,
-                    "title", title,
-                    "message", message,
-                    "type", type,
-                    "data", data != null ? data : Map.of());
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("code", type != null ? type.toLowerCase().replace(" ", "_") : "notification");
+            payload.put("title", title);
+            payload.put("description", message);
+            payload.put("actionType", "ACKNOWLEDGE");
+            payload.put("recipientUserIds", List.of(userId));
+            payload.put("sourceService", "workflow-service");
+            if (data != null && !data.isEmpty()) {
+                payload.put("payload", data);
+            }
 
-            restTemplate.postForEntity(
-                    notificationServiceUrl + "/api/notifications",
-                    payload,
-                    String.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> created = restClient.post()
+                    .uri("/api/notifications/jobs")
+                    .header("X-Tenant-Id", tenantId != null ? tenantId.toString() : "")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(Map.class);
 
-            log.info("Notification sent to userId={}, title={}", userId, title);
+            if (created != null && created.get("id") != null) {
+                String jobId = created.get("id").toString();
+                restClient.post()
+                        .uri("/api/notifications/jobs/{jobId}/publish", jobId)
+                        .header("X-Tenant-Id", tenantId != null ? tenantId.toString() : "")
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("Notification job created and published: jobId={}, userId={}, title={}", jobId, userId, title);
+            } else {
+                log.warn("Notification job created but no id returned, skipping publish: userId={}, title={}", userId, title);
+            }
         } catch (Exception e) {
             log.warn("Failed to send notification to userId={}, title={}: {}", userId, title, e.getMessage());
         }
@@ -58,7 +77,10 @@ public class NotificationServiceClientImpl implements NotificationServiceClient 
     @Override
     public boolean isHealthy() {
         try {
-            restTemplate.getForObject(notificationServiceUrl + "/actuator/health", String.class);
+            restClient.get()
+                    .uri("/actuator/health")
+                    .retrieve()
+                    .toBodilessEntity();
             return true;
         } catch (Exception e) {
             log.debug("Notification service health check failed: {}", e.getMessage());

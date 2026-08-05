@@ -162,7 +162,7 @@ public class SagaContext {
      * Set the project ID associated with this saga.
      */
     public void setProjectId(UUID projectId) {
-        data.put("projectId", projectId);
+        data.put("projectId", projectId != null ? projectId.toString() : null);
     }
 
     /**

@@ -89,3 +89,7 @@ logging:
 cerp:
   identity-service:
     url: ${IDENTITY_SERVICE_URL:http://localhost:8090}
+  vendor-service:
+    url: ${VENDOR_SERVICE_URL:http://localhost:8085}
+  notification-service:
+    url: ${NOTIFICATION_SERVICE_URL:http://localhost:8082}
