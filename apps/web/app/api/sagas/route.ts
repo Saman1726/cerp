@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    const { userId } = await extractSessionUser();
+    const { userId, tenantId, roles } = await extractSessionUser();
 
     const targetUrl = new URL('/api/v1/sagas', WORKFLOW_SERVICE_URL);
     searchParams.forEach((value, key) => {
@@ -23,8 +23,14 @@ export async function GET(request: NextRequest) {
       targetUrl.searchParams.set('userId', userId);
     }
 
+    const headers = getBackendHeaders(request) as Record<string, string>;
+    headers['X-Tenant-Id'] = tenantId;
+    if (roles.length > 0) {
+      headers['X-User-Roles'] = roles.join(',');
+    }
+
     const res = await fetch(targetUrl.toString(), {
-      headers: getBackendHeaders(request),
+      headers,
       cache: 'no-store',
     });
 
@@ -46,7 +52,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const { userId, tenantId } = await extractSessionUser();
+    const { userId, tenantId, roles } = await extractSessionUser();
 
     if (body && typeof body === 'object') {
       (body as Record<string, unknown>).tenantId = tenantId;
@@ -59,8 +65,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const headers = getBackendHeaders(request);
-    (headers as Record<string, string>)['X-Tenant-Id'] = tenantId;
+    const headers = getBackendHeaders(request) as Record<string, string>;
+    headers['X-Tenant-Id'] = tenantId;
+    if (roles.length > 0) {
+      headers['X-User-Roles'] = roles.join(',');
+    }
 
     const res = await fetch(`${WORKFLOW_SERVICE_URL}/api/v1/sagas`, {
       method: 'POST',

@@ -20,6 +20,6 @@ public interface MembershipRepository extends JpaRepository<Membership, UUID> {
     /**
      * Find all roles for a user across all memberships. Uses JSONB array functions to extract roles.
      */
-    @Query(value = "SELECT DISTINCT UNNEST(m.roles) AS role FROM identity.memberships m WHERE m.user_id = :userId", nativeQuery = true)
+    @Query(value = "SELECT DISTINCT jsonb_array_elements_text(m.roles) AS role FROM identity.memberships m WHERE m.user_id = :userId", nativeQuery = true)
     List<String> findRolesByUserId(@Param("userId") UUID userId);
 }

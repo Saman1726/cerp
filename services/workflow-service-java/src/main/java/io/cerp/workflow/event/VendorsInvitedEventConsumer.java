@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.service.NotificationServiceClient;
 import io.cerp.workflow.service.VendorServiceClient;
 import io.cerp.workflow.service.VendorServiceClient.VendorUserIdMapping;
@@ -39,14 +40,17 @@ public class VendorsInvitedEventConsumer {
 
     private final VendorServiceClient vendorServiceClient;
     private final NotificationServiceClient notificationServiceClient;
+    private final IdentityPermissionClient identityPermissionClient;
     private final ObjectMapper objectMapper;
 
     public VendorsInvitedEventConsumer(
             VendorServiceClient vendorServiceClient,
             NotificationServiceClient notificationServiceClient,
+            IdentityPermissionClient identityPermissionClient,
             ObjectMapper objectMapper) {
         this.vendorServiceClient = vendorServiceClient;
         this.notificationServiceClient = notificationServiceClient;
+        this.identityPermissionClient = identityPermissionClient;
         this.objectMapper = objectMapper;
     }
 
@@ -108,19 +112,28 @@ public class VendorsInvitedEventConsumer {
                 UUID vendorNotifTenantId = mapping.vendorTenantId() != null
                         ? mapping.vendorTenantId()
                         : UUID.fromString(event.tenantId());
-                notificationServiceClient.sendNotification(
-                        mapping.userId().toString(),
-                        vendorNotifTenantId,
-                        title,
-                        message,
-                        "vendor_invite_" + event.tenderId() + "_" + mapping.vendorId(),
-                        vendorData);
 
-                log.info("Sent vendor invitation notification to userId={}, vendorId={}, tenderId={}, vendorTenantId={}",
-                        mapping.userId(), mapping.vendorId(), event.tenderId(), vendorNotifTenantId);
+                // Resolve actual recipient IDs via identity service membership (by tenantId).
+                // vendor.userId can be stale; the membership table reflects who currently logs in.
+                List<UUID> recipientIds = identityPermissionClient.resolveVendorUserIdsByTenantId(vendorNotifTenantId);
+                if (recipientIds.isEmpty() && mapping.userId() != null) {
+                    recipientIds = List.of(mapping.userId());
+                }
+
+                for (UUID recipientId : recipientIds) {
+                    notificationServiceClient.sendNotification(
+                            recipientId.toString(),
+                            vendorNotifTenantId,
+                            title,
+                            message,
+                            "vendor_invite_" + event.tenderId() + "_" + mapping.vendorId(),
+                            vendorData);
+                    log.info("Sent vendor invitation notification: recipientId={}, vendorId={}, tenderId={}, vendorTenantId={}",
+                            recipientId, mapping.vendorId(), event.tenderId(), vendorNotifTenantId);
+                }
             } catch (Exception e) {
-                log.error("Failed to send notification to vendor userId={}, vendorId={}, tenderId={}",
-                        mapping.userId(), mapping.vendorId(), event.tenderId(), e);
+                log.error("Failed to send notification to vendor vendorId={}, tenderId={}",
+                        mapping.vendorId(), event.tenderId(), e);
             }
         }
 

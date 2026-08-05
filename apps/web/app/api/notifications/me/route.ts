@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    const res = NextResponse.json(data);
+    res.headers.set('X-Debug-Tenant-Id', headers['X-Tenant-Id'] ?? '');
+    res.headers.set('X-Debug-User-Id', headers['X-User-Id'] ?? '');
+    return res;
   } catch (error) {
     console.error('[notifications proxy] Failed to proxy request:', error);
     return NextResponse.json(

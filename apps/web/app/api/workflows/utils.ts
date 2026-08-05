@@ -84,7 +84,7 @@ async function resolveUserIdByEmail(email: string): Promise<string | null> {
 }
 
 /**
- * Extract the authenticated user's UUID and tenant ID from the session cookie.
+ * Extract the authenticated user's UUID, tenant ID, and roles from the session cookie.
  *
  * Priority:
  * 1. Dedicated `x-user-id` / `x-tenant-id` cookies (set at login in new sessions).
@@ -92,7 +92,11 @@ async function resolveUserIdByEmail(email: string): Promise<string | null> {
  *    when `sub` is an email (legacy dev token) the identity service is queried
  *    to obtain the real user UUID.
  */
-export async function extractSessionUser(): Promise<{ userId: string | null; tenantId: string }> {
+export async function extractSessionUser(): Promise<{
+  userId: string | null;
+  tenantId: string;
+  roles: string[];
+}> {
   const { cookies } = await import('next/headers');
   const cookieStore = await cookies();
 
@@ -101,28 +105,36 @@ export async function extractSessionUser(): Promise<{ userId: string | null; ten
 
   // Priority 1: dedicated cookies — only use if both are present and userId is a UUID.
   if (userIdCookie && tenantIdCookie && UUID_REGEX.test(userIdCookie)) {
-    return { userId: userIdCookie, tenantId: tenantIdCookie };
+    return { userId: userIdCookie, tenantId: tenantIdCookie, roles: [] };
   }
 
   // Priority 2: JWT session cookie.
   const token = cookieStore.get('cerp_session')?.value;
-  if (!token) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID };
+  if (!token) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID, roles: [] };
 
   const payload = decodeJwtPayload(token);
-  if (!payload) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID };
+  if (!payload) return { userId: null, tenantId: tenantIdCookie ?? DEFAULT_TENANT_ID, roles: [] };
 
   let tenantId = tenantIdCookie ?? DEFAULT_TENANT_ID;
   if (typeof payload.tenantId === 'string' && payload.tenantId.trim()) {
     tenantId = payload.tenantId;
   }
 
+  // Extract roles from JWT (comma-separated string or JSON array).
+  let roles: string[] = [];
+  if (typeof payload.roles === 'string' && payload.roles.trim()) {
+    roles = payload.roles.split(',').map((r) => r.trim()).filter(Boolean);
+  } else if (Array.isArray(payload.roles)) {
+    roles = (payload.roles as unknown[]).filter((r): r is string => typeof r === 'string');
+  }
+
   const sub = typeof payload.sub === 'string' ? payload.sub : null;
-  if (!sub) return { userId: null, tenantId };
+  if (!sub) return { userId: null, tenantId, roles };
 
   // New token: sub is already a UUID.
-  if (UUID_REGEX.test(sub)) return { userId: sub, tenantId };
+  if (UUID_REGEX.test(sub)) return { userId: sub, tenantId, roles };
 
   // Legacy token: sub is an email — resolve to UUID via identity service.
   const resolved = await resolveUserIdByEmail(sub);
-  return { userId: resolved, tenantId };
+  return { userId: resolved, tenantId, roles };
 }

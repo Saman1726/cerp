@@ -272,8 +272,11 @@ public class BiddingSagaHandler implements SagaHandler {
         // Emit VendorsInvited event (for outbox/event sourcing)
         publishEvent(sagaId, tenantId, "VendorsInvited", inviteData);
 
-        // Publish Kafka event for vendor invitation notifications
-        publishVendorInvitedNotificationEvent(sagaId, tenantId, tenderId, invitedVendorIds, inviteConfig, context.getData());
+        // Publish Kafka event; fall back to direct notification if Kafka is unavailable (e.g. local dev)
+        boolean kafkaPublished = publishVendorInvitedNotificationEvent(sagaId, tenantId, tenderId, invitedVendorIds, inviteConfig, context.getData());
+        if (!kafkaPublished) {
+            sendVendorInviteNotificationsDirect(sagaId, tenantId, tenderId, invitedVendorIds, inviteConfig, context.getData());
+        }
 
         log.info("Vendors invited for tender: tenderId={}, invitedCount={}, expectedBids={}",
             tenderId, invitedCount, expectedBidsVal);
@@ -281,11 +284,94 @@ public class BiddingSagaHandler implements SagaHandler {
     }
 
     /**
-     * Publish a Kafka event to trigger vendor invitation notifications.
-     * This event is consumed by VendorsInvitedEventConsumer which sends notifications
-     * to each invited vendor and to the project owner.
+     * Send vendor invite notifications directly via the notification service client.
+     * This ensures notifications are delivered even when Kafka is unavailable (e.g., local dev).
      */
-    private void publishVendorInvitedNotificationEvent(
+    private void sendVendorInviteNotificationsDirect(
+            final UUID sagaId,
+            final String tenantId,
+            final String tenderId,
+            final List<String> vendorIds,
+            final Map<String, Object> inviteConfig,
+            final Map<String, Object> contextData) {
+
+        try {
+            List<UUID> vendorIdUUIDs = vendorIds.stream().map(UUID::fromString).toList();
+            List<VendorServiceClient.VendorUserIdMapping> mappings =
+                    vendorServiceClient.resolveUserIds(vendorIdUUIDs, tenantId);
+
+            if (mappings.isEmpty()) {
+                log.warn("No vendor-user mappings resolved for direct notification: tenderId={}", tenderId);
+                return;
+            }
+
+            final String shortTenderId = tenderId.length() > 8 ? tenderId.substring(0, 8) : tenderId;
+            final Object bidDeadline = inviteConfig != null ? inviteConfig.get("bidDeadline") : null;
+
+            Map<String, Object> baseData = new HashMap<>();
+            baseData.put("tenderId", tenderId);
+            baseData.put("sagaId", sagaId.toString());
+            baseData.put("projectId", contextData.get("projectId"));
+            baseData.put("bidDeadline", bidDeadline);
+
+            for (VendorServiceClient.VendorUserIdMapping mapping : mappings) {
+                try {
+                    UUID notifTenantId = mapping.vendorTenantId() != null
+                            ? mapping.vendorTenantId()
+                            : UUID.fromString(tenantId);
+
+                    // Resolve recipients via identity service membership (by tenantId) —
+                    // vendor.userId can be stale if the user was provisioned outside the
+                    // registration flow (e.g. dev seed). Fall back to vendor.userId if needed.
+                    List<UUID> recipientIds = identityPermissionClient.resolveVendorUserIdsByTenantId(notifTenantId);
+                    if (recipientIds.isEmpty() && mapping.userId() != null) {
+                        recipientIds = List.of(mapping.userId());
+                    }
+
+                    Map<String, Object> vendorData = new HashMap<>(baseData);
+                    vendorData.put("vendorId", mapping.vendorId());
+                    for (UUID recipientId : recipientIds) {
+                        notificationServiceClient.sendNotification(
+                                recipientId.toString(),
+                                notifTenantId,
+                                "New Bidding Invitation",
+                                "You have been invited to submit a bid for Tender " + shortTenderId + ".",
+                                "vendor_invite_" + tenderId + "_" + mapping.vendorId(),
+                                vendorData);
+                    }
+                } catch (Exception e) {
+                    log.warn("Direct vendor notification failed: vendorId={}, tenderId={}: {}",
+                            mapping.vendorId(), tenderId, e.getMessage());
+                }
+            }
+
+            // Confirmation to project owner
+            UUID bidderUserId = resolveToUuid(contextData.get("userId"));
+            if (bidderUserId != null) {
+                try {
+                    Map<String, Object> ownerData = new HashMap<>(baseData);
+                    ownerData.put("vendorCount", mappings.size());
+                    notificationServiceClient.sendNotification(
+                            bidderUserId.toString(),
+                            UUID.fromString(tenantId),
+                            "Vendors Invited",
+                            mappings.size() + " vendor(s) have been invited to bid on Tender " + shortTenderId + ".",
+                            "vendor_invite_confirm_" + tenderId,
+                            ownerData);
+                } catch (Exception e) {
+                    log.warn("Direct owner confirmation notification failed: tenderId={}: {}", tenderId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.error("sendVendorInviteNotificationsDirect failed: tenderId={}: {}", tenderId, e.getMessage());
+        }
+    }
+
+    /**
+     * Publish a Kafka event to trigger vendor invitation notifications.
+     * Returns true if publishing succeeded, false otherwise (e.g. Kafka unavailable).
+     */
+    private boolean publishVendorInvitedNotificationEvent(
             final UUID sagaId,
             final String tenantId,
             final String tenderId,
@@ -311,9 +397,11 @@ public class BiddingSagaHandler implements SagaHandler {
 
             log.info("Published vendor invitation notification event: tenderId={}, vendorCount={}",
                     tenderId, vendorIds.size());
+            return true;
         } catch (Exception e) {
-            log.error("Failed to publish vendor invitation notification event: tenderId={}", tenderId, e);
-            // Don't fail the saga if notification event publishing fails
+            log.warn("Kafka unavailable for vendor invitation event (tenderId={}), will notify directly: {}",
+                    tenderId, e.getMessage());
+            return false;
         }
     }
 

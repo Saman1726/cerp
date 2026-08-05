@@ -137,6 +137,32 @@ public class IdentityPermissionClient {
     }
 
     /**
+     * Return all userIds that are members of the given tenant.
+     * Used to route vendor invite notifications to whoever currently logs in under that tenant,
+     * regardless of what userId is stored on the vendor record (which can be stale).
+     */
+    public List<UUID> resolveVendorUserIdsByTenantId(UUID tenantId) {
+        try {
+            List<Map<String, Object>> memberships = restClientNoRetry.get()
+                .uri("/memberships?tenantId={tenantId}", tenantId)
+                .retrieve()
+                .body(new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+            if (memberships == null) return List.of();
+            return memberships.stream()
+                .map(m -> m.get("userId"))
+                .filter(id -> id instanceof String)
+                .map(id -> {
+                    try { return UUID.fromString((String) id); } catch (Exception e) { return null; }
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        } catch (Exception e) {
+            log.warn("Failed to resolve vendor users for tenantId {}: {}", tenantId, e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * Check if a user has ANY project write permission (for saga creation).
      */
     public boolean hasAnyProjectWritePermission(UUID userId) {

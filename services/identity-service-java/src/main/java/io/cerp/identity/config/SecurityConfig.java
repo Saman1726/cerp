@@ -74,6 +74,9 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.DELETE, "/users/**").permitAll()
                 // Auth endpoints
                 .requestMatchers("/auth/login").permitAll()
+                // GET /memberships?tenantId=... called by internal services (e.g. workflow-service)
+                // to resolve vendor notification recipients without a user JWT
+                .requestMatchers(HttpMethod.GET, "/memberships").permitAll()
                 // everything else on this chain requires auth
                 .anyRequest().authenticated())
             // Validate JWTs issued by Keycloak

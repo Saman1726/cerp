@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,7 +69,9 @@ public class SagaController {
      * If projectId is provided in data, user must have write permission on that specific project.
      */
     @PostMapping
-    public ResponseEntity<Map<String, Object>> startSaga(@RequestBody StartSagaRequest request) {
+    public ResponseEntity<Map<String, Object>> startSaga(
+            @RequestBody StartSagaRequest request,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
         // Extract userId from request data for access control
         String userIdStr = null;
         if (request.data() != null) {
@@ -79,8 +82,9 @@ public class SagaController {
             try {
                 UUID userUuid = UUID.fromString(userIdStr);
 
-                // Check if user is tenant admin/manager (full access)
-                boolean isAdminOrManager = permissionClient.isTenantAdminOrManager(userUuid);
+                // Check if user is tenant admin/manager — trust header roles first.
+                boolean isAdminOrManager = hasAdminOrManagerRole(userRoles)
+                        || permissionClient.isTenantAdminOrManager(userUuid);
 
                 if (!isAdminOrManager) {
                     // Check if user has any project write permission
@@ -362,7 +366,8 @@ public class SagaController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(defaultValue = "updatedAt") String sortBy,
-            @RequestParam(defaultValue = "desc") String sortOrder) {
+            @RequestParam(defaultValue = "desc") String sortOrder,
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
 
         // Get all sagas from the orchestrator and filter in memory
         List<SagaState> allSagas = new ArrayList<>(orchestrator.getActiveSagas());
@@ -372,8 +377,10 @@ public class SagaController {
             try {
                 UUID userUuid = UUID.fromString(userId);
 
-                // Check if user is tenant admin/manager (full access to all sagas)
-                boolean isAdminOrManager = permissionClient.isTenantAdminOrManager(userUuid);
+                // Check if user is tenant admin/manager — trust header roles first,
+                // fall back to identity service for requests without role headers.
+                boolean isAdminOrManager = hasAdminOrManagerRole(userRoles)
+                        || permissionClient.isTenantAdminOrManager(userUuid);
 
                 if (!isAdminOrManager) {
                     // Get projects the user has access to
@@ -799,5 +806,14 @@ public class SagaController {
     private String getTenantIdFromContext() {
         UUID tenantId = TenantContext.getCurrentTenantId();
         return tenantId != null ? tenantId.toString() : null;
+    }
+
+    private boolean hasAdminOrManagerRole(String userRoles) {
+        if (userRoles == null || userRoles.isBlank()) return false;
+        for (String role : userRoles.split(",")) {
+            String r = role.strip();
+            if ("admin".equalsIgnoreCase(r) || "manager".equalsIgnoreCase(r)) return true;
+        }
+        return false;
     }
 }
