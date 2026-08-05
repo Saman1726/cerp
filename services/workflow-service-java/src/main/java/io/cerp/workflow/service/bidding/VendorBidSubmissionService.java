@@ -30,10 +30,10 @@ public class VendorBidSubmissionService {
     public VendorBidSubmission submitBid(String tenderId, UUID biddingSagaId, UUID vendorId, UUID vendorUserId,
             UUID tenantId, java.math.BigDecimal price, java.math.BigDecimal quantity,
             java.math.BigDecimal unitPrice, java.math.BigDecimal totalPrice,
-            String timeline, String notes) {
+            String timeline, String notes, String paymentMethod) {
         VendorBidSubmission submission = new VendorBidSubmission(
                 tenderId, biddingSagaId, vendorId, vendorUserId, tenantId,
-                price, quantity, unitPrice, totalPrice, timeline, notes);
+                price, quantity, unitPrice, totalPrice, timeline, notes, paymentMethod);
         return submissionRepository.save(submission);
     }
 

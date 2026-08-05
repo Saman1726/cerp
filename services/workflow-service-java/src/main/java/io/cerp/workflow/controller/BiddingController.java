@@ -2,27 +2,35 @@ package io.cerp.workflow.controller;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import io.cerp.workflow.domain.bidding.BidTransaction;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.cerp.workflow.config.TenantContext;
+import io.cerp.workflow.domain.bidding.BidTransaction;
 import io.cerp.workflow.domain.bidding.BidWallet;
 import io.cerp.workflow.domain.bidding.VendorBidSubmission;
+import io.cerp.workflow.repository.SagaRepository;
 import io.cerp.workflow.service.bidding.BidWalletService;
 import io.cerp.workflow.service.bidding.BidWalletService.InsufficientBidsException;
+import io.cerp.workflow.service.bidding.ChannelSubscriptionService;
 import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 
 /**
@@ -40,19 +48,31 @@ import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
 @RequestMapping("/api/v1/bidding")
 public class BiddingController {
 
+    private static final Logger log = LoggerFactory.getLogger(BiddingController.class);
+
     private final VendorBidSubmissionService bidSubmissionService;
     private final BidWalletService bidWalletService;
+    private final ChannelSubscriptionService channelSubscriptionService;
+    private final SagaRepository sagaRepository;
+    private final ObjectMapper objectMapper;
 
-    public BiddingController(VendorBidSubmissionService bidSubmissionService, BidWalletService bidWalletService) {
+    public BiddingController(VendorBidSubmissionService bidSubmissionService,
+                              BidWalletService bidWalletService,
+                              ChannelSubscriptionService channelSubscriptionService,
+                              SagaRepository sagaRepository,
+                              ObjectMapper objectMapper) {
         this.bidSubmissionService = bidSubmissionService;
         this.bidWalletService = bidWalletService;
+        this.channelSubscriptionService = channelSubscriptionService;
+        this.sagaRepository = sagaRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
      * Submit a new vendor bid for a tender/bidding saga.
-     * 
-     * Vendor pays 5 bids to participate in OPEN_TENDER biddings.
-     * The bid amount is deducted from vendor's bid wallet.
+     *
+     * For OPEN_TENDER: vendor pays 5 bids from their wallet.
+     * For INVITED: vendor submits for free — only the project owner pays.
      */
     @PostMapping("/submissions")
     public ResponseEntity<Map<String, Object>> submitBid(@RequestBody SubmitBidRequest request) {
@@ -68,18 +88,22 @@ public class BiddingController {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
             }
 
-            // Check if vendor has sufficient bids in wallet
-            if (!bidWalletService.hasSufficientBids(vendorUserId, BidWallet.EntityType.VENDOR,
-                    BidWalletService.OPEN_TENDER_PARTICIPATION_COST)) {
-                Long available = bidWalletService.getAvailableBids(vendorUserId, BidWallet.EntityType.VENDOR);
-                InsufficientBidsException ex = new InsufficientBidsException(available,
-                        BidWalletService.OPEN_TENDER_PARTICIPATION_COST, "submit bid");
-                Map<String, Object> error = new HashMap<>();
-                error.put("error", "INSUFFICIENT_BIDS");
-                error.put("message", ex.getMessage());
-                error.put("availableBids", available);
-                error.put("requiredBids", BidWalletService.OPEN_TENDER_PARTICIPATION_COST);
-                return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(error);
+            boolean isOpenTender = !"INVITED".equalsIgnoreCase(request.biddingType());
+
+            if (isOpenTender) {
+                // Check if vendor has sufficient bids in wallet
+                if (!bidWalletService.hasSufficientBids(vendorUserId, BidWallet.EntityType.VENDOR,
+                        BidWalletService.OPEN_TENDER_PARTICIPATION_COST)) {
+                    Long available = bidWalletService.getAvailableBids(vendorUserId, BidWallet.EntityType.VENDOR);
+                    InsufficientBidsException ex = new InsufficientBidsException(available,
+                            BidWalletService.OPEN_TENDER_PARTICIPATION_COST, "submit bid");
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("error", "INSUFFICIENT_BIDS");
+                    error.put("message", ex.getMessage());
+                    error.put("availableBids", available);
+                    error.put("requiredBids", BidWalletService.OPEN_TENDER_PARTICIPATION_COST);
+                    return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(error);
+                }
             }
 
             // Calculate unit price if not provided
@@ -89,15 +113,17 @@ public class BiddingController {
             BigDecimal totalPrice = request.totalPrice() != null ? request.totalPrice()
                     : request.price();
 
-            // Spend bids from vendor wallet
-            bidWalletService.spendForOpenTenderParticipation(
-                    vendorUserId,
-                    BidWallet.EntityType.VENDOR,
-                    vendorUserId,
-                    tenantId,
-                    request.biddingSagaId(),
-                    request.tenderId(),
-                    request.vendorId());
+            if (isOpenTender) {
+                // Spend bids from vendor wallet
+                bidWalletService.spendForOpenTenderParticipation(
+                        vendorUserId,
+                        BidWallet.EntityType.VENDOR,
+                        vendorUserId,
+                        tenantId,
+                        request.biddingSagaId(),
+                        request.tenderId(),
+                        request.vendorId());
+            }
 
             // Submit the bid
             var submission = bidSubmissionService.submitBid(
@@ -111,7 +137,8 @@ public class BiddingController {
                     unitPrice,
                     totalPrice,
                     request.timeline(),
-                    request.notes());
+                    request.notes(),
+                    request.paymentMethod());
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -130,6 +157,7 @@ public class BiddingController {
             bidData.put("totalPrice", submission.getTotalPrice().toString());
             bidData.put("timeline", submission.getTimeline());
             bidData.put("notes", submission.getNotes());
+            bidData.put("paymentMethod", submission.getPaymentMethod());
             bidData.put("status", submission.getStatus().name());
             bidData.put("submittedAt", submission.getSubmittedAt().toString());
             
@@ -191,6 +219,7 @@ public class BiddingController {
                 map.put("totalPrice", s.getTotalPrice().toString());
                 map.put("timeline", s.getTimeline());
                 map.put("notes", s.getNotes());
+                map.put("paymentMethod", s.getPaymentMethod());
                 map.put("status", s.getStatus().name());
                 map.put("awardedAt", s.getAwardedAt());
                 map.put("purchaseOrderId", s.getPurchaseOrderId());
@@ -223,25 +252,30 @@ public class BiddingController {
      */
     @GetMapping("/wallet/balance")
     public ResponseEntity<Map<String, Object>> getWalletBalance(
-            @RequestParam(required = false) String entityType) {
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) String userId) {
         try {
-            UUID userId = getCurrentUserId();
+            UUID resolvedUserId = (userId != null && !userId.isBlank())
+                    ? UUID.fromString(userId)
+                    : getCurrentUserId();
             BidWallet.EntityType type = entityType != null
                     ? BidWallet.EntityType.valueOf(entityType.toUpperCase())
                     : BidWallet.EntityType.VENDOR;
 
-            var walletOpt = bidWalletService.getWallet(userId, type);
+            var walletOpt = bidWalletService.getWallet(resolvedUserId, type);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("userId", userId.toString());
+            response.put("userId", resolvedUserId.toString());
             response.put("entityType", type.name());
 
             if (walletOpt.isPresent()) {
                 var wallet = walletOpt.get();
+                response.put("entityId", wallet.getEntityId() != null ? wallet.getEntityId().toString() : null);
                 response.put("totalBids", wallet.getTotalBids());
                 response.put("spentBids", wallet.getSpentBids());
                 response.put("availableBids", wallet.getAvailableBids());
             } else {
+                response.put("entityId", null);
                 response.put("totalBids", 0);
                 response.put("spentBids", 0);
                 response.put("availableBids", 0);
@@ -430,6 +464,129 @@ public class BiddingController {
         }
     }
 
+    // ── Channel Subscription Endpoints ──
+
+    /**
+     * Subscribe the current user to a bidding channel.
+     * Subscribed users receive push notifications when new tenders are published.
+     */
+    @PostMapping("/channels/{channelCode}/subscription")
+    public ResponseEntity<Map<String, Object>> subscribeToChannel(@PathVariable String channelCode) {
+        try {
+            UUID tenantId = getCurrentTenantId();
+            UUID userId = getCurrentUserId();
+            var sub = channelSubscriptionService.subscribe(tenantId, userId, channelCode);
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscribed", true);
+            response.put("channelCode", channelCode);
+            response.put("userId", userId.toString());
+            response.put("subscribedAt", sub.getSubscribedAt().toString());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "SUBSCRIPTION_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Unsubscribe the current user from a bidding channel.
+     */
+    @DeleteMapping("/channels/{channelCode}/subscription")
+    public ResponseEntity<Map<String, Object>> unsubscribeFromChannel(@PathVariable String channelCode) {
+        try {
+            UUID tenantId = getCurrentTenantId();
+            UUID userId = getCurrentUserId();
+            channelSubscriptionService.unsubscribe(tenantId, userId, channelCode);
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscribed", false);
+            response.put("channelCode", channelCode);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "UNSUBSCRIBE_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * Check whether the current user is subscribed to a channel.
+     */
+    @GetMapping("/channels/{channelCode}/subscription")
+    public ResponseEntity<Map<String, Object>> getChannelSubscription(@PathVariable String channelCode) {
+        try {
+            UUID tenantId = getCurrentTenantId();
+            UUID userId = getCurrentUserId();
+            boolean subscribed = channelSubscriptionService.isSubscribed(tenantId, userId, channelCode);
+            Map<String, Object> response = new HashMap<>();
+            response.put("subscribed", subscribed);
+            response.put("channelCode", channelCode);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "FETCH_FAILED");
+            error.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    // ── Open Tender Channel Listing ──
+
+    /**
+     * List all active open tenders visible in the channel.
+     * Visible to all vendors regardless of subscription status.
+     */
+    @GetMapping("/open-tenders")
+    public ResponseEntity<Map<String, Object>> getOpenTenders() {
+        try {
+            UUID tenantId = getCurrentTenantId();
+            List<Map<String, Object>> tenders = new ArrayList<>();
+
+            List<io.cerp.workflow.repository.SagaEntity> sagas =
+                    sagaRepository.findByTenantIdAndSagaTypeAndStatus(
+                            tenantId.toString(),
+                            "BIDDING_WORKFLOW",
+                            List.of("RUNNING", "PAUSED"));
+
+            for (io.cerp.workflow.repository.SagaEntity saga : sagas) {
+                try {
+                    if (saga.getDataJson() == null) continue;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> data = objectMapper.readValue(saga.getDataJson(), Map.class);
+                    if (!"OPEN_TENDER".equals(data.get("biddingMode"))) continue;
+
+                    String status = (String) data.get("status");
+                    if (!"OPEN_FOR_BIDS".equals(status) && !"COLLECTING".equals(status)) continue;
+
+                    Map<String, Object> tender = new HashMap<>();
+                    tender.put("sagaId", saga.getId());
+                    tender.put("tenderId", data.get("tenderId"));
+                    tender.put("projectId", data.get("projectId"));
+                    tender.put("bidDeadline", data.get("bidDeadline"));
+                    tender.put("status", status);
+                    tender.put("description", data.get("description"));
+                    tender.put("sagaName", data.get("sagaName"));
+                    tender.put("createdAt", saga.getCreatedAt() != null ? saga.getCreatedAt().toString() : null);
+                    tenders.add(tender);
+                } catch (Exception e) {
+                    log.debug("Could not parse saga data for sagaId={}: {}", saga.getId(), e.getMessage());
+                }
+            }
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("tenders", tenders);
+            response.put("total", tenders.size());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "FETCH_FAILED");
+            error.put("message", "Failed to fetch open tenders: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
     // ── DTOs ──
 
     /**
@@ -444,7 +601,9 @@ public class BiddingController {
             BigDecimal unitPrice,
             BigDecimal totalPrice,
             String timeline,
-            String notes) {
+            String notes,
+            String paymentMethod,
+            String biddingType) {
     }
 
     /**

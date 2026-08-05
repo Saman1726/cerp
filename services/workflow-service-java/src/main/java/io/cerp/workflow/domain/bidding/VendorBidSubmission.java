@@ -67,6 +67,9 @@ public class VendorBidSubmission {
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "payment_method", length = 64)
+    private String paymentMethod;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     private BidStatus status = BidStatus.SUBMITTED;
@@ -99,7 +102,7 @@ public class VendorBidSubmission {
 
     public VendorBidSubmission(String tenderId, UUID biddingSagaId, UUID vendorId, UUID vendorUserId,
             UUID tenantId, BigDecimal price, BigDecimal quantity, BigDecimal unitPrice, BigDecimal totalPrice,
-            String timeline, String notes) {
+            String timeline, String notes, String paymentMethod) {
         this.tenderId = tenderId;
         this.biddingSagaId = biddingSagaId;
         this.vendorId = vendorId;
@@ -111,6 +114,7 @@ public class VendorBidSubmission {
         this.totalPrice = totalPrice;
         this.timeline = timeline;
         this.notes = notes;
+        this.paymentMethod = paymentMethod;
     }
 
     /**
@@ -239,6 +243,14 @@ public class VendorBidSubmission {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
     }
 
     public BidStatus getStatus() {

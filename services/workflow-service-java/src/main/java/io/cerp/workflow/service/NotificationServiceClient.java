@@ -1,5 +1,6 @@
 package io.cerp.workflow.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +32,20 @@ public interface NotificationServiceClient {
      * @param data     additional contextual data
      */
     void sendNotification(String userId, UUID tenantId, String title, String message, String type, Map<String, Object> data);
+
+    /**
+     * Broadcast a notification to all users with the given roles within the tenant.
+     * Used for open tender announcements sent to all vendors.
+     *
+     * @param tenantId the tenant scope
+     * @param title    the notification title
+     * @param message  the notification body
+     * @param code     the notification code (routing key used by the frontend)
+     * @param roles    list of recipient roles (e.g. ["VENDOR"])
+     * @param data     additional contextual payload
+     */
+    void sendNotificationToRoles(UUID tenantId, String title, String message, String code,
+                                  List<String> roles, Map<String, Object> data);
 
     /**
      * Check if the notification service is healthy.

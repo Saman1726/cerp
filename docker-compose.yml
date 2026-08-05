@@ -212,8 +212,6 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service-java:8090
     ports:
       - '8091:8091'
-    profiles:
-      - notification
 
   web:
     build:
@@ -229,6 +227,7 @@ services:
       - workflow-service-java
       - identity-service-java
       - vendor-service-java
+      - notification-service-java
     environment:
       NODE_ENV: development
       PORT: 3001

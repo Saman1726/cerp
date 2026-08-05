@@ -164,6 +164,7 @@ public class NotificationService {
                 .jobId(job.getId())
                 .recipientId(notification.getRecipientId())
                 .recipientRole(notification.getRecipientRole())
+                .payload(job.getPayload() != null ? convertToMap(job.getPayload()) : null)
                 .actionResult(notification.getActionResult())
                 .sourceEntityId(job.getSourceEntityId() != null ? job.getSourceEntityId().toString() : null)
                 .sourceEntityType(job.getSourceEntityType())

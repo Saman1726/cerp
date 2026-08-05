@@ -72,8 +72,9 @@ export const SAGA_TYPE_LABELS: Record<string, string> = {
   Resume: 'Resume',
   // Bidding Saga step labels
   'Tender.CreateAndOpen': 'Create & Open Tender',
-  'Tender.InviteVendors': 'Invite Vendors',
   'Bidding.CollectBids': 'Collect Bids',
+  'Tender.InviteVendors': 'Invite Vendors',
+  'OpenTender.Publish': 'Publish Open Tender',
   'Bidding.Evaluate': 'Evaluate Bids',
   'Tender.Award': 'Award Tender',
 };
@@ -94,8 +95,16 @@ export const PROCUREMENT_SAGA_STEPS: { code: string; label: string; description:
 
 export const BIDDING_SAGA_STEPS: { code: string; label: string; description: string }[] = [
   { code: 'Tender.CreateAndOpen', label: 'Create Tender', description: 'Create and open a tender' },
-  { code: 'Tender.InviteVendors', label: 'Invite Vendors', description: 'Invite vendors to bid' },
-  { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Collect bids from vendors' },
+  { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Open bid collection period' },
+  { code: 'Tender.InviteVendors', label: 'Invite Vendors', description: 'Invite selected vendors to bid' },
+  { code: 'Bidding.Evaluate', label: 'Evaluate Bids', description: 'Evaluate received bids' },
+  { code: 'Tender.Award', label: 'Award Tender', description: 'Award tender and issue PO' },
+];
+
+export const OPEN_TENDER_SAGA_STEPS: { code: string; label: string; description: string }[] = [
+  { code: 'Tender.CreateAndOpen', label: 'Create Tender', description: 'Create and open a tender' },
+  { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Open bid collection period' },
+  { code: 'OpenTender.Publish', label: 'Publish Open Tender', description: 'Broadcast tender to the open channel' },
   { code: 'Bidding.Evaluate', label: 'Evaluate Bids', description: 'Evaluate received bids' },
   { code: 'Tender.Award', label: 'Award Tender', description: 'Award tender and issue PO' },
 ];

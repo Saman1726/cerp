@@ -170,6 +170,7 @@ export const createBiddingSagaFromProcurementRequestSchema = z.object({
       price: z.number(),
       timeline: z.string().optional(),
       notes: z.string().optional(),
+      paymentMethod: z.enum(['BANK_TRANSFER', 'LETTER_OF_CREDIT', 'CASH', 'INSTALLMENTS']).optional(),
     })).optional(),
     evaluation: z.record(z.string(), z.any()).optional(),
   }),
@@ -196,6 +197,7 @@ export const createBiddingSagaRequestSchema = z.object({
       price: z.number(),
       timeline: z.string().optional(),
       notes: z.string().optional(),
+      paymentMethod: z.enum(['BANK_TRANSFER', 'LETTER_OF_CREDIT', 'CASH', 'INSTALLMENTS']).optional(),
     })).optional(),
     evaluation: z.record(z.string(), z.any()).optional(),
   }),
@@ -209,6 +211,7 @@ export const executeBiddingSagaStepRequestSchema = z.object({
   command: z.enum([
     'Tender.CreateAndOpen',
     'Tender.InviteVendors',
+    'OpenTender.Publish',
     'Bidding.CollectBids',
     'Bidding.Evaluate',
     'Tender.Award',

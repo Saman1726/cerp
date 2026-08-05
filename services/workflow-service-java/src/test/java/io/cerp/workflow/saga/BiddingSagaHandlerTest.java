@@ -266,6 +266,7 @@ class BiddingSagaHandlerTest {
             new BigDecimal(price),
             new BigDecimal(price),
             "30 days",
+            null,
             null
         );
         // Set IDs and timestamps manually (these are normally set by JPA)

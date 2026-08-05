@@ -28,8 +28,9 @@ import io.cerp.workflow.service.bidding.VendorBidSubmissionService;
  * This handler coordinates the bidding process:
  * <ol>
  * <li>Tender is created and opened</li>
- * <li>Vendors are invited to bid</li>
- * <li>Bids are collected and evaluated</li>
+ * <li>Project owner pays 1 bid (CollectBids)</li>
+ * <li>Vendors are invited to submit bids for free</li>
+ * <li>Bids are evaluated</li>
  * <li>Tender is awarded and PO is issued</li>
  * </ol>
  *
@@ -63,6 +64,9 @@ public class BiddingSagaHandler implements SagaHandler {
 
     /** Award tender and issue purchase order. */
     public static final String AWARD_TENDER = "Tender.Award";
+
+    /** Publish an open tender to all vendors (no specific invitee list). */
+    public static final String PUBLISH_OPEN_TENDER = "OpenTender.Publish";
 
     /** Resume a paused/stalled bidding saga. */
     public static final String RESUME = "Resume";
@@ -112,6 +116,8 @@ public class BiddingSagaHandler implements SagaHandler {
                 return executeEvaluateBids(context, payload);
             case AWARD_TENDER:
                 return executeAwardTender(context, payload);
+            case PUBLISH_OPEN_TENDER:
+                return executePublishOpenTender(context, payload);
             case RESUME:
             case "RESUME":
                 return executeResume(context, payload);
@@ -133,6 +139,8 @@ public class BiddingSagaHandler implements SagaHandler {
                 return compensateCollectBids(context);
             case INVITE_VENDORS:
                 return compensateInviteVendors(context);
+            case PUBLISH_OPEN_TENDER:
+                return compensatePublishOpenTender(context);
             case CREATE_TENDER:
                 return compensateCreateTender(context);
             default:
@@ -143,7 +151,14 @@ public class BiddingSagaHandler implements SagaHandler {
 
     @Override
     public String getNextStep(final SagaContext context, final String executedCommand) {
-        String next = getNextStepCode(executedCommand);
+        final String next;
+        if (COLLECT_BIDS.equals(executedCommand)) {
+            // After collecting bids, route to OPEN_TENDER broadcast or invited flow
+            final Object biddingMode = context.getData().get("biddingMode");
+            next = "OPEN_TENDER".equals(biddingMode) ? PUBLISH_OPEN_TENDER : INVITE_VENDORS;
+        } else {
+            next = getNextStepCode(executedCommand);
+        }
         if (next != null) {
             context.getData().put("currentStep", next);
         }
@@ -411,7 +426,8 @@ public class BiddingSagaHandler implements SagaHandler {
         final String tenantId = context.getTenantId();
         final String tenderId = (String) context.getData().get("tenderId");
 
-        // Deduct 1 bid from project owner's wallet when bidding starts
+        // Project owner pays 1 bid to open the tender for bidding.
+        // Vendors are invited in the next step and submit their offers for free.
         final String projectOwnerId = context.getUserId();
         if (projectOwnerId != null) {
             try {
@@ -432,64 +448,19 @@ public class BiddingSagaHandler implements SagaHandler {
                 errorDetails.put("requiredBids", e.getRequired());
                 throw new SagaException("INSUFFICIENT_BIDS", e.getMessage(), errorDetails);
             } catch (IllegalArgumentException e) {
-                log.warn("Could not deduct bids: {}", e.getMessage());
-                // Continue anyway if user ID parsing fails
+                log.warn("Could not deduct bids from project owner wallet: {}", e.getMessage());
             }
-        }
-
-        // Extract bidding saga ID from context
-        Object sagaIdObj = context.getData().get("biddingSagaId");
-        UUID biddingSagaId = null;
-        if (sagaIdObj instanceof String s) {
-            try {
-                biddingSagaId = UUID.fromString(s);
-            } catch (IllegalArgumentException e) {
-                biddingSagaId = sagaId;
-            }
-        } else if (sagaIdObj instanceof UUID u) {
-            biddingSagaId = u;
-        }
-
-        // Use the context sagaId if biddingSagaId is not set
-        if (biddingSagaId == null) {
-            biddingSagaId = sagaId;
-        }
-
-        // Query database for stored bids instead of expecting them in payload
-        final List<Map<String, Object>> bids = bidSubmissionService
-                .getBidsBySagaId(biddingSagaId)
-                .stream()
-                .map(VendorBidSubmissionService::toMap)
-                .toList();
-
-        if (bids.isEmpty()) {
-            final Object vendorIdsObj = context.getData().get("invitedVendorIds");
-            int invitedCountVal = 0;
-            if (vendorIdsObj instanceof List) {
-                invitedCountVal = ((List<?>) vendorIdsObj).size();
-            }
-            final Map<String, Object> errorDetails = new HashMap<>();
-            errorDetails.put("tenderId", tenderId);
-            errorDetails.put("invitedCount", invitedCountVal);
-            errorDetails.put("biddingSagaId", biddingSagaId.toString());
-            throw new SagaException("NO_BIDS_RECEIVED", "No bids received for tender: " + tenderId
-                    + " (sagaId: " + biddingSagaId + "). Vendors have not submitted bids yet.", errorDetails);
         }
 
         final Map<String, Object> collectData = new HashMap<>();
         collectData.put("tenderId", tenderId);
-        collectData.put("biddingSagaId", biddingSagaId.toString());
-        collectData.put("bidsReceived", bids.size());
-        collectData.put("bids", bids);
-        collectData.put("status", "UNDER_EVALUATION");
+        collectData.put("status", "COLLECTING");
 
         context.getData().putAll(collectData);
 
-        // Emit BidsCollected event
-        publishEvent(sagaId, tenantId, "BidsCollected", collectData);
+        publishEvent(sagaId, tenantId, "BidCollectionStarted", collectData);
 
-        log.info("Bids collected for tender: tenderId={}, biddingSagaId={}, bidsReceived={}", 
-                tenderId, biddingSagaId, bids.size());
+        log.info("Bid collection started for tender: tenderId={}", tenderId);
         return context;
     }
 
@@ -503,8 +474,33 @@ public class BiddingSagaHandler implements SagaHandler {
                 ? (Map<String, Object>) payload.get("evaluation")
                 : null;
 
-        @SuppressWarnings("unchecked")
-        final List<Map<String, Object>> bids = (List<Map<String, Object>>) context.getData().get("bids");
+        // Load vendor bids from DB — they arrive asynchronously after vendors are invited.
+        Object sagaIdObj = context.getData().get("biddingSagaId");
+        UUID biddingSagaId = null;
+        if (sagaIdObj instanceof String s) {
+            try { biddingSagaId = UUID.fromString(s); } catch (IllegalArgumentException e) { biddingSagaId = sagaId; }
+        } else if (sagaIdObj instanceof UUID u) {
+            biddingSagaId = u;
+        }
+        if (biddingSagaId == null) biddingSagaId = sagaId;
+
+        final List<Map<String, Object>> bids = bidSubmissionService
+                .getBidsBySagaId(biddingSagaId)
+                .stream()
+                .map(VendorBidSubmissionService::toMap)
+                .toList();
+
+        if (bids.isEmpty()) {
+            final Map<String, Object> errorDetails = new HashMap<>();
+            errorDetails.put("tenderId", tenderId);
+            errorDetails.put("biddingSagaId", biddingSagaId.toString());
+            throw new SagaException("NO_BIDS_RECEIVED",
+                    "No vendor bids received for tender: " + tenderId + ". Vendors have not submitted bids yet.",
+                    errorDetails);
+        }
+
+        context.getData().put("bids", bids);
+        context.getData().put("bidsReceived", bids.size());
 
         // Select winning bid (simple: lowest price, or use evaluation criteria)
         String winningVendorId = null;
@@ -583,6 +579,49 @@ public class BiddingSagaHandler implements SagaHandler {
         return context;
     }
 
+    private SagaContext executePublishOpenTender(final SagaContext context, final Map<String, Object> payload)
+            throws SagaException {
+        final UUID sagaId = context.getSagaId();
+        final String tenantId = context.getTenantId();
+        final String tenderId = (String) context.getData().get("tenderId");
+
+        final Object bidDeadline = (payload != null && payload.containsKey("bidDeadline"))
+                ? payload.get("bidDeadline")
+                : context.getData().get("bidDeadline");
+
+        final Map<String, Object> openTenderData = new HashMap<>();
+        openTenderData.put("tenderId", tenderId);
+        openTenderData.put("sagaId", sagaId.toString());
+        openTenderData.put("projectId", context.getData().get("projectId"));
+        openTenderData.put("bidDeadline", bidDeadline);
+        openTenderData.put("biddingMode", "OPEN_TENDER");
+        openTenderData.put("status", "OPEN_FOR_BIDS");
+
+        context.getData().putAll(openTenderData);
+
+        // Publish Kafka event — OpenTenderPublishedConsumer will notify only subscribed vendors.
+        // If Kafka is unavailable subscribed vendors miss the push but can still browse the channel.
+        publishOpenTenderKafkaEvent(sagaId, tenantId, tenderId, openTenderData);
+
+        publishEvent(sagaId, tenantId, "OpenTenderPublished", openTenderData);
+
+        log.info("Open tender published to all vendors: tenderId={}", tenderId);
+        return context;
+    }
+
+    private boolean publishOpenTenderKafkaEvent(
+            final UUID sagaId, final String tenantId, final String tenderId,
+            final Map<String, Object> data) {
+        try {
+            kafkaTemplate.send(KafkaTopicConfig.TOPIC_OPEN_TENDER_PUBLISHED, tenderId, data);
+            log.info("Published open-tender Kafka event: tenderId={}", tenderId);
+            return true;
+        } catch (Exception e) {
+            log.warn("Kafka unavailable for open-tender event (tenderId={}): {}", tenderId, e.getMessage());
+            return false;
+        }
+    }
+
     // ── Compensation Methods ──
 
     private SagaContext compensateAwardTender(final SagaContext context) throws SagaException {
@@ -629,6 +668,16 @@ public class BiddingSagaHandler implements SagaHandler {
         return context;
     }
 
+    private SagaContext compensatePublishOpenTender(final SagaContext context) throws SagaException {
+        final String tenderId = (String) context.getData().get("tenderId");
+        final Map<String, Object> retractData = new HashMap<>();
+        retractData.put("tenderId", tenderId);
+        retractData.put("reason", "saga_compensation");
+        publishEvent(context.getSagaId(), context.getTenantId(), "OpenTenderRetracted", retractData);
+        log.info("Open tender retracted: tenderId={}", tenderId);
+        return context;
+    }
+
     private SagaContext compensateCreateTender(final SagaContext context) throws SagaException {
         final String tenderId = (String) context.getData().get("tenderId");
         final Map<String, Object> cancelData = new HashMap<>();
@@ -643,12 +692,14 @@ public class BiddingSagaHandler implements SagaHandler {
 
     private String getNextStepCode(final String executedStep) {
         return switch (executedStep) {
-            case CREATE_TENDER -> INVITE_VENDORS;
-            case INVITE_VENDORS -> COLLECT_BIDS;
-            case COLLECT_BIDS -> EVALUATE_BIDS;
+            case CREATE_TENDER -> COLLECT_BIDS;
+            // COLLECT_BIDS next step is mode-dependent; handled in getNextStep(context, cmd)
+            case COLLECT_BIDS -> INVITE_VENDORS;
+            case INVITE_VENDORS -> EVALUATE_BIDS;
+            case PUBLISH_OPEN_TENDER -> EVALUATE_BIDS;
             case EVALUATE_BIDS -> AWARD_TENDER;
-            case AWARD_TENDER -> null; // Saga complete
-            case RESUME -> null; // Resume is handled by executeResume, not getNextStepCode
+            case AWARD_TENDER -> null;
+            case RESUME -> null;
             default -> null;
         };
     }
@@ -660,16 +711,16 @@ public class BiddingSagaHandler implements SagaHandler {
         final Object currentStepObj = context.getData().get("currentStep");
         if (currentStepObj instanceof String currentStep) {
             return switch (currentStep) {
-                case CREATE_TENDER -> INVITE_VENDORS;
-                case INVITE_VENDORS -> null; // paused; caller must supply stepCode in Resume payload
-                case COLLECT_BIDS -> EVALUATE_BIDS;
+                case CREATE_TENDER -> COLLECT_BIDS;
+                case COLLECT_BIDS -> INVITE_VENDORS;
+                case INVITE_VENDORS -> null; // paused; vendor bids arrive async
+                case PUBLISH_OPEN_TENDER -> null; // paused; open tender bids arrive async
                 case EVALUATE_BIDS -> AWARD_TENDER;
                 default -> null;
             };
         }
-        // Default: if no current step, start with inviting vendors
-        // (CreateAndOpen is assumed to have been executed during saga creation)
-        return INVITE_VENDORS;
+        // Default: if no current step, collect bids (CreateAndOpen already ran)
+        return COLLECT_BIDS;
     }
 
     /**

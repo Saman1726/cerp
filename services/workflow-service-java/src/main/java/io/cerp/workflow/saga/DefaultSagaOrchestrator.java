@@ -110,6 +110,14 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     public SagaContext executeStep(UUID sagaId, String command, Map<String, Object> payload) {
         SagaState state = activeSagas.get(sagaId);
         if (state == null) {
+            // Rehydrate from DB after a service restart
+            Optional<SagaEntity> entityOpt = sagaRepository.findById(sagaId.toString());
+            state = entityOpt.map(this::toState).orElse(null);
+            if (state != null) {
+                activeSagas.put(sagaId, state);
+            }
+        }
+        if (state == null) {
             throw new IllegalArgumentException("Saga not found: " + sagaId);
         }
 

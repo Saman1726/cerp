@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -71,6 +70,46 @@ public class NotificationServiceClientImpl implements NotificationServiceClient 
             }
         } catch (Exception e) {
             log.warn("Failed to send notification to userId={}, title={}: {}", userId, title, e.getMessage());
+        }
+    }
+
+    @Override
+    public void sendNotificationToRoles(UUID tenantId, String title, String message, String code,
+                                         List<String> roles, Map<String, Object> data) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("code", code != null ? code.toLowerCase().replace(" ", "_") : "notification");
+            payload.put("title", title);
+            payload.put("description", message);
+            payload.put("actionType", "EXECUTE");
+            payload.put("recipientRoles", roles);
+            payload.put("sourceService", "workflow-service");
+            if (data != null && !data.isEmpty()) {
+                payload.put("payload", data);
+            }
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> created = restClient.post()
+                    .uri("/api/notifications/jobs")
+                    .header("X-Tenant-Id", tenantId != null ? tenantId.toString() : "")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(Map.class);
+
+            if (created != null && created.get("id") != null) {
+                String jobId = created.get("id").toString();
+                restClient.post()
+                        .uri("/api/notifications/jobs/{jobId}/publish", jobId)
+                        .header("X-Tenant-Id", tenantId != null ? tenantId.toString() : "")
+                        .retrieve()
+                        .toBodilessEntity();
+                log.info("Role broadcast notification published: jobId={}, roles={}, title={}", jobId, roles, title);
+            } else {
+                log.warn("Role broadcast job created but no id returned: roles={}, title={}", roles, title);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to send role broadcast notification: roles={}, title={}: {}", roles, title, e.getMessage());
         }
     }
 

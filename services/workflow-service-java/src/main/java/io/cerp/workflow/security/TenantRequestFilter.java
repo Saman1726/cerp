@@ -46,10 +46,15 @@ public class TenantRequestFilter extends OncePerRequestFilter {
 
     private Optional<UUID> resolveTenantId(HttpServletRequest request) {
         String header = request.getHeader(HEADER_TENANT_ID);
-        if (header != null && !header.isBlank()) {
-            // Try to resolve the tenant code to a UUID via TenantService
-            return tenantService.getTenantIdByCode(header.trim());
+        if (header == null || header.isBlank()) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        String value = header.trim();
+        // Accept either a raw UUID or a tenant code string
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException ignored) {
+            return tenantService.getTenantIdByCode(value);
+        }
     }
 }

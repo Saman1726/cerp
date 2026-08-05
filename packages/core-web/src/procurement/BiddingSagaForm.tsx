@@ -10,7 +10,7 @@ import { Label } from '../components/ui/label';
 import { cn } from '../lib/utils';
 import { SagaStatusBadge } from '../workflow/SagaStatusBadge';
 import { workflowApi } from '../workflow/api';
-import { BIDDING_SAGA_STEPS, SAGA_TYPE_LABELS } from '../workflow/types';
+import { BIDDING_SAGA_STEPS, OPEN_TENDER_SAGA_STEPS, SAGA_TYPE_LABELS } from '../workflow/types';
 import type { Saga } from '../workflow/types';
 import type {
   CreateBiddingSagaRequest,
@@ -71,6 +71,8 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdSaga, setCreatedSaga] = useState<Saga | null>(null);
+  const [ownerWalletBids, setOwnerWalletBids] = useState<number | null>(null);
+  const [allocatingBids, setAllocatingBids] = useState(false);
 
   // Check if this is for creating a bidding from procurement (has initialProcurementSagaId)
   const isBiddingFromProcurement = !!initialProcurementSagaId && !isEditMode;
@@ -91,7 +93,7 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
   }, [initialProcurementSagaId, saga?.data?.projectId]);
 
-  const projectId = getInitialProjectIdForCreate(saga, inheritedProjectId);
+  const projectId = getInitialProjectIdForCreate(saga ?? undefined, inheritedProjectId);
 
   // Generate deterministic saga ID when name, projectId, or biddingMode changes (only on create)
   useEffect(() => {
@@ -151,6 +153,25 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
   }, [initialProcurementSagaId, saga]);
 
+  // Fetch project owner wallet balance when needed for the CollectBids step
+  useEffect(() => {
+    const activeSaga = createdSaga ?? saga;
+    if (!activeSaga) return;
+    const step = activeSaga.currentStep || 'Tender.CreateAndOpen';
+    if (step !== 'Tender.CreateAndOpen') return;
+    (async () => {
+      try {
+        const res = await fetch('/api/bidding?_path=wallet/balance&entityType=PROJECT_OWNER');
+        if (res.ok) {
+          const data = await res.json() as { availableBids?: number };
+          setOwnerWalletBids(data.availableBids ?? 0);
+        }
+      } catch {
+        // Non-critical — button will still show but won't be disabled
+      }
+    })();
+  }, [createdSaga, saga]);
+
   // Helper: extract vendor IDs from any saga object (check both field names)
   const getVendorIdsFromSaga = (s: Saga | null | undefined): string[] => {
     if (!s) return [];
@@ -166,6 +187,28 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     if (!s) return 'Tender.CreateAndOpen';
     return s.currentStep || 'Tender.CreateAndOpen';
   };
+
+  const handleAllocateOwnerBids = useCallback(async () => {
+    setAllocatingBids(true);
+    try {
+      const res = await fetch('/api/bidding?_path=wallet/allocate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entityType: 'PROJECT_OWNER', amount: 10 }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { wallet?: { availableBids?: number } };
+        setOwnerWalletBids(data.wallet?.availableBids ?? null);
+      } else {
+        const data = await res.json().catch(() => ({})) as { message?: string };
+        setError(data.message ?? 'Failed to allocate bids');
+      }
+    } catch {
+      setError('Failed to allocate bids');
+    } finally {
+      setAllocatingBids(false);
+    }
+  }, []);
 
   const handleCreateSaga = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -391,8 +434,13 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
   }, [saga]);
 
+  const activeBiddingSteps =
+    (createdSaga?.data?.biddingMode ?? biddingMode) === 'OPEN_TENDER'
+      ? OPEN_TENDER_SAGA_STEPS
+      : BIDDING_SAGA_STEPS;
+
   const currentStepIndex = createdSaga
-    ? BIDDING_SAGA_STEPS.findIndex((s) => s.code === createdSaga.currentStep)
+    ? activeBiddingSteps.findIndex((s) => s.code === createdSaga.currentStep)
     : -1;
 
   // Determine which action buttons to show for RUNNING sagas
@@ -496,10 +544,62 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                 {(() => {
                   const effectiveStep = getEffectiveStep(saga);
 
-                  // Tender.CreateAndOpen -> Invite Vendors
+                  // Tender.CreateAndOpen -> Collect Bids
                   if (effectiveStep === 'Tender.CreateAndOpen') {
-                    // Use the same extraction logic as the "Invited Vendors" display section below
-                    // This ensures consistency between what is displayed and what is used for the action
+                    const insufficientBids = ownerWalletBids !== null && ownerWalletBids < 1;
+                    return (
+                      <div className="space-y-2">
+                        {ownerWalletBids !== null && (
+                          <p className="text-xs text-muted-foreground">
+                            Your bid wallet:{' '}
+                            <span className={insufficientBids ? 'font-semibold text-red-600' : 'font-semibold'}>
+                              {ownerWalletBids} bid{ownerWalletBids !== 1 ? 's' : ''}
+                            </span>
+                            {' '}— opening bid collection costs <strong>1 bid</strong>.
+                          </p>
+                        )}
+                        {insufficientBids && (
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs text-red-600">Insufficient bids.</p>
+                            <button
+                              type="button"
+                              onClick={handleAllocateOwnerBids}
+                              disabled={allocatingBids}
+                              className="text-xs underline text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            >
+                              {allocatingBids ? 'Adding…' : 'Add 10 bids'}
+                            </button>
+                          </div>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            await handleViewModeExecuteStep('Bidding.CollectBids');
+                          }}
+                          disabled={loading || allocatingBids || insufficientBids}
+                        >
+                          Open Bid Collection
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  // Bidding.CollectBids -> mode-dependent next step
+                  if (effectiveStep === 'Bidding.CollectBids') {
+                    const isOpenTender = saga.data?.biddingMode === 'OPEN_TENDER';
+                    if (isOpenTender) {
+                      return (
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            await handleViewModeExecuteStep('OpenTender.Publish');
+                          }}
+                          disabled={loading}
+                        >
+                          Publish Open Tender
+                        </Button>
+                      );
+                    }
                     const vendorIds = (saga.data?.invitedVendorIds as string[]) || (saga.data?.vendorIds as string[]) || [];
                     const inviteConfig = saga.data?.inviteConfig as Record<string, unknown> | undefined;
                     const hasVendors = vendorIds.length > 0;
@@ -526,6 +626,15 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                     );
                   }
 
+                  // OpenTender.Publish -> waiting for open tender bids
+                  if (effectiveStep === 'OpenTender.Publish') {
+                    return (
+                      <span className="text-xs text-muted-foreground">
+                        Open tender published — waiting for vendor bids...
+                      </span>
+                    );
+                  }
+
                   // Tender.InviteVendors -> Cancel Invitation (compensate)
                   if (effectiveStep === 'Tender.InviteVendors') {
                     return (
@@ -544,21 +653,6 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                           Waiting for vendors to submit bids...
                         </span>
                       </>
-                    );
-                  }
-
-                  // Bidding.CollectBids -> Submit Bids
-                  if (effectiveStep === 'Bidding.CollectBids') {
-                    return (
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          await handleViewModeExecuteStep('Bidding.CollectBids');
-                        }}
-                        disabled={loading}
-                      >
-                        Collect Bids (Auto-Collect from Stored Bids)
-                      </Button>
                     );
                   }
 
@@ -600,7 +694,7 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                 {/* Cancel Saga - shows for first steps */}
                 {(() => {
                   const effectiveStep = getEffectiveStep(saga);
-                  if (effectiveStep === 'Tender.CreateAndOpen' || effectiveStep === 'Tender.InviteVendors') {
+                  if (effectiveStep === 'Tender.CreateAndOpen' || effectiveStep === 'Bidding.CollectBids' || effectiveStep === 'Tender.InviteVendors' || effectiveStep === 'OpenTender.Publish') {
                     return (
                       <Button
                         size="sm"
@@ -674,7 +768,7 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
 
             {/* Progress Steps */}
             <div className="space-y-2">
-              {BIDDING_SAGA_STEPS.map((step, index) => {
+              {activeBiddingSteps.map((step, index) => {
                 const isCompleted = index < currentStepIndex;
                 const isCurrent = index === currentStepIndex;
 
@@ -714,15 +808,54 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
             {createdSaga.status === 'RUNNING' && (
               <div className="space-y-4 mt-4">
                 {effectiveStep === 'Tender.CreateAndOpen' && (
-                  (() => {
-                    // Extract vendor IDs from createdSaga data (already persisted in database)
-                    const vendorIds = getVendorIdsFromSaga(createdSaga);
-                    const hasVendors = vendorIds.length > 0;
+                  <div className="space-y-2">
+                    {ownerWalletBids !== null && (
+                      <p className="text-xs text-muted-foreground">
+                        Your bid wallet:{' '}
+                        <span className={ownerWalletBids < 1 ? 'font-semibold text-red-600' : 'font-semibold'}>
+                          {ownerWalletBids} bid{ownerWalletBids !== 1 ? 's' : ''}
+                        </span>
+                        {' '}— opening bid collection costs <strong>1 bid</strong>.
+                      </p>
+                    )}
+                    {ownerWalletBids !== null && ownerWalletBids < 1 && (
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-red-600">Insufficient bids.</p>
+                        <button
+                          type="button"
+                          onClick={handleAllocateOwnerBids}
+                          disabled={allocatingBids}
+                          className="text-xs underline text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                        >
+                          {allocatingBids ? 'Adding…' : 'Add 10 bids'}
+                        </button>
+                      </div>
+                    )}
+                    <Button
+                      onClick={() => handleExecuteStep('Bidding.CollectBids')}
+                      disabled={loading || allocatingBids || (ownerWalletBids !== null && ownerWalletBids < 1)}
+                    >
+                      Open Bid Collection
+                    </Button>
+                  </div>
+                )}
+
+                {effectiveStep === 'Bidding.CollectBids' && (() => {
+                  const isOpenTender = (createdSaga.data?.biddingMode as string) === 'OPEN_TENDER';
+                  if (isOpenTender) {
                     return (
-                   <>
+                      <Button onClick={() => handleExecuteStep('OpenTender.Publish')} disabled={loading}>
+                        Publish Open Tender
+                      </Button>
+                    );
+                  }
+                  const vendorIds = getVendorIdsFromSaga(createdSaga);
+                  const hasVendors = vendorIds.length > 0;
+                  return (
+                    <>
                       {!hasVendors && (
                         <div className="text-xs text-amber-600 mb-2">
-                          No vendors selected. Please assign vendors to the bidding saga first before inviting them.
+                          No vendors selected. Please assign vendors before inviting them.
                         </div>
                       )}
                       <Button
@@ -735,8 +868,13 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                         Invite Vendors
                       </Button>
                     </>
-                    );
-                  })()
+                  );
+                })()}
+
+                {effectiveStep === 'OpenTender.Publish' && (
+                  <span className="text-sm text-muted-foreground block">
+                    Open tender published — waiting for vendor bids...
+                  </span>
                 )}
 
                 {effectiveStep === 'Tender.InviteVendors' && (
@@ -752,55 +890,6 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
                       Waiting for vendors to submit bids...
                     </span>
                   </>
-                )}
-
-                {effectiveStep === 'Bidding.CollectBids' && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium">Submit Bids</h4>
-                    {bids.map((bid, index) => (
-                      <div key={index} className="grid grid-cols-1 sm:grid-cols-4 gap-2 p-3 border rounded">
-                        <Input
-                          placeholder="Vendor ID"
-                          value={bid.vendorId}
-                          onChange={(e) => handleUpdateBid(index, 'vendorId', e.target.value)}
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Price"
-                          value={bid.price}
-                          onChange={(e) => handleUpdateBid(index, 'price', e.target.value)}
-                        />
-                        <Input
-                          placeholder="Timeline"
-                          value={bid.timeline}
-                          onChange={(e) => handleUpdateBid(index, 'timeline', e.target.value)}
-                        />
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="Notes"
-                            value={bid.notes}
-                            onChange={(e) => handleUpdateBid(index, 'notes', e.target.value)}
-                          />
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleRemoveBid(index)}
-                            disabled={bids.length === 1}
-                          >
-                            ×
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={handleAddBid}>
-                        Add Bid
-                      </Button>
-                      <Button size="sm" onClick={handleCollectBids} disabled={loading}>
-                        Submit Bids
-                      </Button>
-                    </div>
-                  </div>
                 )}
 
                 {effectiveStep === 'Bidding.Evaluate' && (

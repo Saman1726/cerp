@@ -52,4 +52,5 @@ public class KafkaTopicConfig {
 
     /** Marketplace bidding saga events */
     public static final String TOPIC_VENDORS_INVITED = "collaboration.bidding.vendors.invited.v1";
+    public static final String TOPIC_OPEN_TENDER_PUBLISHED = "collaboration.bidding.open-tender.published.v1";
 }

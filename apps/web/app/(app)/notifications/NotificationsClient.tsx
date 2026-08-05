@@ -2,7 +2,12 @@
 
 import { useState } from 'react';
 import { Bell, Check, Clock } from 'lucide-react';
-import { NotificationProvider, useNotifications } from '@cerp/core-web/notifications';
+import {
+  NotificationProvider,
+  useNotifications,
+  SubmitPriceOfferForm,
+  OpenTenderSubmitForm,
+} from '@cerp/core-web/notifications';
 import { NotificationStatus } from '@cerp/shared-types';
 
 function NotificationsContent() {
@@ -207,38 +212,72 @@ function NotificationsContent() {
                       {/* Action form */}
                       {expandedId === notification.id && (
                         <div className="mt-3 rounded-md border border-gray-200 bg-white p-4">
-                          <p className="mb-3 text-sm font-medium text-gray-700">
-                            Enter action result:
-                          </p>
-                          <textarea
-                            value={JSON.stringify(actionResult ?? {}, null, 2)}
-                            onChange={(e) => {
-                              try {
-                                setActionResult(JSON.parse(e.target.value || '{}'));
-                              } catch {
-                                // Keep previous valid value
-                              }
-                            }}
-                            className="mb-3 w-full rounded-md border border-gray-300 p-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            rows={4}
-                          />
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleTakeAction(notification.id)}
-                              className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-                            >
-                              Submit
-                            </button>
-                            <button
-                              onClick={() => {
-                                setExpandedId(null);
-                                setActionResult(null);
-                              }}
-                              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                          {notification.code?.startsWith('vendor_invite_') &&
+                          !notification.code.startsWith('vendor_invite_confirm_') ? (
+                            <>
+                              <p className="mb-3 text-sm font-medium text-gray-700">
+                                Submit your price offer:
+                              </p>
+                              <SubmitPriceOfferForm
+                                notification={notification}
+                                onSuccess={async () => {
+                                  setExpandedId(null);
+                                  await refresh();
+                                }}
+                                onCancel={() => setExpandedId(null)}
+                              />
+                            </>
+                          ) : notification.code?.startsWith('open_tender_') &&
+                            !notification.code.startsWith('open_tender_confirm_') ? (
+                            <>
+                              <p className="mb-3 text-sm font-medium text-gray-700">
+                                Submit your open tender offer:
+                              </p>
+                              <OpenTenderSubmitForm
+                                notification={notification}
+                                onSuccess={async () => {
+                                  setExpandedId(null);
+                                  await refresh();
+                                }}
+                                onCancel={() => setExpandedId(null)}
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <p className="mb-3 text-sm font-medium text-gray-700">
+                                Enter action result:
+                              </p>
+                              <textarea
+                                value={JSON.stringify(actionResult ?? {}, null, 2)}
+                                onChange={(e) => {
+                                  try {
+                                    setActionResult(JSON.parse(e.target.value || '{}'));
+                                  } catch {
+                                    // Keep previous valid value
+                                  }
+                                }}
+                                className="mb-3 w-full rounded-md border border-gray-300 p-2 text-sm font-mono focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                rows={4}
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleTakeAction(notification.id)}
+                                  className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                                >
+                                  Submit
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setExpandedId(null);
+                                    setActionResult(null);
+                                  }}
+                                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </>

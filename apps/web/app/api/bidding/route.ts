@@ -102,15 +102,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await request.json() as Record<string, unknown>;
+    const { searchParams } = new URL(request.url);
+    const path = searchParams.get('_path') || 'submissions';
 
-    // Extract tenantId from session
+    // Extract tenantId and userId from session
     const { cookies } = await import('next/headers');
     const cookieStore = await cookies();
     const token = cookieStore.get('cerp_session')?.value;
 
     const DEFAULT_TENANT_CODE = 'default';
     let tenantCode = DEFAULT_TENANT_CODE;
+    let sessionUserId: string | null = null;
 
     if (token) {
       try {
@@ -123,6 +126,9 @@ export async function POST(request: NextRequest) {
           if (decoded.tenantCode && typeof decoded.tenantCode === 'string' && decoded.tenantCode.trim()) {
             tenantCode = decoded.tenantCode;
           }
+          if (decoded.sub && typeof decoded.sub === 'string') {
+            sessionUserId = decoded.sub;
+          }
         }
       } catch {
         // Use default tenant code
@@ -132,10 +138,16 @@ export async function POST(request: NextRequest) {
     const headers = getBackendHeaders(request);
     (headers as Record<string, string>)['X-Tenant-Id'] = tenantCode;
 
-    const res = await fetch(`${WORKFLOW_SERVICE_URL}/api/v1/bidding`, {
+    // For wallet/allocate: auto-inject session userId if the caller didn't provide one
+    const effectiveBody =
+      path === 'wallet/allocate' && !body.userId && sessionUserId
+        ? { ...body, userId: sessionUserId }
+        : body;
+
+    const res = await fetch(`${WORKFLOW_SERVICE_URL}/api/v1/bidding/${path}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(effectiveBody),
       cache: 'no-store',
     });
 
