@@ -100,7 +100,7 @@ export async function PATCH(
     const res = await fetch(url, {
       method: 'PATCH',
       headers: {
-        ...getBackendHeaders(request as any),
+        ...getBackendHeaders(request),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),

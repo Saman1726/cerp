@@ -3,7 +3,7 @@ import { extractSessionUser } from '../../workflows/utils';
 
 const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:8091';
 
-async function getHeaders(req: NextRequest): Promise<Record<string, string>> {
+async function getHeaders(): Promise<Record<string, string>> {
   const { userId, tenantId } = await extractSessionUser();
   console.log('[notifications] session resolved: userId=%s, tenantId=%s', userId, tenantId);
   const headers: Record<string, string> = {
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   if (status) params.set('status', status);
 
   try {
-    const headers = await getHeaders(req);
+    const headers = await getHeaders();
     const response = await fetch(
       `${NOTIFICATION_SERVICE_URL}/api/notifications/me?${params}`,
       { method: 'GET', headers }
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
 
   try {
-    const headers = await getHeaders(req);
+    const headers = await getHeaders();
     headers['Content-Type'] = 'application/json';
 
     let endpoint: string;

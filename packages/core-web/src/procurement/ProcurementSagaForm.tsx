@@ -136,6 +136,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
       }
     };
     loadRelatedBiddingSagas(saga ?? createdSaga ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saga?.sagaId, createdSaga?.sagaId]);
 
   // Helper: get effective current step
@@ -407,6 +408,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSaga, selectedVendorId]);
 
   // Handle IssuePurchaseOrder button click
@@ -441,6 +443,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createdSaga, handleExecuteStep]);
 
   // Handle IssuePurchaseOrder for view mode (when viewing existing saga, not created)
@@ -477,6 +480,7 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadRelatedBiddingSagas]);
 
   const currentStepIndex = createdSaga

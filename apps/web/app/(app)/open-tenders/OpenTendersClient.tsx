@@ -25,6 +25,7 @@ function OpenTendersContent() {
   const [liveConnected, setLiveConnected] = useState(false);
   const [newCount, setNewCount] = useState(0);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const connectSSERef = useRef<(() => void) | null>(null);
 
   const fetchTenders = useCallback(async () => {
     try {
@@ -40,22 +41,32 @@ function OpenTendersContent() {
     }
   }, []);
 
-  const fetchSubscriptionStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/open-tenders/subscription');
-      if (res.ok) {
-        const data = await res.json() as { subscribed?: boolean };
-        setSubscribed(data.subscribed ?? false);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
   useEffect(() => {
-    fetchTenders();
-    fetchSubscriptionStatus();
-  }, [fetchTenders, fetchSubscriptionStatus]);
+    let mounted = true;
+    const init = async () => {
+      try {
+        const [tendersRes, subRes] = await Promise.all([
+          fetch('/api/open-tenders'),
+          fetch('/api/open-tenders/subscription'),
+        ]);
+        if (!mounted) return;
+        if (tendersRes.ok) {
+          const data = await tendersRes.json() as { tenders?: OpenTender[] };
+          setTenders(data.tenders ?? []);
+        }
+        if (subRes.ok) {
+          const data = await subRes.json() as { subscribed?: boolean };
+          setSubscribed(data.subscribed ?? false);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void init();
+    return () => { mounted = false; };
+  }, []);
 
   // SSE: only subscribed vendors get notifications, but we use the stream
   // to refresh the channel in real-time when new tenders arrive.
@@ -76,9 +87,13 @@ function OpenTendersContent() {
     es.onerror = () => {
       setLiveConnected(false);
       es.close();
-      setTimeout(connectSSE, 5_000);
+      setTimeout(() => connectSSERef.current?.(), 5_000);
     };
   }, [subscribed, fetchTenders]);
+
+  useEffect(() => {
+    connectSSERef.current = connectSSE;
+  }, [connectSSE]);
 
   useEffect(() => {
     connectSSE();

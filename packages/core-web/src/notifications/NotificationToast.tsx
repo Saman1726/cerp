@@ -63,17 +63,14 @@ const ToastNotification: React.FC<ToastNotificationProps> = ({
 
 export const NotificationToast: React.FC = () => {
   const { notifications } = useNotifications();
-  const [visible, setVisible] = React.useState<NotificationResponse[]>([]);
+  const [dismissed, setDismissed] = React.useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    const newPending = notifications.filter(
-      (n) => n.status === NotificationStatus.PENDING
-    );
-    setVisible(newPending.slice(-3));
-  }, [notifications]);
+  const visible = notifications
+    .filter((n) => n.status === NotificationStatus.PENDING && !dismissed.has(n.id))
+    .slice(-3);
 
   const dismiss = (id: string) => {
-    setVisible((prev) => prev.filter((n) => n.id !== id));
+    setDismissed((prev) => new Set([...prev, id]));
   };
 
   if (visible.length === 0) {

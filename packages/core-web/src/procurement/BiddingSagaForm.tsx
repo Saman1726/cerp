@@ -119,10 +119,6 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     generateId();
   }, [sagaName, projectId, biddingMode, isEditMode]);
 
-  // Bid collection state
-  const [bids, setBids] = useState<Array<{ vendorId: string; price: string; timeline: string; notes: string }>>([
-    { vendorId: '', price: '', timeline: '', notes: '' },
-  ]);
   const [evaluationNotes, setEvaluationNotes] = useState('');
 
   // Fetch fresh saga data
@@ -295,7 +291,7 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     } finally {
       setLoading(false);
     }
-  }, [saga, tenantId, projectId, biddingMode, selectedVendorIds, bidDeadline, description, initialProcurementSagaId, onSuccess]);
+  }, [saga, tenantId, projectId, biddingMode, selectedVendorIds, bidDeadline, description, initialProcurementSagaId, onSuccess, sagaId, sagaName]);
 
   const handleExecuteStep = useCallback(async (command: ExecuteBiddingSagaStepRequest['command'], data?: Record<string, unknown>) => {
     if (!createdSaga) return;
@@ -319,38 +315,6 @@ export function BiddingSagaForm({ tenantId, saga, onSuccess, onCancel, initialPr
     }
   }, [createdSaga]);
 
-  const handleAddBid = useCallback(() => {
-    setBids((prev) => [...prev, { vendorId: '', price: '', timeline: '', notes: '' }]);
-  }, []);
-
-  const handleUpdateBid = useCallback((index: number, field: keyof typeof bids[0], value: string) => {
-    setBids((prev) =>
-      prev.map((bid, i) => (i === index ? { ...bid, [field]: value } : bid))
-    );
-  }, []);
-
-  const handleRemoveBid = useCallback((index: number) => {
-    setBids((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const handleCollectBids = useCallback(async () => {
-    if (!createdSaga) return;
-
-    const validBids = bids.filter((b) => b.vendorId.trim() && b.price.trim());
-    if (validBids.length === 0) {
-      setError('At least one valid bid is required (vendorId and price)');
-      return;
-    }
-
-    const bidsPayload = validBids.map((b) => ({
-      vendorId: b.vendorId.trim(),
-      price: Number(b.price) || 0,
-      timeline: b.timeline || undefined,
-      notes: b.notes || undefined,
-    }));
-
-    await handleExecuteStep('Bidding.CollectBids', { bids: bidsPayload });
-  }, [createdSaga, bids, handleExecuteStep]);
 
   const handleEvaluateBids = useCallback(async () => {
     if (!createdSaga) return;

@@ -134,8 +134,26 @@ export function TemplatesPage() {
   }, []);
 
   useEffect(() => {
-    void fetchTemplates();
-  }, [fetchTemplates]);
+    let mounted = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await workflowApi.listTemplates();
+        if (!mounted) return;
+        const mapped = (result as unknown as TemplateListItem[]).map((t) => ({
+          ...t,
+          steps: t.steps ?? [],
+        }));
+        setTemplates(mapped);
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load templates');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // ── Detail Modal ──
 

@@ -99,7 +99,7 @@ export const NotificationCenter: React.FC = () => {
                 No notifications
               </div>
             )}
-            {filteredNotifications.map((notification: any) => (
+            {filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
                 className={`border-b p-4 cursor-pointer transition-colors hover:bg-gray-50 ${
@@ -122,10 +122,10 @@ export const NotificationCenter: React.FC = () => {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">
-                      {notification.jobTitle}
+                      {notification.title}
                     </p>
                     <p className="text-sm text-gray-600 truncate">
-                      {notification.jobDescription}
+                      {notification.description}
                     </p>
                     <div className="mt-1 flex items-center gap-2">
                       <span

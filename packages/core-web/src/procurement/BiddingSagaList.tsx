@@ -69,7 +69,7 @@ async function getProcurementSagas(): Promise<Saga[]> {
   return procurementSagaCachePromise;
 }
 
-export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEdit, onSagaUpdated }: BiddingSagaListProps) {
+export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEdit, onSagaUpdated: _onSagaUpdated }: BiddingSagaListProps) {
   const [sagas, setSagas] = useState<Saga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,13 +105,24 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
   const initialized = useRef(false);
 
   useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      getProjects().then(setProjects);
-      getProcurementSagas().then(setProcurementSagas);
-      fetchSagas();
-    }
-  }, [fetchSagas]);
+    if (initialized.current) return;
+    initialized.current = true;
+    getProjects().then(setProjects);
+    getProcurementSagas().then(setProcurementSagas);
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result: SagaQueryResponse = await workflowApi.listSagas(filters);
+        setSagas(result.items);
+        setTotal(result.total);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load bidding sagas');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [filters]);
 
   // Lookup project name by ID
   const getProjectName = useCallback((projectId: string | undefined): string => {

@@ -36,29 +36,21 @@ export function ProjectSelect({
   const [selectedProject, setSelectedProject] = useState<ProjectSummary | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load projects using the same apiClient as the construction page
-  // (apiClient routes /api/v1/projects to PROJECT_SERVICE_URL)
-  const loadProjects = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Use apiClient which routes to Next.js API proxy (/api/projects) that proxies to project-service
-      const projectList = await apiClient.get<ProjectSummary[]>('/api/projects');
-      if (Array.isArray(projectList)) {
-        setProjects(projectList);
-      } else {
-        setProjects([]);
-      }
-    } catch {
-      setProjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Load projects on mount - async data fetching in useEffect is standard React pattern
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    loadProjects();
+    let mounted = true;
+    void (async () => {
+      setLoading(true);
+      try {
+        const projectList = await apiClient.get<ProjectSummary[]>('/api/projects');
+        if (!mounted) return;
+        setProjects(Array.isArray(projectList) ? projectList : []);
+      } catch {
+        if (mounted) setProjects([]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   // Click outside to close dropdown

@@ -225,7 +225,7 @@ interface NotificationProviderProps {
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   children,
   tenantId,
-  userId,
+  userId: _userId,
   refreshInterval = 30000,
 }) => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -247,17 +247,38 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [tenantId, userId]);
+  }, [tenantId]);
 
   const refresh = useCallback(async () => {
     await fetchNotifications();
   }, [fetchNotifications]);
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, refreshInterval);
-    return () => clearInterval(interval);
-  }, [fetchNotifications, refreshInterval]);
+    let mounted = true;
+    const init = async () => {
+      setLoading(true);
+      try {
+        const result = await notificationApi.getMyNotifications(tenantId);
+        if (!mounted) return;
+        const items: NotificationItem[] = result.notifications.map((n) => ({
+          ...n,
+          unread: n.status === NotificationStatus.PENDING,
+        }));
+        setNotifications(items);
+        setUnreadCount(items.filter((n) => n.unread).length);
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+    void init();
+    const interval = setInterval(() => void fetchNotifications(), refreshInterval);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [tenantId, fetchNotifications, refreshInterval]);
 
   const acknowledge = useCallback(
     async (notificationId: string) => {

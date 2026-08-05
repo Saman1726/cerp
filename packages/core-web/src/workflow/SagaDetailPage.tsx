@@ -38,8 +38,26 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
   }, [sagaId]);
 
   useEffect(() => {
-    fetchSaga();
-  }, [fetchSaga]);
+    let mounted = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [sagaData, eventsData] = await Promise.all([
+          workflowApi.getSaga(sagaId),
+          workflowApi.getSagaEvents(sagaId),
+        ]);
+        if (!mounted) return;
+        setSaga(sagaData);
+        setEvents(eventsData);
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load saga details');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [sagaId]);
 
   const handleAction = async (action: 'compensate' | 'resume' | 'escalate', stepCode?: string, reason?: string) => {
     setActionLoading(action);

@@ -104,14 +104,51 @@ export function BidWalletBalance({ entityType, className }: BidWalletBalanceProp
   }, [entityType, TRANSACTION_PAGE_SIZE]);
 
   useEffect(() => {
-    loadWalletData();
-  }, [entityType, loadWalletData]);
+    let mounted = true;
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({ _path: 'wallet/balance' });
+        if (entityType) params.set('entityType', entityType);
+        const response = await fetch(`/api/bidding?${params}`);
+        if (!mounted) return;
+        if (!response.ok) throw new Error(`Failed to fetch wallet balance: ${response.statusText}`);
+        const data: BidWalletData = await response.json();
+        setWalletData(data);
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : 'Failed to load bid wallet');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [entityType]);
 
   useEffect(() => {
-    if (activeTab === 'history') {
-      loadTransactions(transactionPage);
-    }
-  }, [activeTab, loadTransactions, transactionPage]);
+    if (activeTab !== 'history') return;
+    let mounted = true;
+    void (async () => {
+      setLoadingTransactions(true);
+      try {
+        const params = new URLSearchParams({ _path: 'wallet/transactions', page: String(transactionPage), size: String(TRANSACTION_PAGE_SIZE) });
+        if (entityType) params.set('entityType', entityType);
+        const response = await fetch(`/api/bidding?${params}`);
+        if (!mounted) return;
+        if (!response.ok) throw new Error(`Failed to fetch transactions: ${response.statusText}`);
+        const data: BidTransactionsResponse = await response.json();
+        setTransactions(data.transactions);
+      } catch (err) {
+        if (mounted) {
+          console.error('Failed to fetch transactions:', err);
+          setTransactions([]);
+        }
+      } finally {
+        if (mounted) setLoadingTransactions(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [activeTab, transactionPage, entityType]);
 
   const handleRefresh = () => {
     loadWalletData();

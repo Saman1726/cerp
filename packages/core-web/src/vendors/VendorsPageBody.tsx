@@ -76,6 +76,7 @@ export function VendorsPageBody() {
     hasFetched.current = true;
     fetchMyVendors();
     fetchVendors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Re-fetch vendors after myVendors loads (favoriteIds becomes non-empty) to update favorite states
@@ -83,6 +84,7 @@ export function VendorsPageBody() {
     if (hasFetched.current && favoriteIds.size > 0) {
       fetchVendors();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [favoriteIds]);
 
   const handleSearch = () => {
