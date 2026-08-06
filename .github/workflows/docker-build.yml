@@ -48,10 +48,6 @@ jobs:
             context: services/workflow-service-java
             file: services/workflow-service-java/Dockerfile
             image: ghcr.io/saman1726/cerp-workflow-service-java
-          - name: procurement-service-java
-            context: services/procurement-service-java
-            file: services/procurement-service-java/Dockerfile
-            image: ghcr.io/saman1726/cerp-procurement-service-java
     steps:
       - uses: actions/checkout@v4
 

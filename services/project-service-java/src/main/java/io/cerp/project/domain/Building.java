@@ -24,7 +24,7 @@ import jakarta.persistence.Table;
  * Building entity representing a building within a construction site.
  */
 @Entity
-@Table(name = "buildings")
+@Table(name = "buildings", schema = "project")
 public class Building {
 
     @Id

@@ -39,7 +39,7 @@ import jakarta.persistence.Table;
  * Per Section 4 (Business Concept) and Section 9 (DDD): SubProjects drive scoping for permissions, reporting, and workflow instantiation within a Project.
  */
 @Entity
-@Table(name = "sub_projects", indexes = {
+@Table(name = "sub_projects", schema = "project", indexes = {
         @Index(name = "idx_subproject_tenant_id", columnList = "tenant_id"),
         @Index(name = "idx_subproject_org_id", columnList = "org_id"),
         @Index(name = "idx_subproject_project_id", columnList = "project_id"),

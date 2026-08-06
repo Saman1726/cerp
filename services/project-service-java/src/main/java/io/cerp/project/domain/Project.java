@@ -33,7 +33,7 @@ import org.hibernate.type.SqlTypes;
  * Per Section 4 (Business Concept): Projects are the primary work breakdown unit under properties/organizations, containing sites, activities, and contracts.
  */
 @Entity
-@Table(name = "projects", indexes = {
+@Table(name = "projects", schema = "project", indexes = {
         @Index(name = "idx_projects_tenant_id", columnList = "tenant_id"),
         @Index(name = "idx_projects_org_id", columnList = "org_id"),
         @Index(name = "idx_projects_external_id", columnList = "external_id", unique = true),

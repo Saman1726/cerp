@@ -50,9 +50,13 @@ export async function GET(request: NextRequest) {
         if (payload.tenantCode && typeof payload.tenantCode === 'string' && payload.tenantCode.trim()) {
           tenantCode = payload.tenantCode;
         }
-        const role = (payload.user as Record<string, unknown>)?.role ?? payload.role;
-        if (typeof role === 'string') {
-          jwtRole = role.toLowerCase();
+        const rolesField = payload.roles;
+        if (typeof rolesField === 'string') {
+          const roleList = rolesField
+            .split(',')
+            .map((r) => r.trim().toLowerCase())
+            .filter(Boolean);
+          jwtRole = roleList.includes('vendor') ? 'vendor' : (roleList[0] ?? null);
         }
       }
     }

@@ -20,7 +20,7 @@ import jakarta.persistence.Table;
  * Unit entity representing a unit/apartment within a floor.
  */
 @Entity
-@Table(name = "units")
+@Table(name = "units", schema = "project")
 public class Unit {
 
     @Id

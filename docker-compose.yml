@@ -136,7 +136,7 @@ services:
       DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
-      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports:
       - '8095:8085'
@@ -166,28 +166,6 @@ services:
     ports:
       - '8089:8089'
       - '5005:5005'
-
-  procurement-service-java:
-    build:
-      context: services/procurement-service-java
-      dockerfile: Dockerfile
-    container_name: cerp-procurement-service-java
-    depends_on:
-      supply-postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_started
-    environment:
-      PORT: 8087
-      DB_URL: jdbc:postgresql://supply-postgres:5432/supply_db
-      DB_USER: ${POSTGRES_USER:-cerp}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
-      OAUTH_ISSUER_URI: http://keycloak:8081/realms/master
-      KAFKA_BOOTSTRAP: kafka:9092
-      SPRING_FLYWAY_ENABLED: "true"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: none
-    ports:
-      - '8087:8087'
 
   # Notification service - manages notification jobs and individual notifications
   # Usage: docker compose --profile notification up -d

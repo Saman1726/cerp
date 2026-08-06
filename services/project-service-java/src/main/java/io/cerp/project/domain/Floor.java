@@ -24,7 +24,7 @@ import jakarta.persistence.Table;
  * Floor entity representing a floor within a building.
  */
 @Entity
-@Table(name = "floors")
+@Table(name = "floors", schema = "project")
 public class Floor {
 
     @Id

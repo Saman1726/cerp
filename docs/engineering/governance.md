@@ -23,7 +23,7 @@ Repository Layout
   - core-web/ – Shared web UI code for apps/web
   - eslint-config/, typescript-config/ – Shared tooling configs
 - services/
-  - core-api-java/, procurement-service-java/, vendor-service-java/, catalog-service-java/, identity-service-java/, partner-system-java/
+  - core-api-java/, vendor-service-java/, catalog-service-java/, identity-service-java/, partner-system-java/
 - infra/
   - k8s base/overlays – Kubernetes manifests (will move to a GitOps repo when split)
 - docs/ – Product and architecture documentation (this file included)

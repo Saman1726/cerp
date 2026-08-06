@@ -22,7 +22,7 @@ import jakarta.persistence.Table;
  * ConstructionSite entity representing a construction site with buildings, floors, and units.
  */
 @Entity
-@Table(name = "construction_sites", indexes = {
+@Table(name = "construction_sites", schema = "project", indexes = {
         @Index(name = "idx_construction_sites_tenant_id", columnList = "tenant_id"),
         @Index(name = "idx_construction_sites_org_id", columnList = "org_id")
 })

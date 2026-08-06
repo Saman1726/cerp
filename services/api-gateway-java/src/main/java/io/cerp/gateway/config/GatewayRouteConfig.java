@@ -17,12 +17,10 @@ import org.springframework.context.annotation.Configuration;
  * Route mapping (Section 21, API Gateway/BFF):
  * <ul>
  * <li>/api/identity/* → Identity Service</li>
- * <li>/api/orgs/* → Organization Service</li>
  * <li>/api/projects/* → Project Service</li>
  * <li>/api/documents/* → DMS</li>
  * <li>/api/reports/* → Projections/Reporting</li>
  * <li>/api/audit/* → Audit/Event Catalog</li>
- * <li>/api/procurement/* → Procurement Service</li>
  * <li>/api/vendors/* → Vendor Service</li>
  * <li>/api/catalog/* → Catalog Service</li>
  * </ul>
@@ -32,9 +30,6 @@ public class GatewayRouteConfig {
 
     @Value("${cerp.services.identity.url:http://localhost:8083}")
     private String identityServiceUrl;
-
-    @Value("${cerp.services.organization.url:http://localhost:8084}")
-    private String organizationServiceUrl;
 
     @Value("${cerp.services.project.url:http://localhost:8085}")
     private String projectServiceUrl;
@@ -47,9 +42,6 @@ public class GatewayRouteConfig {
 
     @Value("${cerp.services.audit.url:http://localhost:8088}")
     private String auditServiceUrl;
-
-    @Value("${cerp.services.procurement.url:http://localhost:9091}")
-    private String procurementServiceUrl;
 
     @Value("${cerp.services.vendor.url:http://localhost:9092}")
     private String vendorServiceUrl;
@@ -69,13 +61,6 @@ public class GatewayRouteConfig {
                 .path("/api/identity/**", "/api/user/**")
                 .filters(f -> f.stripPrefix(1))
                 .uri(identityServiceUrl))
-
-            // ── Organization Service ──
-            // Matches both /api/orgs/** and /api/organisation/** (alias for frontend compatibility)
-            .route("organization-service", r -> r
-                .path("/api/orgs/**", "/api/organisation/**")
-                .filters(f -> f.stripPrefix(1))
-                .uri(organizationServiceUrl))
 
             // ── Project Service ──
             .route("project-service", r -> r
@@ -100,12 +85,6 @@ public class GatewayRouteConfig {
                 .path("/api/audit/**")
                 .filters(f -> f.stripPrefix(1))
                 .uri(auditServiceUrl))
-
-            // ── Procurement Service ──
-            .route("procurement-service", r -> r
-                .path("/api/procurement/**")
-                .filters(f -> f.stripPrefix(1))
-                .uri(procurementServiceUrl))
 
             // ── Vendor Service ──
             .route("vendor-service", r -> r

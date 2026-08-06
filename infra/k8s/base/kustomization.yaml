@@ -13,8 +13,6 @@ resources:
   - catalog-service-java-service.yaml
   - vendor-service-java-deployment.yaml
   - vendor-service-java-service.yaml
-  - procurement-service-java-deployment.yaml
-  - procurement-service-java-service.yaml
   - web-deployment.yaml
   - web-service.yaml
   - ingress.yaml

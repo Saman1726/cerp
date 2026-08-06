@@ -27,9 +27,16 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+        default_schema: project
 
   flyway:
-    enabled: ${SPRING_FLYWAY_ENABLED:false}
+    enabled: ${SPRING_FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    default-schema: project
+    schemas: project
+    create-schemas: true
+    baseline-on-migrate: true
+    baseline-version: 0
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}

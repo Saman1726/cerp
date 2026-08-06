@@ -68,8 +68,6 @@ cerp:
   services:
     identity:
       url: ${CERP_IDENTITY_SERVICE_URL:http://localhost:8083}
-    organization:
-      url: ${CERP_ORGANIZATION_SERVICE_URL:http://localhost:8084}
     project:
       url: ${CERP_PROJECT_SERVICE_URL:http://localhost:8085}
     dms:
@@ -78,8 +76,6 @@ cerp:
       url: ${CERP_PROJECTIONS_SERVICE_URL:http://localhost:8087}
     audit:
       url: ${CERP_AUDIT_SERVICE_URL:http://localhost:8088}
-    procurement:
-      url: ${CERP_PROCUREMENT_SERVICE_URL:http://localhost:9091}
     vendor:
       url: ${CERP_VENDOR_SERVICE_URL:http://localhost:9092}
     catalog:

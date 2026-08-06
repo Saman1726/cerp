@@ -84,7 +84,6 @@ All services use Spring Boot 3.3, Java 21, Maven, Flyway migrations, PostgreSQL,
 | api-gateway-java | 8080 | — | Spring Cloud Gateway BFF, OIDC, tenant routing |
 | vendor-service-java | 8085 | supply_db | Vendor onboarding, categories, favorites |
 | catalog-service-java | 8086 | supply_db | Material catalog |
-| procurement-service-java | 8087 | supply_db | Procurement requests/tracking |
 
 ### Multi-tenancy
 
