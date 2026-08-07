@@ -56,3 +56,8 @@ logging:
 cerp:
   identity-service:
     url: ${IDENTITY_SERVICE_URL:http://localhost:8090}
+  keycloak:
+    url: ${KEYCLOAK_URL:http://localhost:8081}
+    realm: ${KEYCLOAK_REALM:cerp}
+    client-id: ${KEYCLOAK_CLIENT_ID:cerp-identity-service}
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:cerp-identity-service-dev-secret}

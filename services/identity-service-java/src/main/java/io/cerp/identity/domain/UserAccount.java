@@ -2,6 +2,8 @@ package io.cerp.identity.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -12,6 +14,13 @@ import java.util.UUID;
 @Entity
 @Table(name = "user_accounts", schema = "identity")
 public class UserAccount {
+
+    /**
+     * Fixed, exhaustive account type. Distinct from "roles" (Membership/ResourceMembership), which are tenant- or resource-scoped and assignable independent of Type.
+     */
+    public enum AccountType {
+        USER, VENDOR, COMPANY
+    }
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -25,6 +34,10 @@ public class UserAccount {
 
     @Column(name = "password_hash")
     private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false)
+    private AccountType type = AccountType.USER;
 
     @Column(name = "status", nullable = false)
     private String status = "active";
@@ -94,6 +107,15 @@ public class UserAccount {
 
     public UserAccount setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+        return this;
+    }
+
+    public AccountType getType() {
+        return type;
+    }
+
+    public UserAccount setType(AccountType type) {
+        this.type = type;
         return this;
     }
 

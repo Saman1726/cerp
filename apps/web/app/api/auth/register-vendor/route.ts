@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { IDENTITY_SERVICE_URL, VENDOR_SERVICE_URL } from '@cerp/core-web/lib/env';
 
+// Every registration lands on this shared default tenant (seeded by identity-service's
+// V6 migration). Users only get a tenant of their own if an Admin later assigns them a
+// private one - that's a separate, not-yet-built admin action, not part of registration.
+const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 interface VendorRegistrationRequest {
   username: string;
   email: string;
@@ -22,14 +27,6 @@ interface CreateUserResponse {
   email: string;
   name: string;
   status: string;
-  createdAt: string;
-  updatedAt: string | null;
-}
-
-interface CreateTenantResponse {
-  id: string;
-  name: string;
-  region: string | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -81,8 +78,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Service URLs - use shared constants from @cerp/core-web/lib/env
-
     // Step 1: Check if user with this email already exists
     const existingUsersRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
       method: 'GET',
@@ -103,179 +98,156 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Step 2: Create a default tenant for the vendor
-    const tenantPayload = {
-      name: vendorData.legalName,
-      region: vendorData.country || '',
+    // Step 2: Create the user account with password
+    const userPayload = {
+      email,
+      name: vendorData.contactName || vendorData.legalName,
+      password,
+      type: 'VENDOR',
     };
 
-    const tenantRes = await fetch(`${IDENTITY_SERVICE_URL}/tenants`, {
+    const userRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tenantPayload),
+      body: JSON.stringify(userPayload),
     });
 
-    if (!tenantRes.ok) {
-      const errorData = await tenantRes.json().catch(() => ({}));
+    if (!userRes.ok) {
+      const errorData = await userRes.json().catch(() => ({}));
       return NextResponse.json(
-        { message: `Failed to create tenant: ${errorData.message || tenantRes.statusText}` },
-        { status: tenantRes.status }
+        { message: `Failed to create user: ${errorData.message || userRes.statusText}` },
+        { status: userRes.status }
       );
     }
 
-    const tenant: CreateTenantResponse = await tenantRes.json();
+    const user: CreateUserResponse = await userRes.json();
 
     try {
-      // Step 3: Create the user account with password
-      const userPayload = {
-        email,
-        name: vendorData.contactName || vendorData.legalName,
-        password,
+      // Step 3: Create a membership on the default tenant with vendor role
+      const membershipPayload = {
+        tenantId: DEFAULT_TENANT_ID,
+        userId: user.id,
+        roles: ['vendor'],
+        scopes: {
+          vendorId: null, // Will be updated after vendor creation
+          selfService: true,
+        },
       };
 
-      const userRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
+      const membershipRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userPayload),
+        body: JSON.stringify(membershipPayload),
       });
 
-      if (!userRes.ok) {
-        const errorData = await userRes.json().catch(() => ({}));
-        // Clean up tenant if user creation fails
-        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
-          method: 'DELETE',
-        }).catch(() => null);
-        return NextResponse.json(
-          { message: `Failed to create user: ${errorData.message || userRes.statusText}` },
-          { status: userRes.status }
-        );
-      }
-
-      const user: CreateUserResponse = await userRes.json();
-
-      try {
-        // Step 4: Create a membership with vendor role
-        const membershipPayload = {
-          tenantId: tenant.id,
-          userId: user.id,
-          roles: ['vendor'],
-          scopes: {
-            vendorId: null, // Will be updated after vendor creation
-            selfService: true,
-          },
-        };
-
-        const membershipRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(membershipPayload),
-        });
-
-        if (!membershipRes.ok) {
-          const errorData = await membershipRes.json().catch(() => ({}));
-          // Clean up user and tenant if membership creation fails
-          await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          return NextResponse.json(
-            { message: `Failed to create membership: ${errorData.message || membershipRes.statusText}` },
-            { status: membershipRes.status }
-          );
-        }
-
-        // Step 5: Create the vendor record
-        const vendorPayload = {
-          legalName: vendorData.legalName,
-          contactName: vendorData.contactName,
-          phone: vendorData.phone,
-          website: vendorData.website,
-          categories: vendorData.categories || [],
-          address: vendorData.address,
-          city: vendorData.city,
-          country: vendorData.country,
-          status: 'pending',
-          userId: user.id,
-          tenantId: tenant.id,
-        };
-
-        const vendorRes = await fetch(`${VENDOR_SERVICE_URL}/vendors`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(vendorPayload),
-        });
-
-        if (!vendorRes.ok) {
-          const errorData = await vendorRes.json().catch(() => ({}));
-          // Clean up all created resources if vendor creation fails
-          await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          return NextResponse.json(
-            { message: `Failed to create vendor record: ${errorData.message || vendorRes.statusText}` },
-            { status: vendorRes.status }
-          );
-        }
-
-        const vendor: CreateVendorResponse = await vendorRes.json();
-
-        // Step 6: Update the membership scopes with the vendor ID
-        const membershipsRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
-          headers: { 'Content-Type': 'application/json' },
-        });
-
-        let membershipId: { id: string; scopes: Record<string, unknown> } | null = null;
-        if (membershipsRes.ok) {
-          const memberships: CreateMembershipResponse[] = await membershipsRes.json();
-          const found = memberships.find((m: CreateMembershipResponse) => m.tenantId === tenant.id && m.userId === user.id);
-          if (found?.id) {
-            membershipId = { id: found.id, scopes: found.scopes || {} };
-          }
-        }
-
-        if (membershipId) {
-          await fetch(`${IDENTITY_SERVICE_URL}/memberships/${membershipId.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              scopes: {
-                ...membershipId.scopes,
-                vendorId: vendor.id,
-              },
-            }),
-          }).catch(() => null);
-        }
-
-        return NextResponse.json(
-          {
-            message: 'Vendor registration submitted successfully',
-            data: {
-              userId: user.id,
-              tenantId: tenant.id,
-              vendorId: vendor.id,
-            },
-          },
-          { status: 201 }
-        );
-      } catch (error) {
-        // Clean up if membership/vendor steps fail after user/tenant creation
+      if (!membershipRes.ok) {
+        const errorData = await membershipRes.json().catch(() => ({}));
         await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
           method: 'DELETE',
         }).catch(() => null);
-        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
+        return NextResponse.json(
+          { message: `Failed to create membership: ${errorData.message || membershipRes.statusText}` },
+          { status: membershipRes.status }
+        );
+      }
+
+      // Step 4: Create the vendor record
+      const vendorPayload = {
+        legalName: vendorData.legalName,
+        contactName: vendorData.contactName,
+        phone: vendorData.phone,
+        website: vendorData.website,
+        categories: vendorData.categories || [],
+        address: vendorData.address,
+        city: vendorData.city,
+        country: vendorData.country,
+        status: 'pending',
+        userId: user.id,
+        tenantId: DEFAULT_TENANT_ID,
+      };
+
+      const vendorRes = await fetch(`${VENDOR_SERVICE_URL}/vendors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vendorPayload),
+      });
+
+      if (!vendorRes.ok) {
+        const errorData = await vendorRes.json().catch(() => ({}));
+        await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
           method: 'DELETE',
         }).catch(() => null);
-        throw error;
+        return NextResponse.json(
+          { message: `Failed to create vendor record: ${errorData.message || vendorRes.statusText}` },
+          { status: vendorRes.status }
+        );
       }
+
+      const vendor: CreateVendorResponse = await vendorRes.json();
+
+      // Step 5: Update the membership scopes with the vendor ID
+      const membershipsRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      let membershipId: { id: string; scopes: Record<string, unknown> } | null = null;
+      if (membershipsRes.ok) {
+        const memberships: CreateMembershipResponse[] = await membershipsRes.json();
+        const found = memberships.find((m: CreateMembershipResponse) => m.tenantId === DEFAULT_TENANT_ID && m.userId === user.id);
+        if (found?.id) {
+          membershipId = { id: found.id, scopes: found.scopes || {} };
+        }
+      }
+
+      if (membershipId) {
+        await fetch(`${IDENTITY_SERVICE_URL}/memberships/${membershipId.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scopes: {
+              ...membershipId.scopes,
+              vendorId: vendor.id,
+            },
+          }),
+        }).catch(() => null);
+      }
+
+      // Step 6: Create a Freemium subscription (every account gets one, regardless of type)
+      const subscriptionPayload = { userId: user.id, plan: 'FREEMIUM' };
+
+      const subscriptionRes = await fetch(`${IDENTITY_SERVICE_URL}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscriptionPayload),
+      });
+
+      if (!subscriptionRes.ok) {
+        const errorData = await subscriptionRes.json().catch(() => ({}));
+        await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
+          method: 'DELETE',
+        }).catch(() => null);
+        return NextResponse.json(
+          { message: `Failed to create subscription: ${errorData.message || subscriptionRes.statusText}` },
+          { status: subscriptionRes.status }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          message: 'Vendor registration submitted successfully',
+          data: {
+            userId: user.id,
+            tenantId: DEFAULT_TENANT_ID,
+            vendorId: vendor.id,
+          },
+        },
+        { status: 201 }
+      );
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Failed to create')) {
-        throw error; // Already handled
-      }
+      // Clean up if membership/vendor steps fail after user creation
+      await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
+        method: 'DELETE',
+      }).catch(() => null);
       throw error;
     }
   } catch (error) {

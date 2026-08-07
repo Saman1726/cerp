@@ -1,6 +1,9 @@
 package io.cerp.identity.config;
 
+import io.cerp.identity.client.KeycloakAdminClient;
+import io.cerp.identity.client.KeycloakBootstrap;
 import io.cerp.identity.domain.Membership;
+import io.cerp.identity.domain.Plan;
 import io.cerp.identity.domain.ResourceMembership;
 import io.cerp.identity.domain.ResourceMembership.ResourceType;
 import io.cerp.identity.domain.Tenant;
@@ -9,11 +12,13 @@ import io.cerp.identity.repo.MembershipRepository;
 import io.cerp.identity.repo.ResourceMembershipRepository;
 import io.cerp.identity.repo.TenantRepository;
 import io.cerp.identity.repo.UserAccountRepository;
+import io.cerp.identity.service.SubscriptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
@@ -28,11 +33,23 @@ public class SeedDataConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SeedDataConfig.class);
 
+    /**
+     * Must run before seedVendorUser (Order 2), which dual-writes users into the "cerp" realm this creates.
+     */
     @Bean
+    @Order(1)
+    public CommandLineRunner bootstrapKeycloak(KeycloakBootstrap keycloakBootstrap) {
+        return args -> keycloakBootstrap.ensureRealmAndClientExist();
+    }
+
+    @Bean
+    @Order(2)
     public CommandLineRunner seedVendorUser(UserAccountRepository userRepo,
             TenantRepository tenantRepo,
             MembershipRepository membershipRepo,
             ResourceMembershipRepository resourceMembershipRepo,
+            SubscriptionService subscriptionService,
+            KeycloakAdminClient keycloakAdminClient,
             PasswordEncoder passwordEncoder) {
         return args -> {
             // Seed tenant
@@ -56,6 +73,7 @@ public class SeedDataConfig {
                 user.setEmail(seedEmail);
                 user.setName(seedUsername);
                 user.setPasswordHash(passwordEncoder.encode(seedPassword));
+                user.setType(UserAccount.AccountType.VENDOR);
                 user.setStatus("active");
                 userRepo.save(user);
                 log.info("Seeded vendor user: {} ({}) with password: {}", seedUsername, seedEmail, seedPassword);
@@ -73,6 +91,12 @@ public class SeedDataConfig {
                 membership.setScopes(Map.of());
                 membershipRepo.save(membership);
                 log.info("Seeded membership for user {} in tenant MTRD with roles: vendor", seedEmail);
+            }
+
+            // Seed subscription for the user (runs after Flyway, so V11's backfill can't reach this account)
+            if (user != null && subscriptionService.findByUserId(user.getId()).isEmpty()) {
+                subscriptionService.create(user.getId(), Plan.FREEMIUM);
+                log.info("Seeded Freemium subscription for user {}", seedEmail);
             }
 
             // ── Seed John (regular user with construction sites and projects) ──
@@ -115,6 +139,12 @@ public class SeedDataConfig {
                 johnMembership.setScopes(Map.of());
                 membershipRepo.save(johnMembership);
                 log.info("Seeded membership for user {} in tenant JOH with roles: user, owner", johnEmail);
+            }
+
+            // Seed subscription for John (runs after Flyway, so V11's backfill can't reach this account)
+            if (johnUser != null && subscriptionService.findByUserId(johnUser.getId()).isEmpty()) {
+                subscriptionService.create(johnUser.getId(), Plan.FREEMIUM);
+                log.info("Seeded Freemium subscription for user {}", johnEmail);
             }
 
             // Seed resource memberships for John's construction sites and projects
@@ -310,6 +340,28 @@ public class SeedDataConfig {
             log.info("  Metal: email=metal@cerp.dev, password=secret, role=vendor");
             log.info("  John: email=john@cerp.dev, password=secret, roles=user,owner");
             log.info("  Admin: email=admin@cerp.dev, password=secret, roles=admin,manager");
+
+            // Sync every existing dev account into Keycloak so real Keycloak-issued tokens
+            // can be obtained for all of them, not just accounts created going forward
+            // through UserService (which already does this dual-write itself). This file
+            // creates Metal/John directly via the repository, bypassing UserService, and
+            // V6/V7's Flyway-seeded personas were never wired to Keycloak at all - both
+            // gaps are closed here. All dev passwords are well-known (this is dev seed
+            // data only): Metal/John use "secret"; every other seeded account (admin@cerp.dev
+            // plus V7's 20 personas) shares "Admin123!@#" per V7's own migration comment.
+            for (UserAccount seededUser : userRepo.findAll()) {
+                String devPassword = switch (seededUser.getEmail()) {
+                    case "metal@cerp.dev", "john@cerp.dev" -> "secret";
+                    default -> "Admin123!@#";
+                };
+                try {
+                    keycloakAdminClient.upsertUser(seededUser.getId(), seededUser.getEmail(),
+                        devPassword, seededUser.getType().name(), null);
+                } catch (Exception e) {
+                    log.warn("Failed to sync dev user {} to Keycloak: {}", seededUser.getEmail(), e.getMessage());
+                }
+            }
+            log.info("Synced {} dev accounts to Keycloak", userRepo.count());
         };
     }
 }

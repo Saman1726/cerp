@@ -30,8 +30,9 @@ import { ChevronDown, ChevronRight, MoreHorizontal, Users } from 'lucide-react';
 function RoleDropdown({ value, onChange, size }: { value: ProjectUserRole; onChange: (value: ProjectUserRole) => void; size?: 'sm' | 'md' }) {
   const ROLE_OPTIONS: { value: ProjectUserRole; label: string }[] = [
     { value: 'VIEWER', label: 'Viewer' },
-    { value: 'EDITOR', label: 'Editor' },
-    { value: 'ADMIN', label: 'Admin' },
+    { value: 'SUPERVISOR', label: 'Supervisor' },
+    { value: 'MANAGER', label: 'Manager' },
+    { value: 'OWNER', label: 'Owner' },
   ];
   return (
     <select
@@ -536,7 +537,7 @@ export function ProjectList({
                       <div key={userId} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">{userId}</Badge>
-                          <Badge variant={selectedRole === 'ADMIN' ? 'destructive' : selectedRole === 'EDITOR' ? 'default' : 'secondary'}>{selectedRole}</Badge>
+                          <Badge variant={selectedRole === 'OWNER' ? 'destructive' : selectedRole === 'MANAGER' ? 'default' : selectedRole === 'SUPERVISOR' ? 'outline' : 'secondary'}>{selectedRole}</Badge>
                         </div>
                         <div className="flex items-center gap-1">
                           <RoleDropdown

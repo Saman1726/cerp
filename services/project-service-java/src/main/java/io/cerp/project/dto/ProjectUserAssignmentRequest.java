@@ -18,6 +18,6 @@ public record ProjectUserAssignmentRequest(
     public record UserAssignment(
             @NotBlank(message = "User ID (email) is required") String userId,
 
-            @Pattern(regexp = "^(VIEWER|EDITOR|ADMIN)$", message = "Role must be one of: VIEWER, EDITOR, ADMIN") String role) {
+            @Pattern(regexp = "^(OWNER|MANAGER|SUPERVISOR|VIEWER)$", message = "Role must be one of: OWNER, MANAGER, SUPERVISOR, VIEWER") String role) {
     }
 }

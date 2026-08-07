@@ -3,6 +3,7 @@ package io.cerp.identity.events;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cerp.identity.domain.Membership;
+import io.cerp.identity.domain.Subscription;
 import io.cerp.identity.domain.Tenant;
 import io.cerp.identity.domain.UserAccount;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,7 @@ public class IdentityEventPublisher {
     private static final String USER_TOPIC = "identity.user.v1";
     private static final String MEMBERSHIP_TOPIC = "identity.membership.v1";
     private static final String VENDOR_TOPIC = "identity.vendor.v1";
+    private static final String SUBSCRIPTION_TOPIC = "identity.subscription.v1";
 
     @Autowired
     public IdentityEventPublisher(ObjectMapper objectMapper, KafkaTemplate<String, String> kafkaTemplate) {
@@ -77,6 +79,22 @@ public class IdentityEventPublisher {
         data.put("userId", userId.toString());
         envelope.put("data", data);
         send(VENDOR_TOPIC, vendorId.toString(), envelope);
+    }
+
+    /**
+     * Publish event when a Subscription is created, so later phases (e.g. workflow-service granting the initial Bid-Wallet) can react without identity-service needing to
+     * call out to them directly. startingBidGrant is denormalized from plan_limits at creation time so consumers don't need a callback to size the grant.
+     */
+    public void publishSubscriptionCreated(Subscription subscription, Long startingBidGrant) {
+        Map<String, Object> envelope = baseEnvelope("identity.subscription.created", "v1");
+        Map<String, Object> data = new HashMap<>();
+        data.put("id", subscription.getId().toString());
+        data.put("userId", subscription.getUserId().toString());
+        data.put("plan", subscription.getPlan().name());
+        data.put("status", subscription.getStatus());
+        data.put("startingBidGrant", startingBidGrant);
+        envelope.put("data", data);
+        send(SUBSCRIPTION_TOPIC, subscription.getUserId().toString(), envelope);
     }
 
     private Map<String, Object> baseEnvelope(String type, String version) {

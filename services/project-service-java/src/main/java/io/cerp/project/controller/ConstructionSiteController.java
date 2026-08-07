@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.cerp.project.config.RequestIdentity;
 import io.cerp.project.dto.BuildingCreateRequest;
 import io.cerp.project.dto.BuildingResponse;
 import io.cerp.project.dto.ConstructionSiteCreateRequest;
@@ -74,8 +77,9 @@ public class ConstructionSiteController {
     @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<ConstructionSiteResponse> create(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @Valid @RequestBody ConstructionSiteCreateRequest request) {
-        ConstructionSiteResponse created = constructionSiteService.create(tenantId, request);
+            @Valid @RequestBody ConstructionSiteCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        ConstructionSiteResponse created = constructionSiteService.create(tenantId, request, RequestIdentity.creatorId(jwt));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

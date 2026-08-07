@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import io.cerp.project.client.IdentitySubscriptionClient;
+import io.cerp.project.client.IdentitySubscriptionClient.PlanLimits;
 import io.cerp.project.domain.Building;
 import io.cerp.project.domain.ConstructionSite;
 import io.cerp.project.domain.Floor;
@@ -36,17 +38,20 @@ public class ConstructionSiteService {
     private final FloorRepository floorRepository;
     private final UnitRepository unitRepository;
     private final BuildingService buildingService;
+    private final IdentitySubscriptionClient identitySubscriptionClient;
 
     public ConstructionSiteService(ConstructionSiteRepository constructionSiteRepository,
             BuildingRepository buildingRepository,
             FloorRepository floorRepository,
             UnitRepository unitRepository,
-            BuildingService buildingService) {
+            BuildingService buildingService,
+            IdentitySubscriptionClient identitySubscriptionClient) {
         this.constructionSiteRepository = constructionSiteRepository;
         this.buildingRepository = buildingRepository;
         this.floorRepository = floorRepository;
         this.unitRepository = unitRepository;
         this.buildingService = buildingService;
+        this.identitySubscriptionClient = identitySubscriptionClient;
     }
 
     /**
@@ -73,13 +78,28 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Create a new construction site.
+     * Create a new construction site. Quota is enforced per creator (their own plan), not per tenant - many users can share a tenant (see the shared default tenant),
+     * so a tenant-wide count would let one user's usage block every other user sharing it.
      */
     @Transactional
-    public ConstructionSiteResponse create(String tenantId, ConstructionSiteCreateRequest request) {
+    public ConstructionSiteResponse create(String tenantId, ConstructionSiteCreateRequest request, UUID creatorUserId) {
+        enforceConstructionSiteQuota(creatorUserId);
+
         ConstructionSite site = new ConstructionSite(tenantId, request.name(), request.address());
+        site.setCreatedBy(creatorUserId.toString());
+        site.setUpdatedBy(creatorUserId.toString());
         site = constructionSiteRepository.save(site);
         return toResponse(site);
+    }
+
+    private void enforceConstructionSiteQuota(UUID creatorUserId) {
+        PlanLimits limits = identitySubscriptionClient.getPlanLimits(creatorUserId)
+            .orElseThrow(() -> new QuotaCheckUnavailableException("Could not verify Construction Site quota"));
+        if (limits.maxConstructionSites() != null
+                && constructionSiteRepository.countByCreatedBy(creatorUserId.toString()) >= limits.maxConstructionSites()) {
+            throw new QuotaExceededException(
+                "Your plan allows at most " + limits.maxConstructionSites() + " Construction Site(s).");
+        }
     }
 
     /**
@@ -116,7 +136,8 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Add a building to a construction site.
+     * Add a building to a construction site. Quota is checked against the SITE's creator (whoever's plan the site itself already counts against), not the acting
+     * caller - consistent with "the resource owner's plan governs it" used throughout this design (see Project.primaryOwnerId).
      */
     @Transactional
     public BuildingResponse addBuilding(String tenantId, UUID siteId, BuildingCreateRequest request) {
@@ -127,10 +148,27 @@ public class ConstructionSiteService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
         }
 
+        enforceBuildingQuota(site);
+
         Building building = new Building(request.name());
         building.setConstructionSite(site);
         building = buildingRepository.save(building);
         return buildingService.toResponse(building);
+    }
+
+    private void enforceBuildingQuota(ConstructionSite site) {
+        if (site.getCreatedBy() == null) {
+            // Sites created before this feature shipped have no recorded creator - nothing
+            // to check a quota against; don't retroactively block them.
+            return;
+        }
+        UUID siteCreatorId = UUID.fromString(site.getCreatedBy());
+        PlanLimits limits = identitySubscriptionClient.getPlanLimits(siteCreatorId)
+            .orElseThrow(() -> new QuotaCheckUnavailableException("Could not verify Building quota"));
+        if (limits.maxBuildings() != null
+                && buildingRepository.countByConstructionSiteCreatedBy(site.getCreatedBy()) >= limits.maxBuildings()) {
+            throw new QuotaExceededException("This Construction Site's plan allows at most " + limits.maxBuildings() + " Building(s).");
+        }
     }
 
     /**

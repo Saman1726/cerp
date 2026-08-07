@@ -57,7 +57,7 @@ public class SecurityConfig {
         // This chain handles public endpoints (registration, login)
         // NOTE: /users/profile is handled by userProfileFilterChain (Order 1) above
         http
-            .securityMatcher("/tenants", "/users", "/memberships", "/auth/login", "/auth/*")
+            .securityMatcher("/tenants", "/users", "/memberships", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription")
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
@@ -69,14 +69,21 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/users").permitAll()
                 // GET /users/{id} - authenticated
                 .requestMatchers(HttpMethod.GET, "/users/**").authenticated()
+                // Registration flows create a Subscription right after the Membership step
+                .requestMatchers(HttpMethod.POST, "/subscriptions").permitAll()
                 // DELETE endpoints for cleanup
                 .requestMatchers(HttpMethod.DELETE, "/tenants/**").permitAll()
                 .requestMatchers(HttpMethod.DELETE, "/users/**").permitAll()
                 // Auth endpoints
                 .requestMatchers("/auth/login").permitAll()
+                // Registration endpoints - must be public
+                .requestMatchers(HttpMethod.POST, "/memberships").permitAll()
                 // GET /memberships?tenantId=... called by internal services (e.g. workflow-service)
                 // to resolve vendor notification recipients without a user JWT
                 .requestMatchers(HttpMethod.GET, "/memberships").permitAll()
+                // called by project-service (and, later, workflow-service) to resolve a
+                // user's plan limits for quota enforcement - internal service-to-service call
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/*/subscription").permitAll()
                 // everything else on this chain requires auth
                 .anyRequest().authenticated())
             // Validate JWTs issued by Keycloak

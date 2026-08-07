@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
 
+// Every registration lands on this shared default tenant (seeded by identity-service's
+// V6 migration). Users only get a tenant of their own if an Admin later assigns them a
+// private one - that's a separate, not-yet-built admin action, not part of registration.
+const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
 interface UserRegistrationRequest {
   username: string;
   email: string;
@@ -15,15 +20,6 @@ interface CreateUserResponse {
   createdAt: string;
   updatedAt: string | null;
 }
-
-interface CreateTenantResponse {
-  id: string;
-  name: string;
-  region: string | null;
-  createdAt: string;
-  updatedAt: string | null;
-}
-
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -67,111 +63,92 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // Step 2: Create a default tenant for the user
-    const tenantPayload = {
-      name: `${username}'s Workspace`,
-      region: '',
+    // Step 2: Create the user account with password
+    const userPayload = {
+      email,
+      name: username,
+      password,
+      type: 'USER',
     };
 
-    const tenantRes = await fetch(`${IDENTITY_SERVICE_URL}/tenants`, {
+    const userRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tenantPayload),
+      body: JSON.stringify(userPayload),
     });
 
-    if (!tenantRes.ok) {
-      const errorData = await tenantRes.json().catch(() => ({}));
+    if (!userRes.ok) {
+      const errorData = await userRes.json().catch(() => ({}));
       return NextResponse.json(
-        { message: `Failed to create tenant: ${errorData.message || tenantRes.statusText}` },
-        { status: tenantRes.status }
+        { message: `Failed to create user: ${errorData.message || userRes.statusText}` },
+        { status: userRes.status }
       );
     }
 
-    const tenant: CreateTenantResponse = await tenantRes.json();
+    const user: CreateUserResponse = await userRes.json();
 
     try {
-      // Step 3: Create the user account with password
-      const userPayload = {
-        email,
-        name: username,
-        password,
+      // Step 3: Create a membership on the default tenant with user role
+      const membershipPayload = {
+        tenantId: DEFAULT_TENANT_ID,
+        userId: user.id,
+        roles: ['user'],
+        scopes: {
+          selfService: true,
+        },
       };
 
-      const userRes = await fetch(`${IDENTITY_SERVICE_URL}/users`, {
+      const membershipRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(userPayload),
+        body: JSON.stringify(membershipPayload),
       });
 
-      if (!userRes.ok) {
-        const errorData = await userRes.json().catch(() => ({}));
-        // Clean up tenant if user creation fails
-        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
-          method: 'DELETE',
-        }).catch(() => null);
-        return NextResponse.json(
-          { message: `Failed to create user: ${errorData.message || userRes.statusText}` },
-          { status: userRes.status }
-        );
-      }
-
-      const user: CreateUserResponse = await userRes.json();
-
-      try {
-        // Step 4: Create a membership with user role
-        const membershipPayload = {
-          tenantId: tenant.id,
-          userId: user.id,
-          roles: ['user'],
-          scopes: {
-            selfService: true,
-          },
-        };
-
-        const membershipRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(membershipPayload),
-        });
-
-        if (!membershipRes.ok) {
-          const errorData = await membershipRes.json().catch(() => ({}));
-          // Clean up user and tenant if membership creation fails
-          await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
-            method: 'DELETE',
-          }).catch(() => null);
-          return NextResponse.json(
-            { message: `Failed to create membership: ${errorData.message || membershipRes.statusText}` },
-            { status: membershipRes.status }
-          );
-        }
-
-        return NextResponse.json(
-          {
-            message: 'User registration successful',
-            data: {
-              userId: user.id,
-              tenantId: tenant.id,
-            },
-          },
-          { status: 201 }
-        );
-      } catch (error) {
+      if (!membershipRes.ok) {
+        const errorData = await membershipRes.json().catch(() => ({}));
         await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
           method: 'DELETE',
         }).catch(() => null);
-        await fetch(`${IDENTITY_SERVICE_URL}/tenants/${tenant.id}`, {
+        return NextResponse.json(
+          { message: `Failed to create membership: ${errorData.message || membershipRes.statusText}` },
+          { status: membershipRes.status }
+        );
+      }
+
+      // Step 4: Create a Freemium subscription (every account gets one, regardless of type)
+      const subscriptionPayload = { userId: user.id, plan: 'FREEMIUM' };
+
+      const subscriptionRes = await fetch(`${IDENTITY_SERVICE_URL}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscriptionPayload),
+      });
+
+      if (!subscriptionRes.ok) {
+        const errorData = await subscriptionRes.json().catch(() => ({}));
+        await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
           method: 'DELETE',
         }).catch(() => null);
-        throw error;
+        return NextResponse.json(
+          { message: `Failed to create subscription: ${errorData.message || subscriptionRes.statusText}` },
+          { status: subscriptionRes.status }
+        );
       }
+
+      return NextResponse.json(
+        {
+          message: 'User registration successful',
+          data: {
+            userId: user.id,
+            tenantId: DEFAULT_TENANT_ID,
+          },
+        },
+        { status: 201 }
+      );
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Failed to create')) {
-        throw error;
-      }
+      await fetch(`${IDENTITY_SERVICE_URL}/users/${user.id}`, {
+        method: 'DELETE',
+      }).catch(() => null);
       throw error;
     }
   } catch (error) {

@@ -15,13 +15,17 @@ export type ProjectType =
 
 // ── Project User Role Types ──
 
-export type ProjectUserRole = 'VIEWER' | 'EDITOR' | 'ADMIN';
+export type ProjectUserRole = 'OWNER' | 'MANAGER' | 'SUPERVISOR' | 'VIEWER';
 
 /**
  * User assignment with role for project-based access control.
  * - VIEWER: Read-only access to the project
- * - EDITOR: Can modify project content (work orders, subprojects, etc.)
- * - ADMIN: Full control including user management and role assignment
+ * - SUPERVISOR: Oversight role; permission semantics beyond labeling/quota are not yet defined
+ * - MANAGER: Can modify project content (work orders, subprojects, etc.)
+ * - OWNER: Full control including user management and role assignment. The project's
+ *   creator is automatically and permanently OWNER (see the backend's primaryOwnerId) -
+ *   additional OWNER assignments beyond the creator are also possible, plan limits
+ *   permitting.
  */
 export interface ProjectUserAssignment {
   userId: string;

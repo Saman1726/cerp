@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,15 +40,18 @@ public class ProjectService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RestTemplate restTemplate;
     private final io.cerp.project.service.SubProjectService subProjectService;
+    private final io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient;
 
     public ProjectService(ProjectRepository repository,
             KafkaTemplate<String, Object> kafkaTemplate,
             RestTemplate restTemplate,
-            io.cerp.project.service.SubProjectService subProjectService) {
+            io.cerp.project.service.SubProjectService subProjectService,
+            io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
         this.restTemplate = restTemplate;
         this.subProjectService = subProjectService;
+        this.identitySubscriptionClient = identitySubscriptionClient;
     }
 
     @Transactional(readOnly = true)
@@ -158,7 +162,15 @@ public class ProjectService {
         project.setCreatedBy(userId);
         project.setUpdatedBy(userId);
 
-        Project saved = repository.save(project);
+        // The creator is automatically and permanently the project's primary Owner (see
+        // Project.primaryOwnerId's javadoc) - distinct from, but also immediately reflected
+        // as, an OWNER entry in assignedUserRoles, so they show up as an assignee too.
+        UUID primaryOwnerId = UUID.fromString(userId);
+        project.setPrimaryOwnerId(primaryOwnerId);
+        project.setAssignedUserIds(new String[] { userId });
+        project.setAssignedUserRoles(new java.util.HashMap<>(java.util.Map.of(userId, "OWNER")));
+
+        Project saved = saveGuardingConstructionSiteUniqueness(project, request.constructionSiteId());
         log.info("Created project {} for tenant: {}, org: {}", saved.getId(), tenantId, orgId);
 
         // Auto-create subprojects from construction site buildings
@@ -199,7 +211,7 @@ public class ProjectService {
         applyUpdateFields(project, request);
         project.setUpdatedBy(userId);
 
-        Project saved = repository.save(project);
+        Project saved = saveGuardingConstructionSiteUniqueness(project, project.getConstructionSiteId());
         log.info("Updated project {} for tenant: {}", saved.getId(), tenantId);
 
         publishEvent(TOPIC_UPDATED, saved.getCode(), saved);
@@ -208,13 +220,45 @@ public class ProjectService {
     }
 
     /**
-     * Assign users to a project with specific roles. Each assignment includes a user ID and a role (VIEWER, EDITOR, or ADMIN).
+     * The findByConstructionSiteIdAndDeletedFalse checks in create()/update() are application-level only and race-prone (two concurrent requests can both pass the check
+     * before either commits) - the V2 migration's idx_projects_construction_site_id_active unique index is the real backstop. Translate a violation of that specific
+     * index into the same domain exception the application-level check throws; re-throw anything else untouched so an unrelated DB error isn't mislabeled.
+     */
+    private Project saveGuardingConstructionSiteUniqueness(Project project, String constructionSiteId) {
+        try {
+            // saveAndFlush, not save: save() alone just queues the INSERT for a later,
+            // transaction-commit-time flush - by then we're outside this try/catch and the
+            // unique-index violation surfaces as a raw 500 instead of the domain exception below.
+            return repository.saveAndFlush(project);
+        } catch (DataIntegrityViolationException e) {
+            // Postgres poisons the whole transaction on a constraint violation - any further
+            // statement on this same connection (e.g. looking up the existing project for a
+            // nicer message) fails with "current transaction is aborted." The upfront check in
+            // create()/update() already gives the detailed message for the common case; this
+            // catch only fires for the genuine race window, so a simpler message is fine here.
+            String msg = e.getMostSpecificCause() != null ? e.getMostSpecificCause().getMessage() : e.getMessage();
+            if (msg != null && msg.contains("idx_projects_construction_site_id_active") && constructionSiteId != null) {
+                throw new ConstructionSiteAlreadyHasProjectException(constructionSiteId);
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Assign users to a project with specific roles. Each assignment includes a user ID and a role (OWNER, MANAGER, SUPERVISOR, or VIEWER).
      */
     @Transactional
     public ProjectResponse assignUsersWithRoles(String tenantId, UUID projectId, List<ProjectUserAssignmentRequest.UserAssignment> assignments, String userId) {
         Project project = repository.findById(projectId)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        String primaryOwnerId = project.getPrimaryOwnerId() != null ? project.getPrimaryOwnerId().toString() : null;
+        for (ProjectUserAssignmentRequest.UserAssignment a : assignments) {
+            if (a.userId().equals(primaryOwnerId) && !"OWNER".equals(a.role())) {
+                throw new IllegalArgumentException("Cannot change the primary Owner's role - it is permanent, set at project creation.");
+            }
+        }
 
         // Merge existing assigned user IDs with new ones
         String[] currentIds = project.getAssignedUserIds();
@@ -233,6 +277,8 @@ public class ProjectService {
         for (ProjectUserAssignmentRequest.UserAssignment a : assignments) {
             rolesToUpdate.put(a.userId(), a.role());
         }
+
+        enforceMemberCap(project, combined, rolesToUpdate);
 
         project.setAssignedUserIds(combined.toArray(new String[0]));
         project.setAssignedUserRoles(rolesToUpdate);
@@ -261,6 +307,8 @@ public class ProjectService {
         }
         combined.addAll(userIds);
 
+        enforceMemberCap(project, combined, project.getAssignedUserRoles());
+
         project.setAssignedUserIds(combined.toArray(new String[0]));
         project.setUpdatedBy(userId);
 
@@ -270,11 +318,52 @@ public class ProjectService {
         return ProjectResponse.from(saved);
     }
 
+    /**
+     * Counts the resulting roster by role bucket (OWNER/MANAGER/everything else - SUPERVISOR, VIEWER, or a legacy no-role assignment) and checks it against the
+     * project's primary owner's plan limits - the owner's plan governs the project, not whoever happens to be making this call (consistent with Company-owned-project
+     * billing). Projects created before this shipped have no primaryOwnerId - nothing to check a quota against, so they're not retroactively capped.
+     */
+    private void enforceMemberCap(Project project, java.util.Set<String> resultingUserIds, java.util.Map<String, String> resultingRoles) {
+        if (project.getPrimaryOwnerId() == null) {
+            return;
+        }
+        io.cerp.project.client.IdentitySubscriptionClient.PlanLimits limits = identitySubscriptionClient.getPlanLimits(project.getPrimaryOwnerId())
+            .orElseThrow(() -> new QuotaCheckUnavailableException("Could not verify project member quota"));
+
+        long owners = 0;
+        long managers = 0;
+        long others = 0;
+        for (String memberId : resultingUserIds) {
+            String role = resultingRoles != null ? resultingRoles.getOrDefault(memberId, "") : "";
+            if ("OWNER".equals(role)) {
+                owners++;
+            } else if ("MANAGER".equals(role)) {
+                managers++;
+            } else {
+                others++;
+            }
+        }
+        if (limits.maxOwnersPerProject() != null && owners > limits.maxOwnersPerProject()) {
+            throw new QuotaExceededException("This project's plan allows at most " + limits.maxOwnersPerProject() + " Owner(s).");
+        }
+        if (limits.maxManagersPerProject() != null && managers > limits.maxManagersPerProject()) {
+            throw new QuotaExceededException("This project's plan allows at most " + limits.maxManagersPerProject() + " Manager(s).");
+        }
+        if (limits.maxMembersPerProject() != null && others > limits.maxMembersPerProject()) {
+            throw new QuotaExceededException(
+                "This project's plan allows at most " + limits.maxMembersPerProject() + " other member(s) (Supervisor/Viewer).");
+        }
+    }
+
     @Transactional
     public ProjectResponse removeUser(String tenantId, UUID projectId, String userIdToRemove) {
         Project project = repository.findById(projectId)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        if (project.getPrimaryOwnerId() != null && userIdToRemove.equals(project.getPrimaryOwnerId().toString())) {
+            throw new IllegalArgumentException("Cannot remove the primary Owner from their own project.");
+        }
 
         String[] currentIds = project.getAssignedUserIds();
         if (currentIds != null && currentIds.length > 0) {

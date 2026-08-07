@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.cerp.project.config.RequestIdentity;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
@@ -31,7 +34,8 @@ import io.cerp.project.service.ProjectService;
  * REST controller for project CRUD operations.
  *
  * <p>
- * Tenant context is extracted from the X-Tenant-Id header (injected by the API Gateway). User identity is extracted from the JWT token.
+ * Tenant context is extracted from the X-Tenant-Id header (injected by the API Gateway). User identity is extracted from the validated JWT (see RequestIdentity) - not
+ * the X-User-Id header, which nothing upstream ever actually populates.
  */
 @RestController
 @RequestMapping("/api/v1/projects")
@@ -93,9 +97,10 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<ProjectResponse> create(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
-            @Valid @RequestBody ProjectCreateRequest request) {
-        ProjectResponse created = projectService.create(tenantId, request.orgId(), request, userId);
+            @Valid @RequestBody ProjectCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String creatorId = RequestIdentity.creatorId(jwt).toString();
+        ProjectResponse created = projectService.create(tenantId, request.orgId(), request, creatorId);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -105,10 +110,11 @@ public class ProjectController {
     @PatchMapping("/{id}")
     public ResponseEntity<ProjectResponse> update(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
             @PathVariable UUID id,
-            @Valid @RequestBody ProjectUpdateRequest request) {
-        ProjectResponse updated = projectService.update(tenantId, id, request, userId);
+            @Valid @RequestBody ProjectUpdateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String updaterId = RequestIdentity.creatorId(jwt).toString();
+        ProjectResponse updated = projectService.update(tenantId, id, request, updaterId);
         return ResponseEntity.ok(updated);
     }
 
@@ -129,13 +135,14 @@ public class ProjectController {
     @PostMapping("/{id}/assign")
     public ResponseEntity<ProjectResponse> assignUsers(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
             @PathVariable UUID id,
-            @Valid @RequestBody ProjectUserAssignmentRequest request) {
+            @Valid @RequestBody ProjectUserAssignmentRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
         if (request.assignments() == null || request.assignments().isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        ProjectResponse updated = projectService.assignUsersWithRoles(tenantId, id, request.assignments(), userId);
+        String actingUserId = RequestIdentity.creatorId(jwt).toString();
+        ProjectResponse updated = projectService.assignUsersWithRoles(tenantId, id, request.assignments(), actingUserId);
         return ResponseEntity.ok(updated);
     }
 
@@ -146,15 +153,16 @@ public class ProjectController {
     @PostMapping("/{id}/assign-legacy")
     public ResponseEntity<ProjectResponse> assignUsersLegacy(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
             @PathVariable UUID id,
-            @Valid @RequestBody Map<String, Object> body) {
+            @Valid @RequestBody Map<String, Object> body,
+            @AuthenticationPrincipal Jwt jwt) {
         @SuppressWarnings("unchecked")
         List<String> userIds = (List<String>) body.get("userIds");
         if (userIds == null || userIds.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        ProjectResponse updated = projectService.assignUsers(tenantId, id, userIds, userId);
+        String actingUserId = RequestIdentity.creatorId(jwt).toString();
+        ProjectResponse updated = projectService.assignUsers(tenantId, id, userIds, actingUserId);
         return ResponseEntity.ok(updated);
     }
 
@@ -164,7 +172,6 @@ public class ProjectController {
     @DeleteMapping("/{id}/assign/{userIdToRemove}")
     public ResponseEntity<ProjectResponse> removeUser(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @RequestHeader(value = "X-User-Id", defaultValue = "system") String userId,
             @PathVariable UUID id,
             @PathVariable String userIdToRemove) {
         ProjectResponse updated = projectService.removeUser(tenantId, id, userIdToRemove);

@@ -16,6 +16,7 @@ public class KafkaTopicsConfig {
     public static final String TENANT_TOPIC = "identity.tenant.v1";
     public static final String USER_TOPIC = "identity.user.v1";
     public static final String MEMBERSHIP_TOPIC = "identity.membership.v1";
+    public static final String SUBSCRIPTION_TOPIC = "identity.subscription.v1";
 
     // Use modest partition count for local dev; RF=1 because single-broker in compose
     private static final int PARTITIONS = 3;
@@ -34,5 +35,10 @@ public class KafkaTopicsConfig {
     @Bean
     public NewTopic identityMembershipTopic() {
         return new NewTopic(MEMBERSHIP_TOPIC, PARTITIONS, REPLICATION_FACTOR);
+    }
+
+    @Bean
+    public NewTopic identitySubscriptionTopic() {
+        return new NewTopic(SUBSCRIPTION_TOPIC, PARTITIONS, REPLICATION_FACTOR);
     }
 }

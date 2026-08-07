@@ -81,6 +81,11 @@ public interface SubProjectRepository extends JpaRepository<SubProject, UUID> {
     boolean existsByTenantIdAndProjectIdAndCode(String tenantId, UUID projectId, String code);
 
     /**
+     * Check if a Building already has a SubProject linked to it (enforces the 1:1 relationship at the application level, ahead of the DB unique index).
+     */
+    boolean existsByBuildingId(UUID buildingId);
+
+    /**
      * Delete all SubProjects for a given Project (cascade).
      */
     void deleteByProjectId(UUID projectId);

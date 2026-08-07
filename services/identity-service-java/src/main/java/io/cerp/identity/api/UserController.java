@@ -7,6 +7,7 @@ import io.cerp.identity.service.UserService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -31,13 +32,15 @@ public class UserController {
     public static record CreateUserRequest(
             @NotBlank @Email String email,
             @NotBlank String name,
-            String password) {
+            String password,
+            @NotNull UserAccount.AccountType type) {
     }
 
     public static record UserResponse(
             UUID id,
             String email,
             String name,
+            String type,
             String status,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
@@ -51,13 +54,14 @@ public class UserController {
             UUID id,
             String email,
             String name,
+            String type,
             String status,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
     }
 
     private static UserResponse toResponse(UserAccount u) {
-        return new UserResponse(u.getId(), u.getEmail(), u.getName(), u.getStatus(), u.getCreatedAt(), u.getUpdatedAt());
+        return new UserResponse(u.getId(), u.getEmail(), u.getName(), u.getType().name(), u.getStatus(), u.getCreatedAt(), u.getUpdatedAt());
     }
 
     @PostMapping
@@ -65,11 +69,17 @@ public class UserController {
     public UserResponse create(@Valid @RequestBody CreateUserRequest body) {
         UserAccount created;
         if (body.password() != null && !body.password().isBlank()) {
-            created = userService.createWithPassword(body.email(), body.name(), body.password());
+            created = userService.createWithPassword(body.email(), body.name(), body.password(), body.type());
         } else {
-            created = userService.create(body.email(), body.name());
+            created = userService.create(body.email(), body.name(), body.type());
         }
         return toResponse(created);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID id) {
+        userService.delete(id);
     }
 
     @GetMapping("/{id}")
@@ -108,6 +118,7 @@ public class UserController {
             user.getId(),
             user.getEmail(),
             user.getName(),
+            user.getType().name(),
             user.getStatus(),
             user.getCreatedAt(),
             user.getUpdatedAt());
@@ -137,6 +148,7 @@ public class UserController {
             user.getId(),
             user.getEmail(),
             user.getName(),
+            user.getType().name(),
             user.getStatus(),
             user.getCreatedAt(),
             user.getUpdatedAt());

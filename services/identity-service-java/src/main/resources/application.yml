@@ -32,7 +32,7 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/master}
+          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/cerp}
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -63,3 +63,12 @@ springdoc:
 app:
   events:
     enabled: ${APP_EVENTS_ENABLED:false}
+
+cerp:
+  keycloak:
+    url: ${KEYCLOAK_URL:http://localhost:8081}
+    realm: ${KEYCLOAK_REALM:cerp}
+    client-id: ${KEYCLOAK_CLIENT_ID:cerp-identity-service}
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:cerp-identity-service-dev-secret}
+    admin-username: ${KEYCLOAK_ADMIN:admin}
+    admin-password: ${KEYCLOAK_ADMIN_PASSWORD:admin}

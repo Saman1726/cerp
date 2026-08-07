@@ -1,5 +1,6 @@
 package io.cerp.identity.api;
 
+import io.cerp.identity.client.KeycloakAdminClient;
 import io.cerp.identity.domain.UserAccount;
 import io.cerp.identity.service.ResourceAccessService;
 import io.cerp.identity.service.UserService;
@@ -23,13 +24,16 @@ public class AuthController {
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final ResourceAccessService resourceAccessService;
+    private final KeycloakAdminClient keycloakAdminClient;
 
     public AuthController(UserService userService,
             PasswordEncoder passwordEncoder,
-            ResourceAccessService resourceAccessService) {
+            ResourceAccessService resourceAccessService,
+            KeycloakAdminClient keycloakAdminClient) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.resourceAccessService = resourceAccessService;
+        this.keycloakAdminClient = keycloakAdminClient;
     }
 
     @PostMapping("/login")
@@ -63,37 +67,17 @@ public class AuthController {
             user.getId().toString(),
             user.getEmail(),
             user.getName(),
+            user.getType().name(),
             roles,
             resourceAccess);
 
-        // Get user's tenant ID from membership; if none but user has vendor role, default to vendor tenant
-        UUID tenantId = userService.getUserTenantId(user.getId()).orElse(null);
-        if (tenantId == null && roles.contains("vendor")) {
-            tenantId = UUID.fromString("00000000-0000-0000-0000-000000000001");
-        }
+        // Issue a real, signed Keycloak token for this user (Direct Access Grant) - the
+        // local bcrypt check above already verified the password; this exchanges it for
+        // a token carrying a real "sub" claim (the user's own id) that downstream
+        // services can validate and trust, instead of a hand-rolled unsigned JWT.
+        KeycloakAdminClient.TokenResponse token = keycloakAdminClient.getUserToken(user.getEmail(), req.password());
 
-        // Issue a simple dev token (unsigned JWT for now, will be replaced with Keycloak tokens later)
-        long nowSec = System.currentTimeMillis() / 1000;
-        String accessToken = makeDevJwt(user.getId().toString(), roles, tenantId, nowSec + 60L * 30L); // 30 min
-        String refreshToken = makeDevJwt(user.getId().toString(), roles, tenantId, nowSec + 60L * 60L * 24L * 7L); // 7 days
-
-        return ResponseEntity.ok(new LoginResponse(accessToken, refreshToken, userInfo));
-    }
-
-    // ----- Helper: simple unsigned JWT maker for dev -----
-
-    private static String makeDevJwt(String sub, List<String> roles, UUID tenantId, long expSeconds) {
-        String header = base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        String roleStr = String.join(",", roles);
-        String tenantIdJson = tenantId != null ? ",\"tenantId\":\"" + tenantId.toString() + "\"" : "";
-        String payload =
-                base64Url(("{\"sub\":\"" + sub + "\",\"roles\":\"" + roleStr + "\"" + tenantIdJson + ",\"exp\":" + expSeconds + "}")
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        return header + "." + payload + ".dev";
-    }
-
-    private static String base64Url(byte[] input) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(input);
+        return ResponseEntity.ok(new LoginResponse(token.accessToken(), token.refreshToken(), userInfo));
     }
 
     // ----- DTOs -----
@@ -112,6 +96,7 @@ public class AuthController {
                 String id,
                 String email,
                 String name,
+                String type,
                 List<String> roles,
                 List<Map<String, Object>> resourceAccess) {
         }

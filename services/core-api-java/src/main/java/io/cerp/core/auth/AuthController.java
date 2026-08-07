@@ -5,12 +5,13 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.*;
 
 /**
@@ -26,12 +27,24 @@ public class AuthController {
 
     private final RestTemplate restTemplate;
     private final String identityServiceUrl;
+    private final String keycloakUrl;
+    private final String keycloakRealm;
+    private final String keycloakClientId;
+    private final String keycloakClientSecret;
 
     public AuthController(
             RestTemplate restTemplate,
-            @Value("${cerp.identity-service.url:http://localhost:8090}") String identityServiceUrl) {
+            @Value("${cerp.identity-service.url:http://localhost:8090}") String identityServiceUrl,
+            @Value("${cerp.keycloak.url:http://localhost:8081}") String keycloakUrl,
+            @Value("${cerp.keycloak.realm:cerp}") String keycloakRealm,
+            @Value("${cerp.keycloak.client-id:cerp-identity-service}") String keycloakClientId,
+            @Value("${cerp.keycloak.client-secret:cerp-identity-service-dev-secret}") String keycloakClientSecret) {
         this.restTemplate = restTemplate;
         this.identityServiceUrl = identityServiceUrl;
+        this.keycloakUrl = keycloakUrl;
+        this.keycloakRealm = keycloakRealm;
+        this.keycloakClientId = keycloakClientId;
+        this.keycloakClientSecret = keycloakClientSecret;
     }
 
     @PostMapping("/login")
@@ -52,7 +65,8 @@ public class AuthController {
                 List<String> roles = identityUser.roles();
                 String primaryRole = roles != null && !roles.isEmpty() ? roles.get(0) : "user";
 
-                return new LoginResponse(accessToken, refreshToken, new AuthUser(identityUser.id(), identityUser.email(), primaryRole));
+                return new LoginResponse(accessToken, refreshToken,
+                    new AuthUser(identityUser.id(), identityUser.email(), primaryRole, identityUser.type()));
             }
         } catch (Exception e) {
             // identity-service not available or error
@@ -65,38 +79,56 @@ public class AuthController {
     @PostMapping("/refresh")
     @ResponseStatus(HttpStatus.OK)
     public LoginResponse refresh(@Valid @RequestBody RefreshRequest req) {
-        // Very lightweight "decode": extract sub/role from the payload of our dev JWT
-        String payloadJson = decodeDevJwtPayload(req.refreshToken());
-        if (payloadJson == null) {
+        // Delegate to Keycloak's own refresh-token grant - the old code decoded our
+        // unsigned dev JWT and hand-minted a "new" one locally, which only ever worked
+        // because nothing downstream actually verified a signature. Real Keycloak tokens
+        // are signed; a hand-minted replacement would just be rejected everywhere else.
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("client_id", keycloakClientId);
+        form.add("client_secret", keycloakClientSecret);
+        form.add("refresh_token", req.refreshToken());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+        Map<String, Object> body;
+        try {
+            ResponseEntity<Map<String, Object>> resp = restTemplate.exchange(
+                keycloakUrl + "/realms/" + keycloakRealm + "/protocol/openid-connect/token",
+                HttpMethod.POST,
+                new HttpEntity<>(form, headers),
+                new ParameterizedTypeReference<Map<String, Object>>() {
+                });
+            body = resp.getBody();
+        } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
         }
-        String sub = extractJsonString(payloadJson, "sub");
-        // Support both old ("role") and new ("roles") token formats
-        String role = extractJsonString(payloadJson, "role");
-        if (role == null) role = extractJsonString(payloadJson, "roles");
-        String tenantId = extractJsonString(payloadJson, "tenantId");
-        if (sub == null || role == null) {
+        if (body == null || body.get("access_token") == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
         }
 
-        long nowSec = Instant.now().getEpochSecond();
-        String newAccess = makeDevJwt(sub, role, tenantId, nowSec + 60L * 30L);
-        String newRefresh = makeDevJwt(sub, role, tenantId, nowSec + 60L * 60L * 24L * 7L);
+        String newAccess = (String) body.get("access_token");
+        String newRefresh = (String) body.get("refresh_token");
 
-        AuthUser user = new AuthUser(sub, sub, role);
+        // internal_user_id/email are present on every Keycloak token issued for our realm
+        // (see KeycloakBootstrap/KeycloakAdminClient) without another round-trip to
+        // identity-service; role/type aren't recoverable here (they'd need identity-service
+        // itself) - left null, same accepted limitation as before. Deliberately read
+        // "internal_user_id", not the token's own "sub" - Keycloak's internal id is not our
+        // app's user id (see KeycloakAdminClient's javadoc).
+        String payloadJson = decodeJwtPayload(newAccess);
+        String internalUserId = payloadJson != null ? extractJsonString(payloadJson, "internal_user_id") : null;
+        String email = payloadJson != null ? extractJsonString(payloadJson, "email") : null;
+
+        AuthUser user = new AuthUser(internalUserId, email, null, null);
         return new LoginResponse(newAccess, newRefresh, user);
     }
 
-    // ----- Helper: extremely simple unsigned JWT maker/decoder for dev -----
+    // ----- Helper: read-only claim extraction from a JWT payload (works whether the
+    // token is signed or not - signing only affects the signature segment) -----
 
-    private static String makeDevJwt(String sub, String role, String tenantId, long expSeconds) {
-        String header = base64Url("{\"alg\":\"none\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
-        String tenantPart = tenantId != null ? ",\"tenantId\":\"" + tenantId + "\"" : "";
-        String payload = base64Url(("{\"sub\":\"" + sub + "\",\"role\":\"" + role + "\"" + tenantPart + ",\"exp\":" + expSeconds + "}").getBytes(StandardCharsets.UTF_8));
-        return header + "." + payload + ".dev";
-    }
-
-    private static String decodeDevJwtPayload(String token) {
+    private static String decodeJwtPayload(String token) {
         try {
             String[] parts = token.split("\\.");
             if (parts.length < 2)
@@ -106,10 +138,6 @@ public class AuthController {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private static String base64Url(byte[] input) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(input);
     }
 
     private static String extractJsonString(String json, String key) {
@@ -139,6 +167,7 @@ public class AuthController {
                 String id,
                 String email,
                 String name,
+                String type,
                 List<String> roles) {
         }
     }
@@ -157,7 +186,8 @@ public class AuthController {
     public record AuthUser(
             String id,
             String email,
-            String role) {
+            String role,
+            String type) {
     }
 
     public record LoginResponse(

@@ -96,14 +96,32 @@ function getCookieMap(): Record<string, string> {
   return cookieMap;
 }
 
-// Client-compatible: uses document.cookie for browser-side cookie access.
-// This allows the API client to be used in Client Components.
+// Reads the session cookie server-side, via next/headers - not document.cookie,
+// which doesn't exist in Server Components/Actions at all, and couldn't see this
+// cookie in the browser either since it's httpOnly (deliberately, to block XSS
+// token theft). The dynamic import keeps a static `next/headers` import out of
+// this file, which is also bundled into a few genuine Client Components (e.g.
+// ProjectSelect) that call already-proxied /api/... paths and never hit this
+// branch - see api-client.ts's git history for the 401 this was fixing.
+async function getServerCookieMap(): Promise<Record<string, string>> {
+  const { cookies } = await import('next/headers');
+  const store = await cookies();
+  const map: Record<string, string> = {};
+  for (const { name, value } of store.getAll()) {
+    map[name] = value;
+  }
+  return map;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const cookieMap = getCookieMap();
+  const isServer = typeof window === 'undefined';
+  const cookieMap = isServer ? await getServerCookieMap() : getCookieMap();
   const headersInit = new Headers(init?.headers);
   headersInit.set('Content-Type', 'application/json');
 
-  // Decode cookie values (document.cookie stores URL-encoded values)
+  // Decode cookie values (document.cookie stores URL-encoded values; next/headers
+  // already returns decoded values, but re-decoding a JWT/UUID is a no-op since
+  // neither ever contains a '%' sequence for decodeURIComponent to act on).
   const decodeValue = (value: string): string => {
     try {
       return decodeURIComponent(value);
@@ -119,12 +137,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const isProjectService = isProjectServicePath(path);
   let tenantId: string | undefined;
 
-  // Project service requires X-Tenant-Id header - fall back to cookie value if available, then default.
+  // Project service requires X-Tenant-Id header - fall back to cookie value if available,
+  // then the shared default tenant (every registration lands there; see register-*/route.ts).
   if (isProjectService) {
     const rawTenantId = cookieMap['x-tenant-id'];
     tenantId = rawTenantId ? decodeValue(rawTenantId) : undefined;
     if (!tenantId) {
-      tenantId = 'default';
+      tenantId = '00000000-0000-0000-0000-000000000001';
     }
     headersInit.set('X-Tenant-Id', tenantId);
   }

@@ -50,6 +50,16 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       auto-offset-reset: earliest
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI:http://localhost:8081/realms/cerp}
+
+cerp:
+  identity-service:
+    url: ${IDENTITY_SERVICE_URL:http://localhost:8090}
+
 management:
   endpoints:
     web:

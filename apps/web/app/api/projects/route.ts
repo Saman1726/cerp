@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
   const headers = new Headers();
   headers.set('Content-Type', 'application/json');
 
-  // Get tenant ID from cookie or default
-  const tenantId = request.headers.get('x-tenant-id') ?? 'default';
+  // Get tenant ID from cookie, else the shared default tenant every registration lands on.
+  const tenantId = request.headers.get('x-tenant-id') ?? '00000000-0000-0000-0000-000000000001';
   headers.set('X-Tenant-Id', tenantId);
 
   let token: string | null = null;

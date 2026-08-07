@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -153,6 +154,13 @@ public class SubProjectService {
                 "SubProject code already exists: " + request.getCode() + " for Project: " + projectId);
         }
 
+        // Enforce the Building<->SubProject 1:1 relationship (application-level check ahead
+        // of the DB unique index added in V2 - see the DataIntegrityViolationException catch
+        // below for the race window between this check and the save()).
+        if (request.getBuildingId() != null && subProjectRepository.existsByBuildingId(request.getBuildingId())) {
+            throw new BuildingAlreadyHasSubProjectException(request.getBuildingId());
+        }
+
         SubProject subProject = new SubProject(tenantId, orgId, projectId, request.getCode(), request.getName());
 
         // Set optional fields
@@ -182,7 +190,19 @@ public class SubProjectService {
         subProject.setCreatedBy(userId);
         subProject.setUpdatedBy(userId);
 
-        SubProject saved = subProjectRepository.save(subProject);
+        SubProject saved;
+        try {
+            // saveAndFlush, not save: save() alone just queues the INSERT for a later,
+            // transaction-commit-time flush - by then we're outside this try/catch and the
+            // unique-index violation surfaces as a raw 500 instead of the domain exception below.
+            saved = subProjectRepository.saveAndFlush(subProject);
+        } catch (DataIntegrityViolationException e) {
+            String msg = e.getMostSpecificCause() != null ? e.getMostSpecificCause().getMessage() : e.getMessage();
+            if (msg != null && msg.contains("idx_subproject_building_id_unique")) {
+                throw new BuildingAlreadyHasSubProjectException(request.getBuildingId());
+            }
+            throw e;
+        }
         log.info("Created SubProject: {} with ID: {}", saved.getCode(), saved.getId());
 
         // Publish subproject created event to trigger workflow auto-generation

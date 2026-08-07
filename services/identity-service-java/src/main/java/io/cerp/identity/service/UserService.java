@@ -1,5 +1,6 @@
 package io.cerp.identity.service;
 
+import io.cerp.identity.client.KeycloakAdminClient;
 import io.cerp.identity.domain.Membership;
 import io.cerp.identity.domain.UserAccount;
 import io.cerp.identity.events.IdentityEventPublisher;
@@ -22,26 +23,38 @@ public class UserService {
     private final UserAccountRepository userRepository;
     private final MembershipRepository membershipRepository;
     private final PasswordEncoder passwordEncoder;
+    private final KeycloakAdminClient keycloakAdminClient;
     private final @Nullable IdentityEventPublisher eventPublisher;
 
     @Autowired
     public UserService(UserAccountRepository userRepository,
             MembershipRepository membershipRepository,
             PasswordEncoder passwordEncoder,
+            KeycloakAdminClient keycloakAdminClient,
             @Autowired(required = false) IdentityEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.membershipRepository = membershipRepository;
         this.passwordEncoder = passwordEncoder;
+        this.keycloakAdminClient = keycloakAdminClient;
         this.eventPublisher = eventPublisher;
     }
 
-    public UserAccount create(String email, String name) {
+    /**
+     * Create a user with no password set yet (e.g. provisioned for a later self-service password flow). Also provisions a matching Keycloak user, without a credential -
+     * such a user can't complete a password-grant login until a password is set through some other flow.
+     */
+    public UserAccount create(String email, String name, UserAccount.AccountType type) {
         userRepository.findByEmail(email).ifPresent(u -> {
             throw new IllegalArgumentException("User with email already exists: " + email);
         });
 
-        UserAccount user = new UserAccount(null, email, name);
+        UserAccount user = new UserAccount(null, email, name).setType(type);
         UserAccount saved = userRepository.save(user);
+
+        // Keycloak is the source of truth for authentication; if this fails, the whole
+        // creation rolls back (UserService is @Transactional) - an account Keycloak
+        // doesn't know about can never log in.
+        keycloakAdminClient.upsertUser(saved.getId(), email, null, type.name(), null);
 
         if (eventPublisher != null) {
             eventPublisher.publishUserCreated(saved);
@@ -50,21 +63,31 @@ public class UserService {
     }
 
     /**
-     * Create a user with a password. The password will be BCrypt-hashed before storage.
+     * Create a user with a password. The password is BCrypt-hashed for local storage, and also dual-written to Keycloak so real, signed tokens can be issued for this
+     * user (see AuthController.login()).
      */
-    public UserAccount createWithPassword(String email, String name, String rawPassword) {
+    public UserAccount createWithPassword(String email, String name, String rawPassword, UserAccount.AccountType type) {
         userRepository.findByEmail(email).ifPresent(u -> {
             throw new IllegalArgumentException("User with email already exists: " + email);
         });
 
-        UserAccount user = new UserAccount(null, email, name);
+        UserAccount user = new UserAccount(null, email, name).setType(type);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         UserAccount saved = userRepository.save(user);
+
+        keycloakAdminClient.upsertUser(saved.getId(), email, rawPassword, type.name(), null);
 
         if (eventPublisher != null) {
             eventPublisher.publishUserCreated(saved);
         }
         return saved;
+    }
+
+    /**
+     * Delete a user account. Cascades to memberships/resource_members/subscriptions (all FK'd ON DELETE CASCADE).
+     */
+    public void delete(UUID id) {
+        userRepository.deleteById(id);
     }
 
     /**

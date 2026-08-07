@@ -207,6 +207,13 @@ public class Project {
     private String updatedBy;
 
     /**
+     * The user who created this Project - the permanent primary Owner. Set once by ProjectService.create() from the authenticated caller and never reassigned
+     * thereafter; distinct from any additional OWNER-role users in assignedUserRoles, which can be added/removed freely.
+     */
+    @Column(name = "primary_owner_id")
+    private UUID primaryOwnerId;
+
+    /**
      * SubProjects (buildings) belonging to this Project.
      */
     @OneToMany(mappedBy = "project", fetch = FetchType.EAGER)
@@ -503,6 +510,17 @@ public class Project {
 
     public void setUpdatedBy(String updatedBy) {
         this.updatedBy = updatedBy;
+    }
+
+    public UUID getPrimaryOwnerId() {
+        return primaryOwnerId;
+    }
+
+    /**
+     * Only ProjectService.create() should ever call this - the primary owner is set once at creation and is never reassigned afterward.
+     */
+    public void setPrimaryOwnerId(UUID primaryOwnerId) {
+        this.primaryOwnerId = primaryOwnerId;
     }
 
     public java.util.List<SubProject> getSubProjects() {

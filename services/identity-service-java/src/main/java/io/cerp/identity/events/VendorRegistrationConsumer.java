@@ -1,9 +1,9 @@
 package io.cerp.identity.events;
 
-import io.cerp.identity.domain.Tenant;
+import io.cerp.identity.domain.Plan;
 import io.cerp.identity.domain.UserAccount;
 import io.cerp.identity.service.MembershipService;
-import io.cerp.identity.service.TenantService;
+import io.cerp.identity.service.SubscriptionService;
 import io.cerp.identity.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,19 +30,23 @@ public class VendorRegistrationConsumer {
 
     private static final Logger log = LoggerFactory.getLogger(VendorRegistrationConsumer.class);
 
-    private final TenantService tenantService;
+    // Every registration lands on this shared default tenant (see Part A / apps/web's
+    // register-*/route.ts) - an Admin assigns a private tenant separately, later.
+    private static final UUID DEFAULT_TENANT_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     private final UserService userService;
     private final MembershipService membershipService;
+    private final SubscriptionService subscriptionService;
     private final IdentityEventPublisher eventPublisher;
 
     @Autowired
-    public VendorRegistrationConsumer(TenantService tenantService,
-            UserService userService,
+    public VendorRegistrationConsumer(UserService userService,
             MembershipService membershipService,
+            SubscriptionService subscriptionService,
             IdentityEventPublisher eventPublisher) {
-        this.tenantService = tenantService;
         this.userService = userService;
         this.membershipService = membershipService;
+        this.subscriptionService = subscriptionService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -51,24 +55,25 @@ public class VendorRegistrationConsumer {
         log.info("Processing vendor registration event for vendorId={}, email={}", event.getVendorId(), event.getEmail());
 
         try {
-            // 1. Create Tenant
-            Tenant tenant = tenantService.create(event.getTenantName(), event.getRegion());
-            log.info("Created tenant id={} for vendorId={}", tenant.getId(), event.getVendorId());
-
-            // 2. Create UserAccount
-            UserAccount user = userService.create(event.getEmail(), event.getLegalName());
+            // 1. Create UserAccount. Uses createWithPassword (not create) so the vendor can
+            // actually log in - the event carries a password specifically for this.
+            UserAccount user = userService.createWithPassword(event.getEmail(), event.getLegalName(), event.getPassword(), UserAccount.AccountType.VENDOR);
             log.info("Created user id={} for vendorId={}", user.getId(), event.getVendorId());
 
-            // 3. Create Membership with vendor role
+            // 2. Create Membership on the default tenant with vendor role
             List<String> roles = List.of("vendor");
             Map<String, Object> scopes = Map.of("vendorId", event.getVendorId().toString(), "selfService", true);
-            membershipService.assign(tenant.getId(), user.getId(), roles, scopes);
+            membershipService.assign(DEFAULT_TENANT_ID, user.getId(), roles, scopes);
             log.info("Created membership for tenantId={}, userId={}, vendorId={}",
-                tenant.getId(), user.getId(), event.getVendorId());
+                DEFAULT_TENANT_ID, user.getId(), event.getVendorId());
+
+            // 3. Create Subscription (every account gets one, regardless of type)
+            subscriptionService.create(user.getId(), Plan.FREEMIUM);
+            log.info("Created Freemium subscription for userId={}, vendorId={}", user.getId(), event.getVendorId());
 
             // 4. Publish event for vendor-service to link identity
             if (eventPublisher != null) {
-                eventPublisher.publishVendorIdentityCreated(event.getVendorId(), tenant.getId(), user.getId());
+                eventPublisher.publishVendorIdentityCreated(event.getVendorId(), DEFAULT_TENANT_ID, user.getId());
             }
 
             log.info("Vendor identity creation complete for vendorId={}", event.getVendorId());

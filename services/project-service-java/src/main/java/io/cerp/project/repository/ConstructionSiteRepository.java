@@ -12,4 +12,10 @@ import io.cerp.project.domain.ConstructionSite;
 public interface ConstructionSiteRepository extends JpaRepository<ConstructionSite, UUID> {
 
     List<ConstructionSite> findByTenantId(String tenantId);
+
+    /**
+     * Counts a creator's Construction Sites for quota enforcement - quota is per-creator, not per-tenant, since many users can share a tenant (see the shared default
+     * tenant introduced alongside this).
+     */
+    long countByCreatedBy(String createdBy);
 }
