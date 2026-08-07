@@ -6,9 +6,6 @@ resources:
 components:
   - ../../components/postgres
 images:
-  - name: cerp-api:local
-    newName: ghcr.io/saman1726/cerp-api
-    newTag: dev
   - name: cerp-web:local
     newName: ghcr.io/saman1726/cerp-web
     newTag: dev

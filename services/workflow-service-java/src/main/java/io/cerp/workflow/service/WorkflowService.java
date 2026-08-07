@@ -2,6 +2,7 @@ package io.cerp.workflow.service;
 
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,6 +18,10 @@ import io.cerp.workflow.domain.WorkflowTemplate;
 import io.cerp.workflow.domain.WorkflowTemplateStep;
 import io.cerp.workflow.repository.WorkflowRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
+import io.cerp.workflow.state.StateMachineEngine;
+import io.cerp.workflow.state.WorkflowStateMachines;
+import io.cerp.workflow.state.WorkflowStateStore;
+import io.cerp.workflow.state.WorkflowStepStateStore;
 
 /**
  * Service layer for Workflow instance aggregate.
@@ -31,11 +36,25 @@ public class WorkflowService {
 
     private final WorkflowRepository workflowRepository;
     private final WorkflowTemplateRepository templateRepository;
+    private final StateMachineEngine stateMachineEngine;
+    private final WorkflowStateStore workflowStateStore;
+    private final WorkflowStepStateStore workflowStepStateStore;
 
     public WorkflowService(WorkflowRepository workflowRepository,
-            WorkflowTemplateRepository templateRepository) {
+            WorkflowTemplateRepository templateRepository,
+            StateMachineEngine stateMachineEngine,
+            WorkflowStateStore workflowStateStore,
+            WorkflowStepStateStore workflowStepStateStore) {
         this.workflowRepository = workflowRepository;
         this.templateRepository = templateRepository;
+        this.stateMachineEngine = stateMachineEngine;
+        this.workflowStateStore = workflowStateStore;
+        this.workflowStepStateStore = workflowStepStateStore;
+    }
+
+    private void transition(String aggregateType, UUID aggregateId, String transitionCode,
+            StateMachineEngine.StateStore store) {
+        stateMachineEngine.executeTransition(aggregateType, aggregateId, transitionCode, store, Map.of());
     }
 
     /**
@@ -172,6 +191,8 @@ public class WorkflowService {
     @Transactional
     public Workflow startWorkflow(UUID workflowId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_START,
+            workflowStateStore);
         workflow.start();
         Workflow saved = workflowRepository.save(workflow);
         updateNextStep(saved);
@@ -185,6 +206,8 @@ public class WorkflowService {
     @Transactional
     public Workflow blockWorkflow(UUID workflowId, String reason) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_BLOCK,
+            workflowStateStore);
         workflow.block();
         Workflow saved = workflowRepository.save(workflow);
         log.info("Blocked workflow {}: {}", workflowId, reason);
@@ -197,6 +220,8 @@ public class WorkflowService {
     @Transactional
     public Workflow unblockWorkflow(UUID workflowId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_UNBLOCK,
+            workflowStateStore);
         workflow.unblock();
         Workflow saved = workflowRepository.save(workflow);
         updateNextStep(saved);
@@ -210,6 +235,8 @@ public class WorkflowService {
     @Transactional
     public Workflow completeWorkflow(UUID workflowId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_COMPLETE,
+            workflowStateStore);
         workflow.complete();
         Workflow saved = workflowRepository.save(workflow);
         log.info("Completed workflow {}", workflowId);
@@ -222,6 +249,8 @@ public class WorkflowService {
     @Transactional
     public Workflow approveWorkflow(UUID workflowId, UUID userId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_APPROVE,
+            workflowStateStore);
         workflow.approve();
         workflow.setWhoHasApproved(userId);
         Workflow saved = workflowRepository.save(workflow);
@@ -235,6 +264,8 @@ public class WorkflowService {
     @Transactional
     public Workflow rejectWorkflow(UUID workflowId, UUID userId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_REJECT,
+            workflowStateStore);
         workflow.reject();
         workflow.setWhoHasApproved(userId);
         Workflow saved = workflowRepository.save(workflow);
@@ -248,6 +279,8 @@ public class WorkflowService {
     @Transactional
     public Workflow cancelWorkflow(UUID workflowId, UUID userId) {
         Workflow workflow = getById(workflowId);
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW, workflowId, WorkflowStateMachines.TRANSITION_CANCEL,
+            workflowStateStore);
         workflow.cancel();
         Workflow saved = workflowRepository.save(workflow);
         log.info("Cancelled workflow {} by user {}", workflowId, userId);
@@ -262,6 +295,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_START,
+            workflowStepStateStore);
         step.start(userId);
         workflow.setNextStep(findNextPendingStepId(workflowId));
         workflow.setWhoHasDone(userId);
@@ -280,6 +315,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_COMPLETE,
+            workflowStepStateStore);
         step.complete(evidence, notes, userId);
         workflow.setWhoHasDone(userId);
         workflow.recalculateProgress();
@@ -298,6 +335,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_APPROVE,
+            workflowStepStateStore);
         step.approve(notes, userId);
         workflow.setWhoHasApproved(userId);
         workflow.recalculateProgress();
@@ -316,6 +355,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_REJECT,
+            workflowStepStateStore);
         step.reject(notes, userId);
         workflow.setWhoHasApproved(userId);
         workflowRepository.save(workflow);
@@ -332,6 +373,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_BLOCK,
+            workflowStepStateStore);
         step.block(reason);
         workflow.setNextStep(findNextPendingStepId(workflowId));
         workflowRepository.save(workflow);
@@ -348,6 +391,8 @@ public class WorkflowService {
         Workflow workflow = getById(workflowId);
         WorkflowStep step = findStepById(workflowId, stepId);
 
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_UNBLOCK,
+            workflowStepStateStore);
         step.unblock();
         workflow.setNextStep(findNextPendingStepId(workflowId));
         workflowRepository.save(workflow);

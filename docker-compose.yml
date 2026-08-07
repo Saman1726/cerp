@@ -17,28 +17,6 @@ services:
       timeout: 5s
       retries: 10
 
-  api-java:
-    build:
-      context: services/core-api-java
-      dockerfile: Dockerfile
-    container_name: cerp-api-java
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PORT: 8080
-      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
-      DB_USERNAME: ${POSTGRES_USER:-cerp}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-cerp_dev_password}
-      SPRING_FLYWAY_ENABLED: "false"
-      IDENTITY_SERVICE_URL: http://identity-service-java:8090
-      KEYCLOAK_URL: http://keycloak:8081
-      KEYCLOAK_REALM: cerp
-      KEYCLOAK_CLIENT_ID: cerp-identity-service
-      KEYCLOAK_CLIENT_SECRET: cerp-identity-service-dev-secret
-    ports:
-      - '8080:8080'
-
   identity-service-java:
     build:
       context: services/identity-service-java
@@ -217,7 +195,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - api-java
       - project-service-java
       - workflow-service-java
       - identity-service-java
@@ -232,7 +209,6 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service-java:8091
       # These URLs are embedded in the browser bundle, so use Docker service names
       # to reach services via Docker internal DNS
-      NEXT_PUBLIC_API_URL: http://api-java:8080
       NEXT_PUBLIC_PROJECT_SERVICE_URL: http://project-service-java:8085
       NEXT_PUBLIC_WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
       NEXT_PUBLIC_IDENTITY_SERVICE_URL: http://identity-service-java:8090

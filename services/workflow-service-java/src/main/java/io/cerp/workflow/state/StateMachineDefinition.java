@@ -41,8 +41,7 @@ public class StateMachineDefinition<TState, TTransition> {
 
     private final TState initialState;
     private final Set<TState> states;
-    private final Map<TTransition, Transition<TState, TTransition>> transitions;
-    private final Map<TState, Set<TTransition>> outgoingTransitions;
+    private final Map<TState, Map<TTransition, Transition<TState, TTransition>>> transitionsByState;
 
     /**
      * Get the initial state of this state machine.
@@ -63,15 +62,13 @@ public class StateMachineDefinition<TState, TTransition> {
      */
     public Map<String, String> getValidTransitions(TState currentState) {
         Map<String, String> result = new HashMap<>();
-        Set<TTransition> outgoing = outgoingTransitions.get(currentState);
+        Map<TTransition, Transition<TState, TTransition>> outgoing = transitionsByState.get(currentState);
         if (outgoing == null) {
             return result;
         }
-        for (TTransition transition : outgoing) {
-            Transition<TState, TTransition> t = transitions.get(transition);
-            if (t != null) {
-                result.put(transition.toString(), currentState.toString() + " -> " + t.nextState().toString());
-            }
+        for (Map.Entry<TTransition, Transition<TState, TTransition>> entry : outgoing.entrySet()) {
+            result.put(entry.getKey().toString(),
+                currentState.toString() + " -> " + entry.getValue().nextState().toString());
         }
         return result;
     }
@@ -81,12 +78,12 @@ public class StateMachineDefinition<TState, TTransition> {
      */
     public boolean isValidTransition(TState currentState, TTransition transitionCode,
             Map<String, Object> context) {
-        Set<TTransition> outgoing = outgoingTransitions.get(currentState);
-        if (outgoing == null || !outgoing.contains(transitionCode)) {
+        Map<TTransition, Transition<TState, TTransition>> outgoing = transitionsByState.get(currentState);
+        if (outgoing == null) {
             return false;
         }
 
-        Transition<TState, TTransition> transition = transitions.get(transitionCode);
+        Transition<TState, TTransition> transition = outgoing.get(transitionCode);
         if (transition == null) {
             return false;
         }
@@ -105,7 +102,11 @@ public class StateMachineDefinition<TState, TTransition> {
      * @return the next state, or null if the transition is not valid
      */
     public TState getNextState(TState currentState, TTransition transitionCode) {
-        Transition<TState, TTransition> transition = transitions.get(transitionCode);
+        Map<TTransition, Transition<TState, TTransition>> outgoing = transitionsByState.get(currentState);
+        if (outgoing == null) {
+            return null;
+        }
+        Transition<TState, TTransition> transition = outgoing.get(transitionCode);
         if (transition == null) {
             return null;
         }
@@ -117,15 +118,12 @@ public class StateMachineDefinition<TState, TTransition> {
      */
     public Map<TTransition, TState> getNextStates(TState currentState) {
         Map<TTransition, TState> result = new HashMap<>();
-        Set<TTransition> outgoing = outgoingTransitions.get(currentState);
+        Map<TTransition, Transition<TState, TTransition>> outgoing = transitionsByState.get(currentState);
         if (outgoing == null) {
             return result;
         }
-        for (TTransition transition : outgoing) {
-            Transition<TState, TTransition> t = transitions.get(transition);
-            if (t != null) {
-                result.put(transition, t.nextState());
-            }
+        for (Map.Entry<TTransition, Transition<TState, TTransition>> entry : outgoing.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().nextState());
         }
         return result;
     }
@@ -157,8 +155,7 @@ public class StateMachineDefinition<TState, TTransition> {
 
         private TState initialState;
         private final Set<TState> states = new HashSet<>();
-        private final Map<TTransition, Transition<TState, TTransition>> transitions = new HashMap<>();
-        private final Map<TState, Set<TTransition>> outgoingTransitions = new HashMap<>();
+        private final Map<TState, Map<TTransition, Transition<TState, TTransition>>> transitionsByState = new HashMap<>();
 
         private StateMachineBuilder() {
         }
@@ -197,9 +194,8 @@ public class StateMachineDefinition<TState, TTransition> {
             states.add(fromState);
             states.add(toState);
 
-            transitions.put(transitionCode, new Transition<>(transitionCode, toState, guard));
-
-            outgoingTransitions.computeIfAbsent(fromState, k -> new HashSet<>()).add(transitionCode);
+            transitionsByState.computeIfAbsent(fromState, k -> new HashMap<>())
+                .put(transitionCode, new Transition<>(transitionCode, toState, guard));
 
             return this;
         }
@@ -212,19 +208,21 @@ public class StateMachineDefinition<TState, TTransition> {
                 throw new IllegalStateException("Initial state must be set");
             }
 
-            return new StateMachineDefinition<>(initialState, Set.copyOf(states),
-                transitions, outgoingTransitions);
+            return new StateMachineDefinition<>(initialState, Set.copyOf(states), transitionsByState);
         }
     }
 
     // --- Private constructor ---
 
     private StateMachineDefinition(TState initialState, Set<TState> states,
-            Map<TTransition, Transition<TState, TTransition>> transitions,
-            Map<TState, Set<TTransition>> outgoingTransitions) {
+            Map<TState, Map<TTransition, Transition<TState, TTransition>>> transitionsByState) {
         this.initialState = initialState;
         this.states = Set.copyOf(states);
-        this.transitions = Map.copyOf(transitions);
-        this.outgoingTransitions = Map.copyOf(outgoingTransitions);
+        Map<TState, Map<TTransition, Transition<TState, TTransition>>> immutableCopy = new HashMap<>();
+        for (Map.Entry<TState, Map<TTransition, Transition<TState, TTransition>>> entry
+                : transitionsByState.entrySet()) {
+            immutableCopy.put(entry.getKey(), Map.copyOf(entry.getValue()));
+        }
+        this.transitionsByState = Map.copyOf(immutableCopy);
     }
 }

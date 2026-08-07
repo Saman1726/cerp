@@ -19,7 +19,6 @@ Immediate actions (make the monorepo team-ready)
   - Add CODEOWNERS per path:
     - apps/web/ → @team-web
     - apps/api/ → @team-api
-    - services/core-api-java/ → @team-java
     - services/partner-system/ → @team-partner
     - packages/shared-types/ → @team-platform
     - packages/core-*/ → @team-platform
@@ -51,7 +50,6 @@ Suggested repo boundaries (if/when splitting)
 
 - cerp-web: apps/web + packages/core-web
 - cerp-api: apps/api + packages/core-api
-- cerp-services-core-api-java: services/core-api-java
 - cerp-services-partner-system: services/partner-system
 - cerp-infra: infra/k8s (dedicated GitOps repo for Argo/Flux)
 - cerp-platform (optional): packages/shared-types, packages/eslint-config, packages/typescript-config

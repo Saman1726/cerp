@@ -1,6 +1,5 @@
 import { ConstructionEngineeringPageBodyClient } from '@cerp/core-web/construction-engineering';
 import {
-  issueWorkOrderAction,
   createProjectActionWrapper as createProjectAction,
   deleteProjectActionWrapper as deleteProjectAction,
   createSubProjectActionWrapper as createSubProjectAction,
@@ -9,8 +8,7 @@ import {
   removeUserFromProjectAction,
 } from './actions';
 import { apiClient } from '@cerp/core-web/lib/api-client';
-import type { Project, WorkOrder, ConstructionSite } from '@cerp/shared-types';
-import type { Partner } from '@cerp/core-web/partners';
+import type { Project, ConstructionSite } from '@cerp/shared-types';
 import { SESSION_COOKIE } from '@cerp/core-web/lib/session-cookies';
 
 // Get the current user's info from the JWT token for project filtering
@@ -49,12 +47,7 @@ function isUserAdminOrManager(roles: string[]): boolean {
 }
 
 export default async function ConstructionPage() {
-  const [workOrders, constructionSites]: [WorkOrder[], ConstructionSite[]] = await Promise.all([
-    apiClient.get<WorkOrder[]>('/work-orders'),
-    apiClient.get<ConstructionSite[]>('/construction-sites'),
-  ]);
-
-  const contractors: Partner[] = [];
+  const constructionSites: ConstructionSite[] = await apiClient.get<ConstructionSite[]>('/construction-sites');
 
   // Get current user's info for project filtering
   const userInfo = await getCurrentUserInfo();
@@ -79,10 +72,7 @@ export default async function ConstructionPage() {
   return (
     <ConstructionEngineeringPageBodyClient
       projects={projects}
-      workOrders={workOrders}
-      contractors={contractors}
       constructionSites={constructionSites}
-      formAction={issueWorkOrderAction}
       createProjectAction={createProjectAction}
       createSubProjectAction={createSubProjectAction}
       deleteProjectAction={deleteProjectAction}

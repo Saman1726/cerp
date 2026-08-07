@@ -27,55 +27,36 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-    /**
-     * This chain handles /users/profile endpoints specifically. It does NOT validate JWTs against Keycloak - the controller extracts user ID from the Bearer token
-     * payload directly (for locally generated tokens). Order 1 ensures this chain is evaluated BEFORE publicApiFilterChain.
-     */
-    @Bean
-    @Order(1)
-    public SecurityFilterChain userProfileFilterChain(
-            HttpSecurity http,
-            TenantRequestFilter tenantRequestFilter) throws Exception {
-        http
-            .securityMatcher("/users/profile")
-            .csrf(csrf -> csrf.disable())
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.GET, "/users/profile").permitAll()
-                .requestMatchers(HttpMethod.PATCH, "/users/profile").permitAll())
-            // No oauth2ResourceServer - we skip JWT validation for profile endpoints
-            .addFilterBefore(tenantRequestFilter, BearerTokenAuthenticationFilter.class);
-
-        return http.build();
-    }
-
     @Bean
     @Order(2)
     public SecurityFilterChain publicApiFilterChain(
             HttpSecurity http,
             TenantRequestFilter tenantRequestFilter) throws Exception {
-        // This chain handles public endpoints (registration, login)
-        // NOTE: /users/profile is handled by userProfileFilterChain (Order 1) above
+        // This chain handles public endpoints (registration, login).
+        // /users/profile is intentionally NOT listed here - it falls through to
+        // defaultFilterChain (Order 3), which requires a validated Keycloak JWT.
         http
             .securityMatcher("/tenants", "/users", "/memberships", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription")
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 // Registration endpoints - must be public
-                .requestMatchers("/tenants").permitAll()
+                .requestMatchers(HttpMethod.POST, "/tenants").permitAll()
+                // GET /tenants (list-all) requires auth - no legitimate public caller
+                .requestMatchers(HttpMethod.GET, "/tenants").authenticated()
                 .requestMatchers("/users").permitAll()
                 .requestMatchers(HttpMethod.POST, "/users").permitAll()
-                // GET /users (without path segments) - list/get by email
+                // GET /users (without path segments) - list/get by email. UserController.get()
+                // itself enforces that the bare (no ?email=) full-list form additionally
+                // requires a validated JWT - see UserController for the actual gate.
                 .requestMatchers(HttpMethod.GET, "/users").permitAll()
                 // GET /users/{id} - authenticated
                 .requestMatchers(HttpMethod.GET, "/users/**").authenticated()
                 // Registration flows create a Subscription right after the Membership step
                 .requestMatchers(HttpMethod.POST, "/subscriptions").permitAll()
-                // DELETE endpoints for cleanup
-                .requestMatchers(HttpMethod.DELETE, "/tenants/**").permitAll()
-                .requestMatchers(HttpMethod.DELETE, "/users/**").permitAll()
                 // Auth endpoints
                 .requestMatchers("/auth/login").permitAll()
+                .requestMatchers("/auth/refresh").permitAll()
                 // Registration endpoints - must be public
                 .requestMatchers(HttpMethod.POST, "/memberships").permitAll()
                 // GET /memberships?tenantId=... called by internal services (e.g. workflow-service)

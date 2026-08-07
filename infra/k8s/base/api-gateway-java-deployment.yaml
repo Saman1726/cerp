@@ -60,12 +60,8 @@ spec:
               value: http://identity-service-java:8080
             - name: CERP_ORGANIZATION_SERVICE_URL
               value: http://catalog-service-java:8080
-            - name: CERP_PROJECT_SERVICE_URL
-              value: http://partner-system-java:8080
             - name: CERP_DMS_SERVICE_URL
               value: http://vendor-service-java:8080
-            - name: CERP_AUDIT_SERVICE_URL
-              value: http://core-api-java:8080
             - name: CERP_VENDOR_SERVICE_URL
               value: http://vendor-service-java:8080
             - name: CERP_CATALOG_SERVICE_URL

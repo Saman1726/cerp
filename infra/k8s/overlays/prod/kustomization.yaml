@@ -7,9 +7,6 @@ resources:
 # instance via api-secrets' DATABASE_URL (created out-of-band), not the
 # in-cluster StatefulSet used for dev/staging convenience.
 images:
-  - name: cerp-api:local
-    newName: ghcr.io/saman1726/cerp-api
-    newTag: prod
   - name: cerp-web:local
     newName: ghcr.io/saman1726/cerp-web
     newTag: prod

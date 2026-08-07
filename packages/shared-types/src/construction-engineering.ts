@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 // ── Project Types ──
 
 export type ProjectStatus = 'PLANNED' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
@@ -211,29 +209,6 @@ export interface UpdateSubProjectRequest {
   endDate?: string;
   budget?: number;
 }
-
-export type WorkOrderStatus = 'issued' | 'completed';
-
-export interface WorkOrder {
-  id: string;
-  projectId: string;
-  title: string;
-  description: string | null;
-  contractorPartnerId: string;
-  contractorPartnerName: string;
-  status: WorkOrderStatus;
-  issuedAt: string;
-  completedAt: string | null;
-  updatedAt: string;
-}
-
-export const createWorkOrderRequestSchema = z.object({
-  projectId: z.string().uuid(),
-  title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
-  contractorPartnerId: z.string().min(1),
-});
-export type CreateWorkOrderRequest = z.infer<typeof createWorkOrderRequestSchema>;
 
 // ── Workflow Types ──
 

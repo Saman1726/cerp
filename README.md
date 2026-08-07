@@ -2,14 +2,11 @@
 
 ERP SaaS for the Properties & Construction industry. Multi-tenant, built to run in Kubernetes.
 
-Migration note: Backend services now default to Java (Spring Boot). The former Node.js backends have been removed from the repository. See docs/java-backend-migration.md for background and guidance.
+Migration note: Backend services now default to Java (Spring Boot). The former Node.js backends have been removed from the repository.
 
 The project is split into two parts:
 
 - Core runtime and services (Java + Frontend building blocks)
-  - Backend services (Java):
-    - services/core-api-java — Core API (Spring Boot, PostgreSQL, Flyway)
-    - services/partner-system-java — Partner System (Spring Boot)
   - Frontend libraries and app:
     - packages/core-web — Next.js building blocks (auth/session, API client, UI components)
     - apps/web — Reference Next.js app built from core-web
@@ -40,17 +37,13 @@ pnpm install
 2. Bring up Java backend + Postgres via Docker Compose:
 
 ```bash
-docker compose up -d postgres partner-system-java api-java
+docker compose up -d postgres identity-service-java
 ```
 
 Service endpoints:
 
-- Core API (Java)
-  - Health: http://localhost:8080/actuator/health
-  - OpenAPI (if enabled): http://localhost:8080/api-docs
-  - Swagger UI (if enabled): http://localhost:8080/swagger
-- Partner System (Java)
-  - Health: http://localhost:3020/actuator/health
+- Identity Service (Java)
+  - Health: http://localhost:8090/actuator/health
 
 3. Run the web app:
 
@@ -60,8 +53,7 @@ pnpm --filter web run dev   # http://localhost:3001
 
 Notes:
 
-- api-java uses DB_* env vars; defaults are set in docker-compose.yml. PARTNER_SYSTEM_URL defaults to http://partner-system-java:3020.
-- The web app talks to api-java via API_URL (see apps/web and packages/core-web/src/lib/env.ts).
+- The web app talks to identity-service-java via NEXT_PUBLIC_IDENTITY_SERVICE_URL for auth (see apps/web and packages/core-web/src/lib/env.ts).
 
 ## Local test data and login
 
@@ -70,9 +62,9 @@ Quick local test with seeded data:
 ```bash
 corepack enable
 pnpm install
-docker compose up -d postgres partner-system-java api-java
-# Create apps/web/.env.local so the web app points to the local API
-printf "API_URL=http://localhost:8080\n" > apps/web/.env.local
+docker compose up -d postgres identity-service-java
+# Create apps/web/.env.local so the web app points to the local identity service
+printf "NEXT_PUBLIC_IDENTITY_SERVICE_URL=http://localhost:8090\n" > apps/web/.env.local
 pnpm --filter web run dev
 # Open http://localhost:3001/login
 ```
@@ -83,7 +75,7 @@ Seeded login accounts (Partner code, Username, Password):
 - ACME, jane, secret (role: user)
 - MEGA, mario, secret (role: user)
 
-Core API health endpoint: http://localhost:8080/actuator/health
+Identity service health endpoint: http://localhost:8090/actuator/health
 
 ## Repository structure
 
@@ -97,9 +89,6 @@ packages/
   shared-types/                DTOs/types shared with the frontend
   typescript-config/
   eslint-config/
-services/
-  core-api-java/               Spring Boot Core API
-  partner-system-java/         Spring Boot Partner System
 infra/k8s/                     Kustomize base + overlays (dev/staging/prod)
 docs/
 .github/workflows/
@@ -115,11 +104,9 @@ pnpm turbo run lint typecheck build
 
 GitHub Actions workflows:
 
-- .github/workflows/api-java-ci.yml — Java Core API CI (build/test)
-- .github/workflows/partner-system-java-ci.yml — Java Partner System CI (build/test)
 - .github/workflows/web-ci.yml — Frontend CI (lint/typecheck/build)
 - .github/workflows/contracts.yml — Placeholder for OpenAPI/AsyncAPI generation and artifact upload
-- .github/workflows/docker-build.yml — Builds and pushes Web, Core API (Java), and Partner System (Java) images to GHCR on merge to main
+- .github/workflows/docker-build.yml — Builds and pushes Web and backend service images to GHCR on merge to main
 
 Remote caching for Turborepo in CI can be enabled by setting TURBO_TOKEN (secret) and TURBO_TEAM (org/team slug).
 
@@ -136,7 +123,6 @@ kubectl apply -k infra/k8s/overlays/dev
 
 Ingress routes:
 
-- api.cerp.example.com -> Service api-java:8080
 - app.cerp.example.com -> Service web:80
 
 dev and staging include an in-cluster Postgres StatefulSet for convenience. prod does not — point it at a managed Postgres instance instead (see infra/k8s/base/secret.example.yaml).
@@ -150,5 +136,3 @@ Nothing under infra/k8s with real credentials is ever committed — secret.examp
 - Frontend builds on packages/core-web. Keep server-side calls typed against packages/shared-types where applicable.
 - Follow docs/architecture for module boundaries and evolution.
 - Java services follow standard Spring Boot layering and should expose health and API docs endpoints for observability and integration.
-
-For migration details and next steps, see docs/java-backend-migration.md.

@@ -10,8 +10,6 @@
     "./lib/utils": "./src/lib/utils.ts",
     "./proxy": "./src/proxy/create-auth-proxy.ts",
     "./auth": "./src/auth/index.ts",
-    "./properties": "./src/properties/index.ts",
-    "./partners": "./src/partners/index.ts",
     "./construction-engineering": "./src/construction-engineering/index.ts",
     "./construction-sites": "./src/construction-sites/index.ts",
     "./procurement": "./src/procurement/index.ts",

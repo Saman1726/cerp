@@ -8,7 +8,6 @@ import type {
   SubProjectResponse,
   WorkflowTemplate,
   Workflow,
-  WorkOrder,
   ProjectUserAssignment,
 } from '@cerp/shared-types';
 
@@ -374,37 +373,6 @@ export async function fetchWorkflows(projectId?: string): Promise<Workflow[]> {
     return await apiClient.get<Workflow[]>('/api/v1/workflows');
   } catch {
     return [];
-  }
-}
-
-// ── Work Order Actions ──
-
-export async function issueWorkOrderAction(
-  _state: { error?: string },
-  formData: FormData
-): Promise<{ error?: string }> {
-  try {
-    const projectId = formData.get('projectId')?.toString()?.trim();
-    const contractorPartnerId = formData.get('contractorPartnerId')?.toString()?.trim();
-    const title = formData.get('title')?.toString()?.trim();
-    const description = formData.get('description')?.toString()?.trim() || undefined;
-
-    if (!projectId || !contractorPartnerId || !title) {
-      return { error: 'Project, contractor, and title are required' };
-    }
-
-    await apiClient.post<Record<string, unknown>, WorkOrder>('/api/v1/work-orders', {
-      projectId,
-      contractorPartnerId,
-      title,
-      description,
-    });
-
-    revalidatePath('/construction');
-    return {};
-  } catch (error) {
-    console.error('Failed to issue work order:', error);
-    return { error: 'Failed to issue work order' };
   }
 }
 

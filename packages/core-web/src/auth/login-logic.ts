@@ -1,18 +1,20 @@
 import { redirect } from 'next/navigation';
 import { loginRequestSchema, type LoginResponse } from '@cerp/shared-types';
 import { setSession } from '../lib/session';
-import { API_URL } from '../lib/env';
+import { IDENTITY_SERVICE_URL } from '../lib/env';
 import type { LoginActionState } from './types';
 
 export interface PerformLoginOptions {
-  /** Where to redirect on success. Defaults to '/properties'. */
+  /** Where to redirect on success. Defaults to '/dashboard'. */
   redirectTo?: string;
 }
 
-// Deliberately NOT a 'use server' function - see properties/property-logic.ts
-// for why. redirect() still works fine called from a plain function below
-// the real 'use server' boundary - it's throw-based, unrelated to the RSC
-// reference machinery that makes cross-package Server Actions unreliable.
+// Deliberately NOT a 'use server' function - cross-package Server Action
+// resolution is fragile/undocumented in Next.js. Each consuming app wraps
+// this in its own thin 'use server' action. redirect() still works fine
+// called from a plain function below the real 'use server' boundary - it's
+// throw-based, unrelated to the RSC reference machinery that makes
+// cross-package Server Actions unreliable.
 export async function performLogin(
   formData: FormData,
   options: PerformLoginOptions = {},
@@ -28,7 +30,7 @@ export async function performLogin(
 
   // Calls the API directly rather than through lib/api-client - there's no
   // session yet for the client to attach.
-  const res = await fetch(`${API_URL}/auth/login`, {
+  const res = await fetch(`${IDENTITY_SERVICE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parsed.data),
@@ -46,5 +48,5 @@ export async function performLogin(
     refreshToken: data.refreshToken,
   });
 
-  redirect(options.redirectTo ?? '/properties');
+  redirect(options.redirectTo ?? '/dashboard');
 }

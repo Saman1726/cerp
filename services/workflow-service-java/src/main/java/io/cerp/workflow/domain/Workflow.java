@@ -169,64 +169,42 @@ public class Workflow {
     // ── Business methods ──
 
     /**
-     * Transition status through valid transitions.
+     * Side effects applied by each status transition.
      *
      * <p>
-     * Valid transitions:
-     * <ul>
-     * <li>PLANNED → IN_PROGRESS</li>
-     * <li>IN_PROGRESS → BLOCKED, ON_HOLD, COMPLETED</li>
-     * <li>COMPLETED → APPROVED, REJECTED</li>
-     * <li>BLOCKED → IN_PROGRESS, ON_HOLD</li>
-     * <li>ON_HOLD → IN_PROGRESS, BLOCKED</li>
-     * <li>Any → CANCELED (from PLANNED/IN_PROGRESS only)</li>
-     * </ul>
+     * Status is set exclusively by {@code WorkflowStateStore}, driven by
+     * {@code StateMachineEngine.executeTransition(...)} in {@code WorkflowService} -- see
+     * {@code WorkflowStateMachines} for the guarded transition graph this class used to enforce
+     * itself. These methods only apply the side effects (timestamps) that accompany each
+     * transition; several have none.
      */
     public void start() {
-        requireStatus(WorkflowStatus.PLANNED);
-        this.status = WorkflowStatus.IN_PROGRESS;
         this.startDate = LocalDate.now();
     }
 
     public void block() {
-        requireStatus(WorkflowStatus.IN_PROGRESS);
-        this.status = WorkflowStatus.BLOCKED;
     }
 
     public void unblock() {
-        requireStatus(WorkflowStatus.BLOCKED);
-        this.status = WorkflowStatus.IN_PROGRESS;
     }
 
     public void hold() {
-        requireStatus(WorkflowStatus.IN_PROGRESS, WorkflowStatus.BLOCKED);
-        this.status = WorkflowStatus.ON_HOLD;
     }
 
     public void unhold() {
-        requireStatus(WorkflowStatus.ON_HOLD);
-        this.status = WorkflowStatus.IN_PROGRESS;
     }
 
     public void complete() {
-        requireStatus(WorkflowStatus.IN_PROGRESS);
-        this.status = WorkflowStatus.COMPLETED;
         this.endDate = LocalDate.now();
     }
 
     public void approve() {
-        requireStatus(WorkflowStatus.COMPLETED);
-        this.status = WorkflowStatus.APPROVED;
     }
 
     public void reject() {
-        requireStatus(WorkflowStatus.COMPLETED);
-        this.status = WorkflowStatus.REJECTED;
     }
 
     public void cancel() {
-        requireStatus(WorkflowStatus.PLANNED, WorkflowStatus.IN_PROGRESS);
-        this.status = WorkflowStatus.CANCELED;
         this.endDate = LocalDate.now();
     }
 
@@ -271,17 +249,6 @@ public class Workflow {
 
     public void setWhoHasApproved(UUID userId) {
         this.whoHasApproved = userId;
-    }
-
-    private void requireStatus(WorkflowStatus... allowed) {
-        for (WorkflowStatus s : allowed) {
-            if (this.status == s) {
-                return;
-            }
-        }
-        String allowedStr = String.join(", ", java.util.Arrays.toString(allowed));
-        throw new IllegalStateException(
-            String.format("Current status %s does not allow transition. Allowed from: %s", this.status, allowedStr));
     }
 
     // ── Step management ──
@@ -484,6 +451,11 @@ public class Workflow {
         return status;
     }
 
+    /**
+     * Bypasses the guarded transition graph -- used internally by {@code WorkflowStateStore} to
+     * write back the state {@code StateMachineEngine} already validated. Do not call directly to
+     * change status; use {@code WorkflowService}'s transition methods instead.
+     */
     public void setStatus(WorkflowStatus status) {
         this.status = status;
     }

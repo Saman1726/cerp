@@ -20,8 +20,6 @@ apps/api/ @Saman1726
 
 # Java services
 
-services/core-api-java/ @Saman1726
-services/partner-system-java/ @Saman1726
 services/vendor-service-java/ @Saman1726
 services/catalog-service-java/ @Saman1726
 services/identity-service-java/ @Saman1726

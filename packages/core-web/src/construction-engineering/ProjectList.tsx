@@ -56,7 +56,6 @@ export interface ProjectListProps {
   createSubProjectAction: (formData: FormData) => Promise<void>;
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
-  onCreateWorkOrder: (project: Project, subProject?: { id: string; name: string }) => void;
   /** Assign users with roles: [{ userId, role }] */
   assignUsersAction?: (projectId: string, assignments: Array<{ userId: string; role: ProjectUserRole }>) => Promise<{ error?: string }>;
   removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
@@ -76,7 +75,6 @@ function ProjectRow({
   constructionSites,
   isExpanded,
   onToggle,
-  onCreateWorkOrder,
   onCreateSubProject,
   onDeleteProject,
   onDeleteSubProject,
@@ -86,7 +84,6 @@ function ProjectRow({
   constructionSites: ConstructionSite[];
   isExpanded: boolean;
   onToggle: () => void;
-  onCreateWorkOrder: (project: Project, subProject?: { id: string; name: string }) => void;
   onCreateSubProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => Promise<void>;
   onDeleteSubProject: (formData: FormData) => Promise<void>;
@@ -161,10 +158,6 @@ function ProjectRow({
                 <Users className="mr-2 h-4 w-4" />
                 Assign Users
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onCreateWorkOrder(project)}>
-                Create Work Order
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onCreateSubProject(project.id)}>
                 Create SubProject
               </DropdownMenuItem>
@@ -221,15 +214,6 @@ function ProjectRow({
                       </TableCell>
                       <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs"
-                            type="button"
-                            onClick={() => onCreateWorkOrder(project, subProject)}
-                          >
-                            Work Order
-                          </Button>
                           <form key={`delete-sp-${subProject.id}`} action={onDeleteSubProject}>
                             <input type="hidden" name="projectId" value={project.id} />
                             <input type="hidden" name="subProjectId" value={subProject.id} />
@@ -263,7 +247,6 @@ export function ProjectList({
   createSubProjectAction,
   deleteProjectAction,
   deleteSubProjectAction,
-  onCreateWorkOrder,
   assignUsersAction,
   removeUserAction,
   currentUserEmail,
@@ -341,7 +324,6 @@ export function ProjectList({
                   onToggle={() =>
                     setExpandedProjectId(expandedProjectId === project.id ? null : project.id)
                   }
-                  onCreateWorkOrder={onCreateWorkOrder}
                   onCreateSubProject={(projectId) => {
                     setSubProjectProjectId(projectId);
                     setCreateSubProjectOpen(projectId);

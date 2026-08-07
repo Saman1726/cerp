@@ -4,8 +4,6 @@ apps:
 
 services:
   - 'services/**'
-  - 'services/core-api-java/**'
-  - 'services/partner-system-java/**'
   - 'services/vendor-service-java/**'
   - 'services/catalog-service-java/**'
   - 'services/identity-service-java/**'

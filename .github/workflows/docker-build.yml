@@ -24,10 +24,6 @@ jobs:
             context: .
             file: apps/web/Dockerfile
             image: ghcr.io/saman1726/cerp-web
-          - name: api-java
-            context: services/core-api-java
-            file: services/core-api-java/Dockerfile
-            image: ghcr.io/saman1726/cerp-api-java
           - name: identity-service-java
             context: services/identity-service-java
             file: services/identity-service-java/Dockerfile

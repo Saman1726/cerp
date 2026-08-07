@@ -103,9 +103,16 @@ public class WorkflowStep {
 
     // ── Business methods ──
 
+    /**
+     * Side effects applied by each status transition.
+     *
+     * <p>
+     * Status is set exclusively by {@code WorkflowStepStateStore}, driven by
+     * {@code StateMachineEngine.executeTransition(...)} in {@code WorkflowService} -- see
+     * {@code WorkflowStateMachines} for the guarded transition graph this class used to enforce
+     * itself. These methods only apply the accompanying side effects.
+     */
     public void start(UUID userId) {
-        requireStatus(StepStatus.NOT_STARTED);
-        this.status = StepStatus.IN_PROGRESS;
         this.startedAt = LocalDateTime.now();
         if (userId != null) {
             this.assigneeUserId = userId;
@@ -113,8 +120,6 @@ public class WorkflowStep {
     }
 
     public void complete(String evidence, String notes, UUID userId) {
-        requireStatus(StepStatus.IN_PROGRESS);
-        this.status = StepStatus.COMPLETED;
         this.completedAt = LocalDateTime.now();
         this.evidence = evidence;
         this.notes = notes;
@@ -124,8 +129,6 @@ public class WorkflowStep {
     }
 
     public void approve(String notes, UUID userId) {
-        requireStatus(StepStatus.COMPLETED);
-        this.status = StepStatus.APPROVED;
         this.approvedAt = LocalDateTime.now();
         this.approvedBy = userId;
         if (notes != null && this.notes != null) {
@@ -136,8 +139,6 @@ public class WorkflowStep {
     }
 
     public void reject(String notes, UUID userId) {
-        requireStatus(StepStatus.COMPLETED);
-        this.status = StepStatus.REJECTED;
         this.completedAt = LocalDateTime.now();
         this.notes = notes;
         if (userId != null) {
@@ -146,8 +147,6 @@ public class WorkflowStep {
     }
 
     public void block(String reason) {
-        requireStatus(StepStatus.IN_PROGRESS);
-        this.status = StepStatus.BLOCKED;
         if (this.notes == null) {
             this.notes = reason;
         } else {
@@ -156,20 +155,7 @@ public class WorkflowStep {
     }
 
     public void unblock() {
-        requireStatus(StepStatus.BLOCKED);
-        this.status = StepStatus.IN_PROGRESS;
         this.startedAt = LocalDateTime.now();
-    }
-
-    private void requireStatus(StepStatus... allowed) {
-        for (StepStatus s : allowed) {
-            if (this.status == s) {
-                return;
-            }
-        }
-        String allowedStr = String.join(", ", java.util.Arrays.toString(allowed));
-        throw new IllegalStateException(
-            String.format("Step status %s does not allow this action. Allowed from: %s", this.status, allowedStr));
     }
 
     // ── Getters and Setters ──
@@ -226,6 +212,11 @@ public class WorkflowStep {
         return status;
     }
 
+    /**
+     * Bypasses the guarded transition graph -- used internally by {@code WorkflowStepStateStore}
+     * to write back the state {@code StateMachineEngine} already validated. Do not call directly
+     * to change status; use {@code WorkflowService}'s transition methods instead.
+     */
     public void setStatus(StepStatus status) {
         this.status = status;
     }

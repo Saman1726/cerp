@@ -9,8 +9,6 @@ This document defines how to work in this monorepo: ownership, boundaries, versi
 - packages/
   - core-web/, shared-types/, typescript-config/, eslint-config/
 - services/
-  - core-api-java/ (Spring Boot backend)
-  - partner-system-java/ (example external system)
   - api-gateway-java/ (Spring Cloud Gateway – API Gateway / BFF)
 - examples/
   - demo-overlay/{web} (customer overlay example)
@@ -23,8 +21,6 @@ See README.md for details.
 - Ownership is enforced via .github/CODEOWNERS.
 - Teams:
   - @team-web — apps/web
-  - @team-partner — services/partner-system-java
-  - @team-java — services/core-api-java
   - @team-platform — shared packages, examples, .github
 - Fallback:
   - /* and /*/** default to @team-platform
@@ -50,9 +46,7 @@ Run:
 - Create feature branches from main; open draft PRs early.
 - Keep PRs scoped and testable. Include e2e coverage when touching tenancy or auth.
 - CI must be green:
-  - API Java CI: .github/workflows/api-java-ci.yml
   - Web CI: .github/workflows/web-ci.yml
-  - Partner System Java CI: .github/workflows/partner-system-java-ci.yml
   - Contracts generation: .github/workflows/contracts.yml
 
 ## Versioning and releases
@@ -95,7 +89,7 @@ Baseline (Postgres + Java API + Web):
 2. Startup
 
 - corepack enable
-- docker compose up -d postgres partner-system-java api-java api-gateway-java
+- docker compose up -d postgres api-gateway-java
 - pnpm install
 - pnpm --filter web run dev # http://localhost:3001
 
@@ -133,7 +127,6 @@ CI spins up Postgres service containers and runs migrations before tests.
 ## Contracts (OpenAPI/AsyncAPI)
 
 - Placeholder workflow emits a dummy openapi.json
-- Wire up Springdoc OpenAPI in services/core-api-java build to output a spec file in a future PR
 - Workflow: .github/workflows/contracts.yml (uploads artifact)
 
 ## Coding standards
@@ -146,7 +139,7 @@ CI spins up Postgres service containers and runs migrations before tests.
 
 ## Runbooks
 
-- New ERP module (Java): follow services/core-api-java patterns (controllers, DTOs, services, configuration); expose REST endpoints and update OpenAPI generation accordingly
+- New ERP module (Java): follow services/project-service-java patterns (controllers, DTOs, services, configuration); expose REST endpoints and update OpenAPI generation accordingly
 - Adding a new package:
   - Create under packages/
   - Add tsconfig that extends packages/typescript-config

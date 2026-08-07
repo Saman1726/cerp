@@ -80,11 +80,66 @@ public class AuthController {
         return ResponseEntity.ok(new LoginResponse(token.accessToken(), token.refreshToken(), userInfo));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponse> refresh(@RequestBody @Valid RefreshRequest req) {
+        KeycloakAdminClient.TokenResponse token;
+        try {
+            token = keycloakAdminClient.refreshToken(req.refreshToken());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+        }
+
+        // internal_user_id/email are present on every Keycloak token issued for our realm
+        // (see KeycloakBootstrap/KeycloakAdminClient) without another round-trip to the DB;
+        // roles/resourceAccess aren't recoverable from a refresh token alone, so they're left
+        // empty here - an accepted limitation. Deliberately read "internal_user_id", not the
+        // token's own "sub" - Keycloak's internal id is not our app's user id (see
+        // KeycloakAdminClient's javadoc).
+        String payloadJson = decodeJwtPayload(token.accessToken());
+        String internalUserId = payloadJson != null ? extractJsonString(payloadJson, "internal_user_id") : null;
+        String email = payloadJson != null ? extractJsonString(payloadJson, "email") : null;
+
+        LoginResponse.User userInfo = new LoginResponse.User(
+            internalUserId, email, null, null, List.of(), List.of());
+
+        return ResponseEntity.ok(new LoginResponse(token.accessToken(), token.refreshToken(), userInfo));
+    }
+
+    // ----- Helper: read-only claim extraction from a JWT payload -----
+
+    private static String decodeJwtPayload(String token) {
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length < 2)
+                return null;
+            byte[] decoded = Base64.getUrlDecoder().decode(parts[1]);
+            return new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String extractJsonString(String json, String key) {
+        String needle = "\"" + key + "\":\"";
+        int start = json.indexOf(needle);
+        if (start < 0)
+            return null;
+        int from = start + needle.length();
+        int to = json.indexOf('"', from);
+        if (to < 0)
+            return null;
+        return json.substring(from, to);
+    }
+
     // ----- DTOs -----
 
     public record LoginRequest(
             @NotBlank String username,
             @NotBlank String password) {
+    }
+
+    public record RefreshRequest(
+            @NotBlank String refreshToken) {
     }
 
     public record LoginResponse(

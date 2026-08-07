@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { LoginResponse } from '@cerp/shared-types';
-import { API_URL } from '../lib/env';
+import { IDENTITY_SERVICE_URL } from '../lib/env';
 import { SESSION_COOKIE, REFRESH_COOKIE, sessionCookieOptions } from '../lib/session-cookies';
 
 export interface CreateAuthProxyOptions {
@@ -32,7 +32,7 @@ function decodeJwtExpiryMs(token: string): number | null {
 
 async function tryRefresh(refreshToken: string): Promise<LoginResponse | null> {
   try {
-    const res = await fetch(`${API_URL}/auth/refresh`, {
+    const res = await fetch(`${IDENTITY_SERVICE_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),

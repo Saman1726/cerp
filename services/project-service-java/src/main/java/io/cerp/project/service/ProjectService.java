@@ -1,7 +1,6 @@
 package io.cerp.project.service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -10,16 +9,12 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.Optional;
 
 import io.cerp.project.domain.Project;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
 import io.cerp.project.dto.ProjectUserAssignmentRequest;
-import io.cerp.project.dto.SubProjectCreateRequest;
 import io.cerp.project.repository.ProjectRepository;
 
 /**
@@ -38,19 +33,13 @@ public class ProjectService {
 
     private final ProjectRepository repository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final RestTemplate restTemplate;
-    private final io.cerp.project.service.SubProjectService subProjectService;
     private final io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient;
 
     public ProjectService(ProjectRepository repository,
             KafkaTemplate<String, Object> kafkaTemplate,
-            RestTemplate restTemplate,
-            io.cerp.project.service.SubProjectService subProjectService,
             io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
-        this.restTemplate = restTemplate;
-        this.subProjectService = subProjectService;
         this.identitySubscriptionClient = identitySubscriptionClient;
     }
 
@@ -172,13 +161,6 @@ public class ProjectService {
 
         Project saved = saveGuardingConstructionSiteUniqueness(project, request.constructionSiteId());
         log.info("Created project {} for tenant: {}, org: {}", saved.getId(), tenantId, orgId);
-
-        // Auto-create subprojects from construction site buildings
-        if (request.constructionSiteId() != null && !request.constructionSiteId().isBlank()) {
-            autoCreateSubprojectsFromConstructionSite(saved.getId(), request.constructionSiteId(), tenantId, userId);
-            // Refresh to include auto-created subprojects
-            saved = repository.findById(saved.getId()).orElse(saved);
-        }
 
         // Publish Kafka event
         publishEvent(TOPIC_CREATED, saved.getCode(), saved);
@@ -514,105 +496,4 @@ public class ProjectService {
         }
     }
 
-    /**
-     * Auto-create subprojects from buildings of the associated construction site. Each building becomes a subproject with code derived from the building name.
-     *
-     * @param projectId
-     *            the ID of the newly created project
-     * @param constructionSiteId
-     *            the ID of the construction site (String ID from core-api)
-     * @param tenantId
-     *            the tenant identifier
-     * @param userId
-     *            the user creating the subprojects
-     */
-    /**
-     * Auto-create subprojects from buildings of the associated construction site. Each building becomes a subproject with code derived from the building name.
-     *
-     * @param projectId
-     *            the ID of the newly created project
-     * @param constructionSiteId
-     *            the ID of the construction site (String ID from core-api)
-     * @param tenantId
-     *            the tenant identifier
-     * @param userId
-     *            the user creating the subprojects
-     */
-    private void autoCreateSubprojectsFromConstructionSite(UUID projectId, String constructionSiteId, String tenantId, String userId) {
-        log.info("Auto-creating subprojects from construction site '{}' for project {}", constructionSiteId, projectId);
-
-        try {
-            // Fetch construction site from core-api to get buildings
-            @SuppressWarnings("unchecked")
-            Map<String, Object> constructionSite = restTemplate.getForObject(
-                "/api/construction-sites/{siteId}", Map.class, constructionSiteId);
-
-            if (constructionSite == null) {
-                log.warn("Construction site '{}' not found, skipping subproject auto-creation", constructionSiteId);
-                return;
-            }
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> buildings = (List<Map<String, Object>>) constructionSite.get("buildings");
-
-            if (buildings == null || buildings.isEmpty()) {
-                log.info("No buildings found in construction site '{}', skipping subproject auto-creation", constructionSiteId);
-                return;
-            }
-
-            Optional<Project> projectOpt = repository.findById(projectId);
-            UUID orgId = projectOpt.map(Project::getOrgId).orElse(null);
-
-            for (Map<String, Object> building : buildings) {
-                String buildingId = (String) building.get("id");
-                String buildingName = (String) building.get("name");
-                if (buildingName == null || buildingName.isBlank()) {
-                    buildingName = "Unnamed Building " + buildingId;
-                }
-
-                // Generate subproject code from building name (e.g., "Building A" -> "BLD-A")
-                String code = buildingName.toUpperCase()
-                    .replaceAll("[^A-Z0-9]", "")
-                    .replaceAll("(?<!^){2,}", "-")
-                    .substring(0, Math.min(64, buildingName.length()));
-                if (code.isBlank()) {
-                    code = "BLD-" + buildingId.replace("-", "").substring(0, 8);
-                }
-
-                // Check if subproject already exists via SubProjectRepository
-                var subProjectRequest = new SubProjectCreateRequest();
-                subProjectRequest.setCode(code);
-                subProjectRequest.setName(buildingName);
-                subProjectRequest.setDescription(null);
-                subProjectRequest.setBuildingType(null);
-                subProjectRequest.setConstructionPhase(null);
-                subProjectRequest.setBuildingLevel(io.cerp.project.domain.SubProject.BuildingLevel.WHOLE);
-                subProjectRequest.setFloorIds(List.of());
-                subProjectRequest.setPartIds(List.of());
-                subProjectRequest.setUsableArea(null);
-                subProjectRequest.setTotalArea(null);
-                subProjectRequest.setFloorCount(null);
-                subProjectRequest.setUnitCount(null);
-                subProjectRequest.setBudget(null);
-                subProjectRequest.setCurrencyCode("EUR");
-                subProjectRequest.setExternalId(buildingId);
-
-                try {
-                    subProjectService.createSubProject(projectId, subProjectRequest, tenantId, orgId, userId);
-                    log.info("Auto-created subproject '{}' (code: {}) from building '{}'", buildingName, code, buildingId);
-                } catch (Exception e) {
-                    // Check if it's a duplicate code error
-                    if (e.getMessage() != null && e.getMessage().contains("already exists")) {
-                        log.info("Subproject with code '{}' already exists for project {}, skipping", code, projectId);
-                    } else {
-                        log.warn("Failed to create subproject for building '{}': {}", buildingName, e.getMessage());
-                    }
-                }
-            }
-
-            log.info("Completed auto-creation of subprojects from construction site '{}'", constructionSiteId);
-        } catch (Exception e) {
-            log.warn("Failed to auto-create subprojects from construction site '{}': {}", constructionSiteId, e.getMessage());
-        }
-    }
 }

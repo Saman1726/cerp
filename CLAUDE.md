@@ -77,13 +77,13 @@ All services use Spring Boot 3.3, Java 21, Maven, Flyway migrations, PostgreSQL,
 
 | Service | Port | Database | Key responsibility |
 |---|---|---|---|
-| core-api-java | 8080 | cerp (platform schema) | Core CRUD: properties, construction sites, procurement |
 | identity-service-java | 8090 | cerp (identity schema) | Auth, tenants, memberships, Kafka user events |
 | workflow-service-java | 8089 | cerp (workflow schema) | Saga/workflow engine, templates, bidding, state machines |
 | project-service-java | 8085 (→8095 in compose) | cerp | Projects, sub-projects, construction sites, building levels |
 | api-gateway-java | 8080 | — | Spring Cloud Gateway BFF, OIDC, tenant routing |
 | vendor-service-java | 8085 | supply_db | Vendor onboarding, categories, favorites |
 | catalog-service-java | 8086 | supply_db | Material catalog |
+| notification-service-java | 8091 | cerp (notification schema) | Centralized notification jobs, Kafka-driven fan-out to recipients |
 
 ### Multi-tenancy
 

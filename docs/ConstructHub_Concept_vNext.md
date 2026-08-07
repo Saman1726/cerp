@@ -2346,7 +2346,6 @@ Seed data is configured in `SeedDataConfig.java` and creates the tenant, user, a
 - `services/identity-service-java/.../api/AuthController.java` — login endpoint implementation
 - `services/identity-service-java/.../config/SeedDataConfig.java` — development seed data
 - `services/identity-service-java/.../config/SecurityConfig.java` — BCrypt password encoder + security rules
-- `services/core-api-java/.../auth/AuthController.java` — API gateway that forwards login to identity-service
 
 ### b- How does the system recognize if it is a vendor account?
 
@@ -2530,7 +2529,6 @@ Ownership and access
 - CODEOWNERS per path with required reviews and labels:
   - apps/web/ → Web team
   - apps/api/ → API team
-  - services/core-api-java/ → Java team
   - services/partner-system/ → Partner team
   - packages/shared-types/, packages/core-*/ → Platform team
   - infra/ → Infra/SRE
@@ -2569,7 +2567,6 @@ Suggested repository boundaries (if/when splitting)
 
 - cerp-web: apps/web + packages/core-web
 - cerp-api: apps/api + packages/core-api
-- cerp-services-core-api-java: services/core-api-java
 - cerp-services-partner-system: services/partner-system
 - cerp-infra: infra/k8s (dedicated GitOps repo for Argo/Flux)
 - cerp-platform (optional): packages/shared-types, packages/eslint-config, packages/typescript-config

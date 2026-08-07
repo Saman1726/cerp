@@ -57,6 +57,18 @@ public class KeycloakAdminClient {
     }
 
     /**
+     * Refresh-token grant: exchange a refresh token for a new signed token pair.
+     */
+    public TokenResponse refreshToken(String refreshToken) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "refresh_token");
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+        form.add("refresh_token", refreshToken);
+        return requestToken(form);
+    }
+
+    /**
      * Provision (or update) the Keycloak user backing this account, and set its password. Fails loudly (throws) rather than degrading silently - a user Keycloak doesn't
      * know about can never log in.
      *

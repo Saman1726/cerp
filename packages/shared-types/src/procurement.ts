@@ -1,44 +1,6 @@
 import { z } from 'zod';
 import type { VendorCategoryLink } from './vendor';
 
-// ── Goods Receipt & Purchase Order Types ──
-
-export interface GoodsReceipt {
-  id: string;
-  purchaseOrderId: string;
-  notes: string | null;
-  receivedAt: string;
-}
-
-export type PurchaseOrderStatus = 'ordered' | 'received';
-
-export interface PurchaseOrder {
-  id: string;
-  projectId: string;
-  vendorPartnerId: string;
-  vendorPartnerName: string;
-  description: string;
-  status: PurchaseOrderStatus;
-  orderedAt: string;
-  updatedAt: string;
-}
-
-export type PurchaseOrderWithReceipts = PurchaseOrder & {
-  receipts: GoodsReceipt[];
-};
-
-export const raisePurchaseOrderRequestSchema = z.object({
-  projectId: z.string().uuid(),
-  vendorPartnerId: z.string().min(1),
-  description: z.string().min(1).max(500),
-});
-export type RaisePurchaseOrderRequest = z.infer<typeof raisePurchaseOrderRequestSchema>;
-
-export const recordGoodsReceiptRequestSchema = z.object({
-  notes: z.string().max(2000).optional(),
-});
-export type RecordGoodsReceiptRequest = z.infer<typeof recordGoodsReceiptRequestSchema>;
-
 // ── Vendor Category Link Schema (for validation, interface exported from vendor.ts) ──
 
 export const VendorCategoryLinkSchema = z.object({
