@@ -1,22 +1,31 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import type { Project, ConstructionSite, ProjectUserRole } from '@cerp/shared-types';
+import { useRef, useState } from 'react';
+import type {
+  Project,
+  ConstructionSite,
+  ProjectUserRole,
+  SubProject,
+  SubProjectFloor,
+  SubProjectBuildingPart,
+  SubProjectBuildingType,
+  SubProjectConstructionPhase,
+  SubProjectStatus,
+  SubProjectWorkflowResponse,
+  Workflow,
+  WorkflowInstanceStep,
+  WorkflowStatus,
+  WorkflowStepStatus,
+  WorkflowStepType,
+} from '@cerp/shared-types';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Modal } from '../components/ui/modal';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '../components/ui/table';
+import { Tree, TreeNode } from '../components/ui/tree';
+import { DetailPopup, DetailFieldGrid, DetailField } from '../components/ui/detail-popup';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +33,91 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
-import { ChevronDown, ChevronRight, MoreHorizontal, Users } from 'lucide-react';
+import {
+  Blocks,
+  Building2,
+  FolderKanban,
+  Layers,
+  ListChecks,
+  MoreHorizontal,
+  Plus,
+  Users,
+  Workflow as WorkflowIcon,
+} from 'lucide-react';
+
+const statusVariant: Record<string, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+  PLANNED: 'secondary',
+  ACTIVE: 'default',
+  ON_HOLD: 'secondary',
+  COMPLETED: 'success',
+  CANCELLED: 'destructive',
+};
+
+const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+  PLANNED: 'outline',
+  ACTIVE: 'default',
+  PAUSED: 'secondary',
+  COMPLETED: 'success',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
+  CANCELLED: 'destructive',
+};
+
+const WORKFLOW_STEP_STATUS_VARIANTS: Record<WorkflowStepStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+  PENDING: 'secondary',
+  IN_PROGRESS: 'default',
+  BLOCKED: 'outline',
+  COMPLETED: 'success',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
+};
+
+const STEP_TYPE_LABELS: Record<WorkflowStepType, string> = {
+  TASK: 'Task',
+  MILESTONE: 'Milestone',
+  INSPECTION: 'Inspection',
+  APPROVAL: 'Approval',
+};
+
+const buildingTypeOptions: SubProjectBuildingType[] = [
+  'RESIDENTIAL',
+  'COMMERCIAL',
+  'INDUSTRIAL',
+  'MIXED_USE',
+  'INFRASTRUCTURE',
+  'OTHER',
+];
+
+const constructionPhaseOptions: SubProjectConstructionPhase[] = [
+  'PRE_CONSTRUCTION',
+  'SITE_PREP',
+  'FOUNDATION',
+  'BASEMENT',
+  'SUPERSTRUCTURE',
+  'ROOF',
+  'BUILDING_ENVELOPE',
+  'MEP_ROUGHIN',
+  'INTERIOR_FINISH',
+  'EXTERIOR_WORKS',
+  'HANDOVER',
+];
+
+const statusOptions: SubProjectStatus[] = ['PLANNED', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+
+function formatDate(value: string | null | undefined): string | undefined {
+  return value ? new Date(value).toLocaleDateString() : undefined;
+}
+
+function formatBudget(budget: number | null | undefined, currencyCode: string | null | undefined): string | undefined {
+  return budget != null ? `${budget} ${currencyCode ?? ''}`.trim() : undefined;
+}
+
+function formatAddress(project: Project): string | undefined {
+  return (
+    [project.addressLine1, project.addressLine2, project.city, project.countryCode].filter(Boolean).join(', ') ||
+    undefined
+  );
+}
 
 /** Reusable role dropdown component */
 function RoleDropdown({ value, onChange, size }: { value: ProjectUserRole; onChange: (value: ProjectUserRole) => void; size?: 'sm' | 'md' }) {
@@ -62,182 +155,145 @@ export interface ProjectListProps {
   currentUserEmail?: string;
 }
 
-const statusVariant: Record<string, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
-  PLANNED: 'secondary',
-  ACTIVE: 'default',
-  ON_HOLD: 'secondary',
-  COMPLETED: 'success',
-  CANCELLED: 'destructive',
-};
+type DetailState =
+  | { kind: 'project'; project: Project }
+  | { kind: 'subProject'; project: Project; subProject: SubProject }
+  | { kind: 'floor'; project: Project; subProject: SubProject; floor: SubProjectFloor }
+  | { kind: 'buildingPart'; project: Project; subProject: SubProject; part: SubProjectBuildingPart }
+  | { kind: 'workflow'; project: Project; subProject: SubProject; workflow: Workflow }
+  | { kind: 'step'; project: Project; subProject: SubProject; workflow: Workflow; step: WorkflowInstanceStep };
 
-function ProjectRow({
-  project,
-  constructionSites,
-  isExpanded,
-  onToggle,
-  onCreateSubProject,
-  onDeleteProject,
-  onDeleteSubProject,
-  onAssignUsers,
-}: {
-  project: Project;
-  constructionSites: ConstructionSite[];
-  isExpanded: boolean;
-  onToggle: () => void;
-  onCreateSubProject: (projectId: string) => void;
-  onDeleteProject: (projectId: string) => Promise<void>;
-  onDeleteSubProject: (formData: FormData) => Promise<void>;
-  onAssignUsers: (projectId: string) => void;
-}) {
-  const router = useRouter();
-  const site = constructionSites.find((s) => s.id === project.constructionSiteId);
+function getDetailTitle(detail: DetailState): string {
+  switch (detail.kind) {
+    case 'project':
+      return `${detail.project.code} · ${detail.project.name}`;
+    case 'subProject':
+      return `${detail.subProject.code} · ${detail.subProject.name}`;
+    case 'floor':
+      return detail.floor.name;
+    case 'buildingPart':
+      return detail.part.name;
+    case 'workflow':
+      return detail.workflow.name;
+    case 'step':
+      return detail.step.name;
+  }
+}
 
-  const handleSubProjectClick = (subProjectId: string) => {
-    router.push(`/construction/projects/${project.id}/subprojects/${subProjectId}`);
-  };
+function getDetailDescription(detail: DetailState): string | undefined {
+  switch (detail.kind) {
+    case 'project':
+      return detail.project.description ?? undefined;
+    case 'subProject':
+      return detail.subProject.description ?? undefined;
+    case 'workflow':
+      return detail.workflow.description ?? undefined;
+    case 'step':
+      return detail.step.description ?? undefined;
+    default:
+      return undefined;
+  }
+}
 
-  return (
-    <>
-      <TableRow className="cursor-pointer hover:bg-muted/30">
-        <TableCell className="font-medium">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-0 h-6 w-6 hover:bg-transparent"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle();
-              }}
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </Button>
-            <Link
-              href={`/construction/projects/${project.id}`}
-              className="hover:underline text-blue-600 dark:text-blue-400"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {project.code}
-            </Link>
-          </div>
-        </TableCell>
-        <TableCell>
-          <Link
-            href={`/construction/projects/${project.id}`}
-            className="hover:underline text-blue-600 dark:text-blue-400"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {project.name}
-          </Link>
-        </TableCell>
-        <TableCell>
-          <Badge variant={statusVariant[project.status] ?? 'secondary'}>{project.status}</Badge>
-        </TableCell>
-        <TableCell>{project.type}</TableCell>
-        <TableCell>{site?.name ?? '—'}</TableCell>
-        <TableCell className="text-sm text-muted-foreground">
-          {project.startDate ? new Date(project.startDate).toLocaleDateString() : '—'}
-        </TableCell>
-        <TableCell className="text-sm text-muted-foreground">
-          {project.endDate ? new Date(project.endDate).toLocaleDateString() : '—'}
-        </TableCell>
-        <TableCell onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onAssignUsers(project.id)}>
-                <Users className="mr-2 h-4 w-4" />
-                Assign Users
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onCreateSubProject(project.id)}>
-                Create SubProject
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={async () => {
-                  await onDeleteProject(project.id);
-                  window.location.reload();
-                }}
-              >
-                Delete Project
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </TableCell>
-      </TableRow>
-      {isExpanded && project.subProjects.length > 0 && (
-        <TableRow>
-          <TableCell colSpan={8} className="bg-muted/20">
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-2">
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">SubProjects</span>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[100px]">Code</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Phase</TableHead>
-                    <TableHead className="text-right w-[120px]">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {project.subProjects.map((subProject) => (
-                    <TableRow
-                      key={subProject.id}
-                      className="cursor-pointer hover:bg-muted/30"
-                      onClick={() => handleSubProjectClick(subProject.id)}
-                    >
-                      <TableCell className="font-medium" onClick={(e) => e.stopPropagation()}>
-                        <Badge variant="secondary">{subProject.code}</Badge>
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>{subProject.name}</TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Badge variant={statusVariant[subProject.status] ?? 'secondary'}>
-                          {subProject.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                        {subProject.constructionPhase ? subProject.constructionPhase.replace(/_/g, ' ') : '—'}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1">
-                          <form key={`delete-sp-${subProject.id}`} action={onDeleteSubProject}>
-                            <input type="hidden" name="projectId" value={project.id} />
-                            <input type="hidden" name="subProjectId" value={subProject.id} />
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              className="h-7 text-xs"
-                              type="submit"
-                            >
-                              Delete
-                            </Button>
-                          </form>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
-  );
+function getManageWorkflowsHref(detail: DetailState): string | null {
+  switch (detail.kind) {
+    case 'subProject':
+    case 'workflow':
+    case 'step':
+      return `/construction/projects/${detail.project.id}/subprojects/${detail.subProject.id}`;
+    default:
+      return null;
+  }
+}
+
+function DetailContent({ detail, constructionSites }: { detail: DetailState; constructionSites: ConstructionSite[] }) {
+  switch (detail.kind) {
+    case 'project': {
+      const { project } = detail;
+      const site = constructionSites.find((s) => s.id === project.constructionSiteId);
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Status" value={project.status} />
+          <DetailField label="Type" value={project.type} />
+          <DetailField label="Construction Site" value={site?.name} />
+          <DetailField label="Start Date" value={formatDate(project.startDate)} />
+          <DetailField label="End Date" value={formatDate(project.endDate)} />
+          <DetailField label="Budget" value={formatBudget(project.budget, project.currencyCode)} />
+          <DetailField label="Address" value={formatAddress(project)} />
+        </DetailFieldGrid>
+      );
+    }
+    case 'subProject': {
+      const { subProject } = detail;
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Status" value={subProject.status} />
+          <DetailField label="Building Type" value={subProject.buildingType} />
+          <DetailField label="Construction Phase" value={subProject.constructionPhase?.replace(/_/g, ' ')} />
+          <DetailField label="Start Date" value={formatDate(subProject.startDate)} />
+          <DetailField label="End Date" value={formatDate(subProject.endDate)} />
+          <DetailField
+            label="Progress"
+            value={subProject.progress != null ? `${Math.round(subProject.progress * 100)}%` : undefined}
+          />
+          <DetailField label="Budget" value={formatBudget(subProject.budget, subProject.currencyCode)} />
+        </DetailFieldGrid>
+      );
+    }
+    case 'floor': {
+      const { floor } = detail;
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Code" value={floor.code} />
+          <DetailField label="Level" value={floor.level} />
+          <DetailField label="Area" value={floor.area != null ? `${floor.area} m²` : undefined} />
+        </DetailFieldGrid>
+      );
+    }
+    case 'buildingPart': {
+      const { part } = detail;
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Code" value={part.code} />
+          <DetailField label="Scope Level" value={part.scopeLevel} />
+        </DetailFieldGrid>
+      );
+    }
+    case 'workflow': {
+      const { workflow } = detail;
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Status" value={workflow.status} />
+          <DetailField label="Phase" value={workflow.phaseType?.replace(/_/g, ' ')} />
+          <DetailField label="Progress" value={`${workflow.progress}%`} />
+          <DetailField label="Steps" value={`${workflow.completedSteps}/${workflow.totalSteps} complete`} />
+          <DetailField label="Template" value={workflow.templateCode ?? undefined} />
+        </DetailFieldGrid>
+      );
+    }
+    case 'step': {
+      const { step } = detail;
+      return (
+        <DetailFieldGrid>
+          <DetailField label="Type" value={STEP_TYPE_LABELS[step.type]} />
+          <DetailField label="Status" value={step.status.replace(/_/g, ' ')} />
+          <DetailField label="Assigned To" value={step.assignedToName ?? undefined} />
+          <DetailField label="Due Date" value={formatDate(step.dueAt)} />
+        </DetailFieldGrid>
+      );
+    }
+  }
+}
+
+interface EditSubProjectState {
+  projectId: string;
+  subProjectId: string;
+  code: string;
+  name: string;
+  description: string;
+  buildingType: SubProjectBuildingType;
+  constructionPhase: SubProjectConstructionPhase;
+  status: SubProjectStatus;
 }
 
 export function ProjectList({
@@ -249,20 +305,39 @@ export function ProjectList({
   deleteSubProjectAction,
   assignUsersAction,
   removeUserAction,
-  currentUserEmail,
 }: ProjectListProps) {
-  // Debug: log props to verify they are being passed
-  console.log('[ProjectList DEBUG] projects:', projects?.length, 'assignUsersAction:', !!assignUsersAction, 'removeUserAction:', !!removeUserAction, 'currentUserEmail:', currentUserEmail);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createSubProjectOpen, setCreateSubProjectOpen] = useState<string | null>(null);
   const [assignUsersOpen, setAssignUsersOpen] = useState<string | null>(null);
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [selectedConSiteId, setSelectedConSiteId] = useState<string>('');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [subProjectProjectId, setSubProjectProjectId] = useState<string>('');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [userRoles, setUserRoles] = useState<Record<string, ProjectUserRole>>({});
   const [defaultRoleForNewUsers, setDefaultRoleForNewUsers] = useState<ProjectUserRole>('VIEWER');
+
+  const [detail, setDetail] = useState<DetailState | null>(null);
+  const [editSubProjectOpen, setEditSubProjectOpen] = useState<EditSubProjectState | null>(null);
+  const [savingSubProject, setSavingSubProject] = useState(false);
+
+  const [workflowsBySubProject, setWorkflowsBySubProject] = useState<Record<string, Workflow[]>>({});
+  const loadedOrLoadingWorkflows = useRef<Set<string>>(new Set());
+
+  const loadWorkflows = (subProjectId: string) => {
+    if (loadedOrLoadingWorkflows.current.has(subProjectId)) return;
+    loadedOrLoadingWorkflows.current.add(subProjectId);
+    fetch(`/api/workflows/subprojects/${subProjectId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to fetch workflows');
+        return res.json() as Promise<SubProjectWorkflowResponse>;
+      })
+      .then((data) => {
+        setWorkflowsBySubProject((prev) => ({ ...prev, [subProjectId]: data.workflows ?? [] }));
+      })
+      .catch(() => {
+        setWorkflowsBySubProject((prev) => ({ ...prev, [subProjectId]: [] }));
+      });
+  };
 
   // Get users currently assigned to the project
   const getAssignedUsers = (projectId: string) => {
@@ -274,6 +349,46 @@ export function ProjectList({
   const getAssignedUserRoles = (projectId: string): Record<string, ProjectUserRole> => {
     const project = projects.find((p) => p.id === projectId);
     return (project?.assignedUserRoles as Record<string, ProjectUserRole>) || {};
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    await deleteProjectAction(projectId);
+    window.location.reload();
+  };
+
+  const handleDeleteSubProject = async (projectId: string, subProjectId: string) => {
+    if (!confirm('Are you sure you want to delete this subproject?')) return;
+    const formData = new FormData();
+    formData.set('projectId', projectId);
+    formData.set('subProjectId', subProjectId);
+    await deleteSubProjectAction(formData);
+    window.location.reload();
+  };
+
+  const handleUpdateSubProject = async (edit: EditSubProjectState) => {
+    try {
+      setSavingSubProject(true);
+      const response = await fetch(`/api/v1/projects/${edit.projectId}/subprojects/${edit.subProjectId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: edit.code,
+          name: edit.name,
+          description: edit.description || undefined,
+          buildingType: edit.buildingType,
+          constructionPhase: edit.constructionPhase,
+          status: edit.status,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to update subproject');
+      setEditSubProjectOpen(null);
+      window.location.reload();
+    } catch {
+      alert('Failed to update subproject');
+    } finally {
+      setSavingSubProject(false);
+    }
   };
 
   return (
@@ -297,51 +412,224 @@ export function ProjectList({
         </div>
       </div>
 
-      {projects.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">No projects yet.</p>
-      ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[120px]">Code</TableHead>
-                <TableHead className="min-w-[180px]">Name</TableHead>
-                <TableHead className="w-[120px]">Status</TableHead>
-                <TableHead className="w-[140px]">Type</TableHead>
-                <TableHead className="w-[160px]">Construction Site</TableHead>
-                <TableHead className="w-[110px]">Start Date</TableHead>
-                <TableHead className="w-[110px]">End Date</TableHead>
-                <TableHead className="w-[60px] text-right">⋯</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projects.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  constructionSites={constructionSites}
-                  isExpanded={expandedProjectId === project.id}
-                  onToggle={() =>
-                    setExpandedProjectId(expandedProjectId === project.id ? null : project.id)
-                  }
-                  onCreateSubProject={(projectId) => {
-                    setSubProjectProjectId(projectId);
-                    setCreateSubProjectOpen(projectId);
-                  }}
-                  onDeleteProject={deleteProjectAction}
-                  onDeleteSubProject={deleteSubProjectAction}
-                  onAssignUsers={(projectId) => {
-                    const roles = getAssignedUserRoles(projectId);
-                    setUserRoles(roles);
-                    setSelectedUserIds(getAssignedUsers(projectId));
-                    setAssignUsersOpen(projectId);
-                  }}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <Tree isEmpty={projects.length === 0} emptyMessage="No projects yet.">
+        {projects.map((project) => {
+          return (
+            <TreeNode
+              key={project.id}
+              icon={<FolderKanban className="size-4 text-blue-500" />}
+              label={`${project.code} · ${project.name}`}
+              meta={
+                <>
+                  <Badge variant={statusVariant[project.status] ?? 'secondary'}>{project.status}</Badge>
+                  <span className="truncate">{project.type}</span>
+                </>
+              }
+              onSelect={() => setDetail({ kind: 'project', project })}
+              actions={
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="size-7 p-0"
+                    title="Add subproject"
+                    onClick={() => {
+                      setSubProjectProjectId(project.id);
+                      setCreateSubProjectOpen(project.id);
+                    }}
+                  >
+                    <Plus className="size-4" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="ghost" className="size-7 p-0">
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          const roles = getAssignedUserRoles(project.id);
+                          setUserRoles(roles);
+                          setSelectedUserIds(getAssignedUsers(project.id));
+                          setAssignUsersOpen(project.id);
+                        }}
+                      >
+                        <Users className="mr-2 h-4 w-4" />
+                        Assign Users
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteProject(project.id)}>
+                        Delete Project
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+            >
+              {project.subProjects.length === 0 ? (
+                <p className="py-2 text-sm text-muted-foreground">No subprojects yet.</p>
+              ) : (
+                project.subProjects.map((subProject) => {
+                  const floors = subProject.floors ?? [];
+                  const buildingParts = subProject.buildingParts ?? [];
+                  return (
+                  <TreeNode
+                    key={subProject.id}
+                    icon={<Building2 className="size-4 text-violet-500" />}
+                    label={`${subProject.code} · ${subProject.name}`}
+                    meta={
+                      <>
+                        <Badge variant={statusVariant[subProject.status] ?? 'secondary'}>{subProject.status}</Badge>
+                        {subProject.constructionPhase ? (
+                          <span className="truncate">{subProject.constructionPhase.replace(/_/g, ' ')}</span>
+                        ) : null}
+                      </>
+                    }
+                    onSelect={() => setDetail({ kind: 'subProject', project, subProject })}
+                    actions={
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="size-7 p-0">
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() =>
+                              setEditSubProjectOpen({
+                                projectId: project.id,
+                                subProjectId: subProject.id,
+                                code: subProject.code,
+                                name: subProject.name,
+                                description: subProject.description ?? '',
+                                buildingType: subProject.buildingType,
+                                constructionPhase: subProject.constructionPhase ?? 'PRE_CONSTRUCTION',
+                                status: subProject.status,
+                              })
+                            }
+                          >
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteSubProject(project.id, subProject.id)}
+                          >
+                            Delete SubProject
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    }
+                  >
+                    <TreeNode key="floors" label={`Floors (${floors.length})`}>
+                      {floors.length === 0 ? (
+                        <p className="py-2 text-sm text-muted-foreground">No floors yet.</p>
+                      ) : (
+                        floors.map((floor) => (
+                          <TreeNode
+                            key={floor.id}
+                            icon={<Layers className="size-4 text-amber-500" />}
+                            label={floor.name}
+                            meta={
+                              <span className="truncate">
+                                Level {floor.level}
+                                {floor.area ? ` · ${floor.area} m²` : ''}
+                              </span>
+                            }
+                            onSelect={() => setDetail({ kind: 'floor', project, subProject, floor })}
+                          />
+                        ))
+                      )}
+                    </TreeNode>
+                    <TreeNode key="buildingParts" label={`Building Parts (${buildingParts.length})`}>
+                      {buildingParts.length === 0 ? (
+                        <p className="py-2 text-sm text-muted-foreground">No building parts yet.</p>
+                      ) : (
+                        buildingParts.map((part) => (
+                          <TreeNode
+                            key={part.id}
+                            icon={<Blocks className="size-4 text-amber-500" />}
+                            label={part.name}
+                            meta={<Badge variant="outline">{part.scopeLevel}</Badge>}
+                            onSelect={() => setDetail({ kind: 'buildingPart', project, subProject, part })}
+                          />
+                        ))
+                      )}
+                    </TreeNode>
+                    <TreeNode
+                      key="workflows"
+                      label={`Workflows${workflowsBySubProject[subProject.id] ? ` (${workflowsBySubProject[subProject.id]!.length})` : ''}`}
+                      onExpand={() => loadWorkflows(subProject.id)}
+                    >
+                      {workflowsBySubProject[subProject.id] === undefined ? (
+                        <p className="py-2 text-sm text-muted-foreground">Loading workflows…</p>
+                      ) : workflowsBySubProject[subProject.id]!.length === 0 ? (
+                        <p className="py-2 text-sm text-muted-foreground">No workflows yet.</p>
+                      ) : (
+                        workflowsBySubProject[subProject.id]!.map((workflow) => {
+                          const steps = workflow.steps ?? [];
+                          return (
+                          <TreeNode
+                            key={workflow.id}
+                            icon={<WorkflowIcon className="size-4 text-amber-500" />}
+                            label={workflow.name}
+                            meta={
+                              <Badge variant={WORKFLOW_STATUS_VARIANTS[workflow.status] ?? 'secondary'}>
+                                {workflow.status}
+                              </Badge>
+                            }
+                            onSelect={() => setDetail({ kind: 'workflow', project, subProject, workflow })}
+                          >
+                            {steps.length === 0
+                              ? undefined
+                              : [...steps]
+                                  .sort((a, b) => a.order - b.order)
+                                  .map((step) => (
+                                    <TreeNode
+                                      key={step.id}
+                                      icon={<ListChecks className="size-4 text-emerald-500" />}
+                                      label={step.name}
+                                      meta={
+                                        <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[step.status] ?? 'secondary'}>
+                                          {step.status.replace(/_/g, ' ')}
+                                        </Badge>
+                                      }
+                                      onSelect={() => setDetail({ kind: 'step', project, subProject, workflow, step })}
+                                    />
+                                  ))}
+                          </TreeNode>
+                          );
+                        })
+                      )}
+                    </TreeNode>
+                  </TreeNode>
+                  );
+                })
+              )}
+            </TreeNode>
+          );
+        })}
+      </Tree>
+
+      {/* Detail Popup */}
+      <DetailPopup
+        open={detail !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetail(null);
+        }}
+        title={detail ? getDetailTitle(detail) : ''}
+        description={detail ? getDetailDescription(detail) : undefined}
+        footer={
+          detail && getManageWorkflowsHref(detail) ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={getManageWorkflowsHref(detail)!}>Manage Workflows →</Link>
+            </Button>
+          ) : undefined
+        }
+      >
+        {detail ? <DetailContent detail={detail} constructionSites={constructionSites} /> : null}
+      </DetailPopup>
 
       {/* Create Project Modal */}
       <Modal open={createProjectOpen} onClose={() => setCreateProjectOpen(false)} title="Create project">
@@ -798,6 +1086,114 @@ export function ProjectList({
                 return buildings.length > 0 && selectedBuildingId !== '';
               })()}>
                 Create SubProject
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      {/* Edit SubProject Modal */}
+      <Modal
+        open={!!editSubProjectOpen}
+        onClose={() => setEditSubProjectOpen(null)}
+        title="Edit subproject"
+      >
+        {editSubProjectOpen ? (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              await handleUpdateSubProject(editSubProjectOpen);
+            }}
+            className="flex min-w-0 max-h-[65vh] flex-col gap-4"
+          >
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-subproject-code">Code</Label>
+                <Input
+                  id="edit-subproject-code"
+                  value={editSubProjectOpen.code}
+                  onChange={(e) => setEditSubProjectOpen({ ...editSubProjectOpen, code: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-subproject-name">Name</Label>
+                <Input
+                  id="edit-subproject-name"
+                  value={editSubProjectOpen.name}
+                  onChange={(e) => setEditSubProjectOpen({ ...editSubProjectOpen, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-subproject-description">Description</Label>
+                <textarea
+                  id="edit-subproject-description"
+                  rows={2}
+                  className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={editSubProjectOpen.description}
+                  onChange={(e) => setEditSubProjectOpen({ ...editSubProjectOpen, description: e.target.value })}
+                  placeholder="Optional description..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-subproject-buildingType">Building Type</Label>
+                  <select
+                    id="edit-subproject-buildingType"
+                    value={editSubProjectOpen.buildingType}
+                    onChange={(e) =>
+                      setEditSubProjectOpen({ ...editSubProjectOpen, buildingType: e.target.value as SubProjectBuildingType })
+                    }
+                    className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {buildingTypeOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-subproject-constructionPhase">Construction Phase</Label>
+                  <select
+                    id="edit-subproject-constructionPhase"
+                    value={editSubProjectOpen.constructionPhase}
+                    onChange={(e) =>
+                      setEditSubProjectOpen({
+                        ...editSubProjectOpen,
+                        constructionPhase: e.target.value as SubProjectConstructionPhase,
+                      })
+                    }
+                    className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {constructionPhaseOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-subproject-status">Status</Label>
+                <select
+                  id="edit-subproject-status"
+                  value={editSubProjectOpen.status}
+                  onChange={(e) => setEditSubProjectOpen({ ...editSubProjectOpen, status: e.target.value as SubProjectStatus })}
+                  className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="shrink-0 pt-2">
+              <Button type="submit" className="w-full" disabled={savingSubProject}>
+                {savingSubProject ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
           </form>

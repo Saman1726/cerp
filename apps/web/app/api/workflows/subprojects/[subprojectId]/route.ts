@@ -5,13 +5,13 @@ import { getBackendHeaders } from '../../utils';
 // Map Java WorkflowStatus to frontend WorkflowStatus
 function mapWorkflowStatus(status: string): string {
   const mapping: Record<string, string> = {
-    PLANNED: 'ACTIVE',
+    PLANNED: 'PLANNED',
     IN_PROGRESS: 'ACTIVE',
     BLOCKED: 'PAUSED',
     ON_HOLD: 'PAUSED',
     COMPLETED: 'COMPLETED',
-    APPROVED: 'COMPLETED',
-    REJECTED: 'ACTIVE',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED',
     CANCELED: 'CANCELLED',
   };
   return mapping[status] ?? status;
@@ -22,10 +22,10 @@ function mapStepStatus(status: string): string {
   const mapping: Record<string, string> = {
     NOT_STARTED: 'PENDING',
     IN_PROGRESS: 'IN_PROGRESS',
-    BLOCKED: 'PENDING',
+    BLOCKED: 'BLOCKED',
     COMPLETED: 'COMPLETED',
-    APPROVED: 'COMPLETED',
-    REJECTED: 'FAILED',
+    APPROVED: 'APPROVED',
+    REJECTED: 'REJECTED',
   };
   return mapping[status] ?? status;
 }
@@ -47,7 +47,7 @@ function transformStep(javaStep: Record<string, unknown>, javaWorkflow: Record<s
     }
   }
 
-  const stepOrder = getField(javaStep, 'order', 'step_order');
+  const stepOrder = getField(javaStep, 'stepOrder', 'step_order');
   const statusStr = getField(javaStep, 'status', 'status') as string;
 
   return {

@@ -14,6 +14,8 @@ import java.util.UUID;
 public interface VendorRepository extends JpaRepository<Vendor, UUID> {
     Optional<Vendor> findByTenantId(UUID tenantId);
 
+    Optional<Vendor> findByUserId(UUID userId);
+
     List<Vendor> findByStatus(String status);
 
     @Query(value = "SELECT * FROM supply.vendors v WHERE :category = ANY(v.categories)", nativeQuery = true)

@@ -12,8 +12,9 @@ export async function createSite(formData: FormData): Promise<SimpleActionState>
   try {
     await apiClient.post('/construction-sites', { name, address });
     return {};
-  } catch {
-    return { error: 'Failed to create site' };
+  } catch (error) {
+    console.error('[createSite] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to create site' };
   }
 }
 
@@ -24,8 +25,9 @@ export async function deleteSite(formData: FormData): Promise<SimpleActionState>
   try {
     await apiClient.delete(`/construction-sites/${siteId}`);
     return {};
-  } catch {
-    return { error: 'Failed to delete site' };
+  } catch (error) {
+    console.error('[deleteSite] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete site' };
   }
 }
 
@@ -37,8 +39,9 @@ export async function addBuilding(formData: FormData): Promise<SimpleActionState
   try {
     await apiClient.post(`/construction-sites/${siteId}/buildings`, { name });
     return {};
-  } catch {
-    return { error: 'Failed to add building' };
+  } catch (error) {
+    console.error('[addBuilding] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to add building' };
   }
 }
 
@@ -50,8 +53,9 @@ export async function deleteBuilding(formData: FormData): Promise<SimpleActionSt
   try {
     await apiClient.delete(`/construction-sites/${siteId}/buildings/${buildingId}`);
     return {};
-  } catch {
-    return { error: 'Failed to delete building' };
+  } catch (error) {
+    console.error('[deleteBuilding] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete building' };
   }
 }
 
@@ -72,8 +76,9 @@ export async function addFloor(formData: FormData): Promise<SimpleActionState> {
       totalArea,
     });
     return {};
-  } catch {
-    return { error: 'Failed to add floor' };
+  } catch (error) {
+    console.error('[addFloor] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to add floor' };
   }
 }
 
@@ -86,8 +91,9 @@ export async function deleteFloor(formData: FormData): Promise<SimpleActionState
   try {
     await apiClient.delete(`/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}`);
     return {};
-  } catch {
-    return { error: 'Failed to delete floor' };
+  } catch (error) {
+    console.error('[deleteFloor] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete floor' };
   }
 }
 
@@ -126,8 +132,9 @@ export async function addUnit(formData: FormData): Promise<SimpleActionState> {
       toilets,
     });
     return {};
-  } catch {
-    return { error: 'Failed to add unit' };
+  } catch (error) {
+    console.error('[addUnit] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to add unit' };
   }
 }
 
@@ -143,8 +150,9 @@ export async function deleteUnit(formData: FormData): Promise<SimpleActionState>
       `/construction-sites/${siteId}/buildings/${buildingId}/floors/${floorId}/units/${unitId}`,
     );
     return {};
-  } catch {
-    return { error: 'Failed to delete unit' };
+  } catch (error) {
+    console.error('[deleteUnit] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to delete unit' };
   }
 }
 
@@ -159,8 +167,9 @@ export async function updateSite(formData: FormData): Promise<SimpleActionState>
   try {
     await apiClient.put(`/construction-sites/${siteId}`, { name, address });
     return {};
-  } catch {
-    return { error: 'Failed to update site' };
+  } catch (error) {
+    console.error('[updateSite] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to update site' };
   }
 }
 
@@ -211,8 +220,9 @@ export async function duplicateSite(formData: FormData): Promise<SimpleActionSta
     }
 
     return {};
-  } catch {
-    return { error: 'Failed to duplicate site' };
+  } catch (error) {
+    console.error('[duplicateSite] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to duplicate site' };
   }
 }
 
@@ -225,8 +235,9 @@ export async function updateBuilding(formData: FormData): Promise<SimpleActionSt
   try {
     await apiClient.put(`/construction-sites/${siteId}/buildings/${buildingId}`, { name });
     return {};
-  } catch {
-    return { error: 'Failed to update building' };
+  } catch (error) {
+    console.error('[updateBuilding] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to update building' };
   }
 }
 
@@ -283,7 +294,7 @@ export async function duplicateBuilding(formData: FormData): Promise<SimpleActio
     return {};
   } catch (error) {
     console.error('[duplicateBuilding] Failed to duplicate building:', error);
-    return { error: 'Failed to duplicate building' };
+    return { error: error instanceof Error ? error.message : 'Failed to duplicate building' };
   }
 }
 
@@ -306,8 +317,9 @@ export async function updateFloor(formData: FormData): Promise<SimpleActionState
       totalArea,
     });
     return {};
-  } catch {
-    return { error: 'Failed to update floor' };
+  } catch (error) {
+    console.error('[updateFloor] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to update floor' };
   }
 }
 
@@ -356,7 +368,7 @@ export async function duplicateFloor(formData: FormData): Promise<SimpleActionSt
     return {};
   } catch (error) {
     console.error('[duplicateFloor] Failed to duplicate floor:', error);
-    return { error: 'Failed to duplicate floor' };
+    return { error: error instanceof Error ? error.message : 'Failed to duplicate floor' };
   }
 }
 
@@ -389,8 +401,9 @@ export async function updateUnit(formData: FormData): Promise<SimpleActionState>
       toilets,
     });
     return {};
-  } catch {
-    return { error: 'Failed to update unit' };
+  } catch (error) {
+    console.error('[updateUnit] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to update unit' };
   }
 }
 
@@ -417,7 +430,8 @@ export async function duplicateUnit(formData: FormData): Promise<SimpleActionSta
       toilets: unit.toilets,
     });
     return {};
-  } catch {
-    return { error: 'Failed to duplicate unit' };
+  } catch (error) {
+    console.error('[duplicateUnit] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to duplicate unit' };
   }
 }

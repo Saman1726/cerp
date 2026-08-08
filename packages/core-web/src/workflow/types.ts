@@ -111,6 +111,7 @@ export const OPEN_TENDER_SAGA_STEPS: { code: string; label: string; description:
 
 export const SAGA_STATUS_LABELS: Record<string, string> = {
   RUNNING: 'Running',
+  PAUSED: 'Paused',
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   COMPENSATING: 'Compensating',
@@ -121,6 +122,7 @@ export const SAGA_STATUS_LABELS: Record<string, string> = {
 export const SAGA_STATUS_COLORS: Record<string, string> = {
   ALL: 'bg-gray-100 text-gray-800',
   RUNNING: 'bg-blue-100 text-blue-800',
+  PAUSED: 'bg-yellow-100 text-yellow-800',
   COMPLETED: 'bg-green-100 text-green-800',
   FAILED: 'bg-red-100 text-red-800',
   COMPENSATING: 'bg-yellow-100 text-yellow-800',

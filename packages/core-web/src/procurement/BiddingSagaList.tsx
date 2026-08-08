@@ -15,6 +15,7 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { SagaStatusBadge } from '../workflow/SagaStatusBadge';
+import { SagaStatusSummary } from '../workflow/SagaStatusSummary';
 import { workflowApi } from '../workflow/api';
 import { SAGA_TYPE_LABELS } from '../workflow/types';
 import type { Saga, SagaQuery, SagaQueryResponse, ProjectSummary } from '@cerp/shared-types';
@@ -154,19 +155,6 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
     setFilters((prev) => ({ ...prev, pageSize, page: 1 }));
   };
 
-  const getStatusFilterOptions = () => [
-    { value: 'RUNNING', label: 'Running', color: 'bg-blue-100 text-blue-800' },
-    { value: 'PAUSED', label: 'Paused', color: 'bg-yellow-100 text-yellow-800' },
-    { value: 'COMPLETED', label: 'Completed', color: 'bg-green-100 text-green-800' },
-    { value: 'FAILED', label: 'Failed', color: 'bg-red-100 text-red-800' },
-    { value: 'COMPENSATING', label: 'Compensating', color: 'bg-yellow-100 text-yellow-800' },
-    {
-      value: 'REQUIRES_MANUAL_INTERVENTION',
-      label: 'Needs Attention',
-      color: 'bg-orange-100 text-orange-800',
-    },
-  ];
-
   const totalPages = Math.ceil(total / (filters.pageSize ?? 25));
 
   return (
@@ -184,25 +172,13 @@ export function BiddingSagaList({ tenantId: propTenantId, onSagaSelect, onSagaEd
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        {getStatusFilterOptions().map((option) => (
-          <Card
-            key={option.value}
-            className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => handleStatusFilter(option.value)}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">{option.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? '...' : sagas.filter((s) => s.status === option.value).length}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Status Summary */}
+      <SagaStatusSummary
+        sagas={sagas}
+        loading={loading}
+        activeStatus={filters.status}
+        onSelect={handleStatusFilter}
+      />
 
       {/* Filters */}
       <Card>

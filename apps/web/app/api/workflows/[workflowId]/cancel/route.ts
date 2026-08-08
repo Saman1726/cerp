@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getAuthHeaders } from '../../utils';
+import { getAuthHeaders, extractSessionUser } from '../../utils';
 
 export async function POST(
   request: NextRequest,
@@ -9,12 +9,16 @@ export async function POST(
   try {
     const { workflowId } = await params;
     const body = await request.json().catch(() => ({}));
+    const { userId } = await extractSessionUser();
+    if (!userId) {
+      return NextResponse.json({ message: 'Could not resolve the current user' }, { status: 401 });
+    }
     const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflows/${workflowId}/cancel`;
 
     const res = await fetch(url, {
       method: 'POST',
       headers: getAuthHeaders(request),
-      body: JSON.stringify(body),
+      body: JSON.stringify({ userId, notes: body.notes || undefined }),
       cache: 'no-store',
     });
 

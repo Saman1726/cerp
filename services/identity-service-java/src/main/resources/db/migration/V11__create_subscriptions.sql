@@ -18,10 +18,10 @@ CREATE INDEX idx_subscriptions_user_id ON identity.subscriptions (user_id);
 
 -- Backfill: every pre-existing user_account gets a Freemium/active Subscription so the
 -- "every account has exactly one Subscription" invariant holds immediately in dev, not
--- just for accounts created after this migration ships. (Accounts created by
--- SeedDataConfig's CommandLineRunner - metal@cerp.dev, john@cerp.dev - run after Flyway
--- and are NOT covered by this backfill; see SeedDataConfig.java for their own explicit
--- Subscription creation.)
+-- just for accounts created after this migration ships. This now also covers
+-- metal@cerp.dev/john@cerp.dev, since V7 seeds them with a fixed id ahead of this
+-- migration; SeedDataConfig's own Subscription creation for them (CommandLineRunners
+-- run after Flyway) is a no-op in practice, same as its user-creation code.
 INSERT INTO identity.subscriptions (user_id, plan, status)
 SELECT ua.id, 'FREEMIUM', 'active'
 FROM identity.user_accounts ua

@@ -1,5 +1,7 @@
 package io.cerp.identity.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cerp.identity.domain.UserAccount;
 import io.cerp.identity.security.RequestIdentity;
 import io.cerp.identity.service.UserService;
@@ -14,6 +16,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -170,7 +173,7 @@ public class UserController {
     }
 
     /**
-     * Extract user ID from Bearer JWT token payload. Looks for "sub", "userId", or "id" claims in the JWT payload.
+     * Extract user ID from Bearer JWT token payload. Looks for "internal_user_id", "sub", "userId", or "id" claims in the JWT payload.
      */
     private String extractUserIdFromToken(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -195,8 +198,11 @@ public class UserController {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode node = mapper.readTree(json);
 
-            // Check common JWT claim names for user ID
-            for (String fieldName : new String[] { "sub", "userId", "id", "user_id" }) {
+            // "internal_user_id" must be checked before "sub": real Keycloak-issued tokens
+            // (see AuthController.login) carry Keycloak's own internal id as "sub", which is
+            // a well-formed UUID but matches no row in user_accounts - "internal_user_id" is
+            // the claim identity-service mints for exactly this purpose (KeycloakBootstrap).
+            for (String fieldName : new String[] { "internal_user_id", "sub", "userId", "id", "user_id" }) {
                 if (node.has(fieldName)) {
                     return node.get(fieldName).asText();
                 }

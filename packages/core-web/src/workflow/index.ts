@@ -5,3 +5,5 @@ export * from './SagaDetailPage';
 export * from './TemplatesPage';
 export * from './WorkflowDiagramViewer';
 export * from './SagaStatusBadge';
+export * from './SagaStatusSummary';
+export * from './ConstructionMonitoringPage';

@@ -80,7 +80,7 @@ public class SubProjectWorkflowGenerator {
         log.info("Generating workflows for subproject {} (tenant: {}, org: {})",
             request.getSubprojectId(), request.getTenantId(), request.getOrgId());
 
-        String tenantId = TenantService.getInstance().getTenantIdByCodeStr(request.getTenantId());
+        String tenantId = resolveTenantId(request.getTenantId());
         UUID subprojectId = request.getSubprojectId();
         UUID orgId = request.getOrgId();
         UUID projectId = request.getProjectId();
@@ -216,6 +216,23 @@ public class SubProjectWorkflowGenerator {
     }
 
     // ── Private helper methods ──
+
+    /**
+     * Resolve a tenant identifier that may already be a UUID (the normal case - the API
+     * gateway and the Kafka subproject-created event both propagate the tenant as its UUID)
+     * or, for legacy/test callers, a tenant code (e.g. "default") that still needs a
+     * code-to-UUID lookup via TenantService.
+     */
+    private String resolveTenantId(String tenantIdOrCode) {
+        if (tenantIdOrCode != null) {
+            try {
+                return UUID.fromString(tenantIdOrCode).toString();
+            } catch (IllegalArgumentException notAUuid) {
+                // Not a UUID - fall through to the code-based lookup below.
+            }
+        }
+        return TenantService.getInstance().getTenantIdByCodeStr(tenantIdOrCode);
+    }
 
     /**
      * Create a workflow instance from a template.

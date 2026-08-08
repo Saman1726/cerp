@@ -127,6 +127,11 @@ public class VendorServiceImpl implements VendorService {
     }
 
     @Override
+    public Optional<Vendor> findByUserId(UUID userId) {
+        return vendorRepository.findByUserId(userId);
+    }
+
+    @Override
     public List<Vendor> findAll() {
         return vendorRepository.findAll();
     }

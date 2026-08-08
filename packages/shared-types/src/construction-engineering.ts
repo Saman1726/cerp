@@ -212,8 +212,8 @@ export interface UpdateSubProjectRequest {
 
 // ── Workflow Types ──
 
-export type WorkflowStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
-export type WorkflowStepStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED' | 'FAILED';
+export type WorkflowStatus = 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type WorkflowStepStatus = 'PENDING' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'APPROVED' | 'REJECTED';
 export type WorkflowStepType = 'TASK' | 'MILESTONE' | 'INSPECTION' | 'APPROVAL';
 export type WorkflowTemplateStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 

@@ -137,6 +137,14 @@ public class WorkflowService {
     }
 
     /**
+     * List all workflows for a tenant, regardless of project/subproject.
+     */
+    @Transactional(readOnly = true)
+    public List<Workflow> listAll(String tenantId) {
+        return workflowRepository.findByTenantIdWithSteps(tenantId);
+    }
+
+    /**
      * List workflows for a project.
      */
     @Transactional(readOnly = true)
@@ -362,6 +370,26 @@ public class WorkflowService {
         workflowRepository.save(workflow);
 
         log.info("Rejected step {} of workflow {} by user {}", stepId, workflowId, userId);
+        return step;
+    }
+
+    /**
+     * Restart a rejected step. REJECTED -> IN_PROGRESS, so the assignee can redo the work and
+     * resubmit for approval.
+     */
+    @Transactional
+    public WorkflowStep restartStep(UUID workflowId, UUID stepId, UUID userId) {
+        Workflow workflow = getById(workflowId);
+        WorkflowStep step = findStepById(workflowId, stepId);
+
+        transition(WorkflowStateMachines.AGGREGATE_WORKFLOW_STEP, stepId, WorkflowStateMachines.TRANSITION_RESTART,
+            workflowStepStateStore);
+        step.start(userId);
+        workflow.setNextStep(findNextPendingStepId(workflowId));
+        workflow.setWhoHasDone(userId);
+        workflowRepository.save(workflow);
+
+        log.info("Restarted step {} of workflow {} by user {}", stepId, workflowId, userId);
         return step;
     }
 

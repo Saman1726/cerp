@@ -10,3 +10,5 @@ export * from './badge';
 export * from './modal';
 export * from './textarea';
 export * from './tabs';
+export * from './tree';
+export * from './detail-popup';

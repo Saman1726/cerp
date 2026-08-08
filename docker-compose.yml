@@ -146,6 +146,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_started
+      identity-service-java:
+        condition: service_started
     environment:
       SERVER_PORT: 8089
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}

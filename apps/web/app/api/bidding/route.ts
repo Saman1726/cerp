@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
+import { WORKFLOW_SERVICE_URL, IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
 import { getBackendHeaders } from '../workflows/utils';
+
+// Bid wallets only distinguish PROJECT_OWNER vs VENDOR (BidWallet.EntityType); every
+// non-vendor account type (USER/COMPANY) maps to PROJECT_OWNER.
+// GET /users/{id} requires authentication (SecurityConfig: `GET /users/**` -> authenticated()),
+// unlike `GET /users?email=`, so the caller's own bearer token must be forwarded.
+async function resolveEntityType(userId: string, accessToken: string): Promise<'VENDOR' | 'PROJECT_OWNER' | null> {
+  try {
+    const res = await fetch(`${IDENTITY_SERVICE_URL}/users/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    return data.type === 'VENDOR' ? 'VENDOR' : 'PROJECT_OWNER';
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Proxy /api/bidding requests to the workflow service.
@@ -41,22 +59,20 @@ export async function GET(request: NextRequest) {
     const DEFAULT_TENANT_CODE = 'default';
     let userId: string | null = null;
     let tenantCode = DEFAULT_TENANT_CODE;
-    let jwtRole: string | null = null;
 
     if (token) {
       const payload = decodeJwtPayload(token);
       if (payload) {
-        userId = payload.sub && typeof payload.sub === 'string' ? payload.sub : null;
+        // The session cookie holds a real Keycloak access token: its own "sub" is
+        // Keycloak's internal id, which never matches identity.user_accounts.id (see
+        // AuthController.refresh in identity-service-java). "internal_user_id" is the
+        // custom claim identity-service maps for exactly this purpose.
+        userId =
+          payload.internal_user_id && typeof payload.internal_user_id === 'string'
+            ? payload.internal_user_id
+            : null;
         if (payload.tenantCode && typeof payload.tenantCode === 'string' && payload.tenantCode.trim()) {
           tenantCode = payload.tenantCode;
-        }
-        const rolesField = payload.roles;
-        if (typeof rolesField === 'string') {
-          const roleList = rolesField
-            .split(',')
-            .map((r) => r.trim().toLowerCase())
-            .filter(Boolean);
-          jwtRole = roleList.includes('vendor') ? 'vendor' : (roleList[0] ?? null);
         }
       }
     }
@@ -71,9 +87,14 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Auto-fill entityType from JWT role when not provided by the client
-    if (!targetUrl.searchParams.has('entityType') && jwtRole) {
-      targetUrl.searchParams.set('entityType', jwtRole === 'vendor' ? 'VENDOR' : 'PROJECT_OWNER');
+    // Auto-fill entityType from the user's account type when not provided by the
+    // client - the Keycloak token carries no app-level role/type claim to derive
+    // this from.
+    if (!targetUrl.searchParams.has('entityType') && userId && token) {
+      const entityType = await resolveEntityType(userId, token);
+      if (entityType) {
+        targetUrl.searchParams.set('entityType', entityType);
+      }
     }
 
     // Pass userId as query parameter for backend access control
@@ -130,8 +151,8 @@ export async function POST(request: NextRequest) {
           if (decoded.tenantCode && typeof decoded.tenantCode === 'string' && decoded.tenantCode.trim()) {
             tenantCode = decoded.tenantCode;
           }
-          if (decoded.sub && typeof decoded.sub === 'string') {
-            sessionUserId = decoded.sub;
+          if (decoded.internal_user_id && typeof decoded.internal_user_id === 'string') {
+            sessionUserId = decoded.internal_user_id;
           }
         }
       } catch {

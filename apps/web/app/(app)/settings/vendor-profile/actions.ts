@@ -2,6 +2,31 @@
 
 import { cookies } from 'next/headers';
 
+const DEFAULT_VENDOR_TENANT_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * vendor-service resolves "my profile" by X-User-Id ("internal_user_id" claim - the token's
+ * own "sub" is Keycloak's internal id, not identity.user_accounts.id - see KeycloakBootstrap
+ * in identity-service). X-Tenant-Id is still sent since Vendor.tenantId is NOT NULL and
+ * vendor-service defaults new profiles to the shared tenant when the JWT carries no tenant
+ * claim (TODO: remove the default-tenant fallback once identity-service issues one).
+ */
+function resolveTenantAndUserHeaders(token: string): { tenantId: string; userId?: string } {
+  let tenantId: string | undefined;
+  let userId: string | undefined;
+  try {
+    const parts = token.split('.');
+    if (parts.length === 3 && parts[1]) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+      tenantId = payload.tenantId || payload.tenant_id || payload.tid;
+      userId = payload.internal_user_id;
+    }
+  } catch {
+    // fall through to defaults
+  }
+  return { tenantId: tenantId || process.env.VENDOR_TENANT_ID || DEFAULT_VENDOR_TENANT_ID, userId };
+}
+
 // API types
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -113,39 +138,17 @@ export async function getVendorProfile(): Promise<ApiResponse<VendorProfileData>
     };
     console.log('[VendorProfile] Step 5: Request headers (masked):', JSON.stringify(requestHeaders));
 
-    // Log the full token for debugging (comment out in production!)
-    console.log('[VendorProfile] Step 5a: FULL token value:', token);
-
     console.log('[VendorProfile] Step 6: Making fetch() request...');
-    // Decode JWT to extract tenant info if available
-    let tenantId: string | undefined;
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3 && parts[1]) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-        tenantId = payload.tenantId || payload.tenant_id || payload.tid;
-        console.log('[VendorProfile] Step 5b: Extracted tenantId from JWT:', tenantId);
-        console.log('[VendorProfile] Step 5b-full: JWT payload roles:', payload.roles || payload.role);
-      }
-    } catch (e) {
-      console.log('[VendorProfile] Step 5b: Could not extract tenantId from JWT:', e);
-    }
-
-    // If no tenantId from JWT, use default vendor tenant for dev mode
-    // TODO: Remove this fallback once identity service issues tenantId in JWT
-    const VENDOR_TENANT_ID = process.env.VENDOR_TENANT_ID || '00000000-0000-0000-0000-000000000001';
-    if (!tenantId) {
-      tenantId = VENDOR_TENANT_ID;
-      console.log('[VendorProfile] Step 5b: No tenantId in JWT, using default vendor tenant:', tenantId);
-    }
-
-    // Build headers with X-Tenant-Id
+    const { tenantId, userId } = resolveTenantAndUserHeaders(token);
     const fetchHeaders: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       'X-Tenant-Id': tenantId,
     };
-    console.log('[VendorProfile] Step 5c: Added X-Tenant-Id header:', tenantId);
+    if (userId) {
+      fetchHeaders['X-User-Id'] = userId;
+    }
+    console.log('[VendorProfile] Step 5c: Added X-Tenant-Id/X-User-Id headers:', tenantId, userId);
 
     // Call Vendor Service directly on port 8085 - use POST endpoint
     const response = await fetch(targetUrl, {
@@ -261,15 +264,22 @@ export async function updateVendorProfile(data: {
       return { success: false, error: 'Unauthorized' };
     }
 
+    const { tenantId, userId } = resolveTenantAndUserHeaders(token);
+    const fetchHeaders: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-Tenant-Id': tenantId,
+    };
+    if (userId) {
+      fetchHeaders['X-User-Id'] = userId;
+    }
+
     // Call Vendor Service directly on port 8085
     const response = await fetch(
       `${process.env.VENDOR_SERVICE_URL || 'http://localhost:8085'}/vendors/profile`,
       {
         method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: fetchHeaders,
         body: JSON.stringify(data),
         cache: 'no-store',
       }

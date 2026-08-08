@@ -128,6 +128,13 @@ export async function extractSessionUser(): Promise<{
     roles = (payload.roles as unknown[]).filter((r): r is string => typeof r === 'string');
   }
 
+  // "internal_user_id" must be checked before "sub": Keycloak-issued tokens carry
+  // Keycloak's own internal id as "sub", which matches no row in identity-service's
+  // user_accounts (see RequestIdentity.creatorId on the backend) - "internal_user_id"
+  // is the claim identity-service mints for exactly this purpose.
+  const internalUserId = typeof payload.internal_user_id === 'string' ? payload.internal_user_id : null;
+  if (internalUserId) return { userId: internalUserId, tenantId, roles };
+
   const sub = typeof payload.sub === 'string' ? payload.sub : null;
   if (!sub) return { userId: null, tenantId, roles };
 

@@ -10,7 +10,7 @@ import java.util.UUID;
 import org.springframework.transaction.annotation.Transactional;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,6 +53,7 @@ import io.cerp.workflow.service.WorkflowService;
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/complete</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/approve</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/reject</li>
+ * <li>POST /api/v1/workflows/{id}/steps/{stepId}/restart</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/block</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/unblock</li>
  * </ul>
@@ -116,7 +117,7 @@ public class WorkflowController {
         if (projectId != null) {
             return ResponseEntity.ok(workflowService.listByProject(tenantId, projectId));
         }
-        return ResponseEntity.ok(List.of());
+        return ResponseEntity.ok(workflowService.listAll(tenantId));
     }
 
     /**
@@ -299,6 +300,13 @@ public class WorkflowController {
             request.notes(), request.userId()));
     }
 
+    @PostMapping("/{workflowId}/steps/{stepId}/restart")
+    public ResponseEntity<WorkflowStep> restartStep(@PathVariable String workflowId,
+            @PathVariable String stepId, @Valid @RequestBody UserRequest request) {
+        return ResponseEntity.ok(workflowService.restartStep(
+            UUID.fromString(workflowId), UUID.fromString(stepId), request.userId()));
+    }
+
     @PostMapping("/{workflowId}/steps/{stepId}/block")
     public ResponseEntity<WorkflowStep> blockStep(@PathVariable String workflowId,
             @PathVariable String stepId, @Valid @RequestBody StatusReasonRequest request) {
@@ -362,18 +370,18 @@ public class WorkflowController {
     }
 
     public record UserRequest(
-            @NotEmpty UUID userId,
+            @NotNull UUID userId,
             String notes) {
     }
 
     public record CompleteStepRequest(
-            @NotEmpty UUID userId,
+            @NotNull UUID userId,
             String evidence,
             String notes) {
     }
 
     public record AddNoteRequest(
-            @NotEmpty UUID userId,
+            @NotNull UUID userId,
             UUID stepId,
             @NotBlank String note,
             @NotBlank String type) {

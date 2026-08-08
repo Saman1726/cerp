@@ -42,6 +42,7 @@ public final class WorkflowStateMachines {
     public static final String TRANSITION_APPROVE = "Approve";
     public static final String TRANSITION_REJECT = "Reject";
     public static final String TRANSITION_CANCEL = "Cancel";
+    public static final String TRANSITION_RESTART = "Restart";
 
     /**
      * Get the state machine definition for Workflow.
@@ -79,7 +80,8 @@ public final class WorkflowStateMachines {
      *
      * <p>
      * States: NOT_STARTED -&gt; IN_PROGRESS -&gt; {BLOCKED, COMPLETED}; BLOCKED -&gt; IN_PROGRESS;
-     * COMPLETED -&gt; {APPROVED, REJECTED}.
+     * COMPLETED -&gt; {APPROVED, REJECTED}; REJECTED -&gt; IN_PROGRESS (restart after a rejection, same
+     * target state as Unblock so the assignee can immediately redo and resubmit the step).
      */
     public static StateMachineDefinition<String, String> workflowStepMachine() {
         return StateMachineDefinition.<String, String> builder()
@@ -95,6 +97,7 @@ public final class WorkflowStateMachines {
             .withTransition(STATE_COMPLETED, TRANSITION_REJECT, STATE_REJECTED)
             .withTransition(STATE_IN_PROGRESS, TRANSITION_BLOCK, STATE_BLOCKED)
             .withTransition(STATE_BLOCKED, TRANSITION_UNBLOCK, STATE_IN_PROGRESS)
+            .withTransition(STATE_REJECTED, TRANSITION_RESTART, STATE_IN_PROGRESS)
             .build();
     }
 

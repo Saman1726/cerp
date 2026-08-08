@@ -4,7 +4,7 @@ import '@cerp/core-web/styles.css';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'cerp',
+  title: 'Construction Hub',
   description: 'ERP for Properties & Construction',
 };
 

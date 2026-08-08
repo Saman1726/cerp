@@ -3,23 +3,50 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ConstructionSite } from '@cerp/shared-types';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Modal, Badge } from '../components/ui';
+import { Building2, Home, Layers, MapPin, MoreHorizontal, Plus } from 'lucide-react';
+import {
+  Button,
+  Input,
+  Label,
+  Modal,
+  Badge,
+  Tree,
+  TreeNode,
+  DetailPopup,
+  DetailFieldGrid,
+  DetailField,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui';
 import type { ConstructionSitesActions, SimpleFormAction } from './types';
 
-type ToggleMap = Record<string, boolean>;
+type Building = ConstructionSite['buildings'][number];
+type Floor = Building['floors'][number];
+type Unit = Floor['units'][number];
+
+type DetailState =
+  | { kind: 'site'; site: ConstructionSite }
+  | { kind: 'building'; site: ConstructionSite; building: Building }
+  | { kind: 'floor'; site: ConstructionSite; building: Building; floor: Floor }
+  | { kind: 'unit'; site: ConstructionSite; building: Building; floor: Floor; unit: Unit };
 
 export interface ConstructionSitesTreeProps {
   sites: ConstructionSite[];
   actions: ConstructionSitesActions;
 }
 
+function toFormData(fields: Record<string, string>): FormData {
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(fields)) formData.set(key, value);
+  return formData;
+}
+
 export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-
-  // Expansion state
-  const [openBuildings, setOpenBuildings] = useState<ToggleMap>({});
-  const [openFloors, setOpenFloors] = useState<ToggleMap>({});
 
   // Modal state
   const [createSiteOpen, setCreateSiteOpen] = useState(false);
@@ -37,17 +64,32 @@ export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeP
   const [editUnitOpen, setEditUnitOpen] = useState<{ siteId: string; buildingId: string; floorId: string; unitId: string; label: string; usableArea: number; bedrooms: number; bathrooms: number; balconies: number; toilets: number } | null>(null);
   const [duplicateUnitOpen, setDuplicateUnitOpen] = useState<{ siteId: string; buildingId: string; floorId: string; unitId: string; label: string; usableArea: number; bedrooms: number; bathrooms: number; balconies: number; toilets: number } | null>(null);
 
-  // Helpers
-  const toggleBuilding = (buildingId: string) =>
-    setOpenBuildings((m) => ({ ...m, [buildingId]: !m[buildingId] }));
-  const toggleFloor = (floorId: string) => setOpenFloors((m) => ({ ...m, [floorId]: !m[floorId] }));
+  // Detail popup state
+  const [detail, setDetail] = useState<DetailState | null>(null);
 
   const handleAction = async (action: SimpleFormAction, formData: FormData, onClose: () => void) => {
-    await action(formData);
-    onClose();
-    startTransition(() => {
-      router.refresh();
-    });
+    try {
+      await action(formData);
+      onClose();
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    }
+  };
+
+  const handleDelete = async (action: SimpleFormAction, fields: Record<string, string>, confirmMessage: string) => {
+    if (!confirm(confirmMessage)) return;
+    try {
+      await action(toFormData(fields));
+      setDetail(null);
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    }
   };
 
   return (
@@ -57,222 +99,321 @@ export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeP
         <Button onClick={() => setCreateSiteOpen(true)}>+ Add Site</Button>
       </div>
 
-      {sites.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">No construction sites yet.</p>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {sites.map((site) => (
-            <Card key={site.id} className="overflow-hidden">
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-base">{site.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{site.address}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDuplicateSiteOpen({ id: site.id, name: site.name, address: site.address })}
-                  >
-                    Duplicate
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEditSiteOpen({ id: site.id, name: site.name, address: site.address })}
-                  >
-                    Edit
-                  </Button>
-                  <form action={actions.deleteSite}>
-                    <input type="hidden" name="siteId" value={site.id} />
-                    <Button type="submit" variant="destructive" size="sm">
-                      Delete
+      <Tree isEmpty={sites.length === 0} emptyMessage="No construction sites yet.">
+        {sites.map((site) => (
+          <TreeNode
+            key={site.id}
+            icon={<MapPin className="size-4 text-blue-500" />}
+            label={site.name}
+            meta={<span className="truncate">{site.address}</span>}
+            onSelect={() => setDetail({ kind: 'site', site })}
+            actions={
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="size-7 p-0"
+                  title="Add building"
+                  onClick={() => setAddBuildingOpen({ siteId: site.id })}
+                >
+                  <Plus className="size-4" />
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost" className="size-7 p-0">
+                      <MoreHorizontal className="size-4" />
                     </Button>
-                  </form>
-                  <Button size="sm" onClick={() => setAddBuildingOpen({ siteId: site.id })}>
-                    + Building
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                {site.buildings.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No buildings yet.</p>
-                ) : (
-                  site.buildings.map((b) => (
-                    <div key={b.id} className="rounded-md border p-3">
-                      <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          className="w-full text-left"
-                          onClick={() => toggleBuilding(b.id)}
-                          aria-expanded={openBuildings[b.id] ? 'true' : 'false'}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium">{b.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                Usable {b.usableArea} m² • Total {b.totalArea} m²
-                              </span>
-                            </div>
-                            <span className="text-xs text-muted-foreground">
-                              {openBuildings[b.id] ? '▾' : '▸'}
-                            </span>
-                          </div>
-                        </button>
-                        <div className="ml-2 flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDuplicateBuildingOpen({ siteId: site.id, buildingId: b.id, name: b.name })}
-                          >
-                            Duplicate
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditSiteOpen({ id: site.id, name: site.name, address: site.address })}>
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setDuplicateSiteOpen({ id: site.id, name: site.name, address: site.address })}>
+                      Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => handleDelete(actions.deleteSite, { siteId: site.id }, `Delete site "${site.name}"?`)}
+                    >
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            }
+          >
+            {site.buildings.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">No buildings yet.</p>
+            ) : (
+              site.buildings.map((building) => (
+                <TreeNode
+                  key={building.id}
+                  icon={<Building2 className="size-4 text-violet-500" />}
+                  label={building.name}
+                  meta={
+                    <span className="truncate">
+                      {building.usableArea} m² usable · {building.totalArea} m² total
+                    </span>
+                  }
+                  onSelect={() => setDetail({ kind: 'building', site, building })}
+                  actions={
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="size-7 p-0"
+                        title="Add floor"
+                        onClick={() => setAddFloorOpen({ siteId: site.id, buildingId: building.id })}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" className="size-7 p-0">
+                            <MoreHorizontal className="size-4" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setEditBuildingOpen({ siteId: site.id, buildingId: b.id, name: b.name })}
-                          >
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditBuildingOpen({ siteId: site.id, buildingId: building.id, name: building.name })}>
                             Edit
-                          </Button>
-                          <form action={actions.deleteBuilding}>
-                            <input type="hidden" name="siteId" value={site.id} />
-                            <input type="hidden" name="buildingId" value={b.id} />
-                            <Button type="submit" variant="destructive" size="sm">
-                              Delete
-                            </Button>
-                          </form>
-                          <Button
-                            size="sm"
-                            onClick={() => setAddFloorOpen({ siteId: site.id, buildingId: b.id })}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDuplicateBuildingOpen({ siteId: site.id, buildingId: building.id, name: building.name })}>
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() =>
+                              handleDelete(
+                                actions.deleteBuilding,
+                                { siteId: site.id, buildingId: building.id },
+                                `Delete building "${building.name}"?`,
+                              )
+                            }
                           >
-                            + Floor
-                          </Button>
-                        </div>
-                      </div>
-
-                      {openBuildings[b.id] && (
-                        <div className="mt-3 flex flex-col gap-2">
-                          {b.floors.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No floors yet.</p>
-                          ) : (
-                            b.floors.map((f) => (
-                              <div key={f.id} className="rounded-md border p-3">
-                                <div className="flex items-center justify-between">
-                                  <button
-                                    type="button"
-                                    className="w-full text-left"
-                                    onClick={() => toggleFloor(f.id)}
-                                    aria-expanded={openFloors[f.id] ? 'true' : 'false'}
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-sm font-medium">{f.type}</span>
-                                        <Badge variant="secondary">{f.usableArea} m² usable</Badge>
-                                        <Badge variant="secondary">{f.totalArea} m² total</Badge>
-                                        <Badge variant="outline">{f.units.length} units</Badge>
-                                      </div>
-                                      <span className="text-xs text-muted-foreground">
-                                        {openFloors[f.id] ? '▾' : '▸'}
-                                      </span>
-                                    </div>
-                                  </button>
-                                  <div className="ml-2 flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setDuplicateFloorOpen({ siteId: site.id, buildingId: b.id, floorId: f.id, type: f.type, usableArea: f.usableArea, totalArea: f.totalArea })}
-                                    >
-                                      Duplicate
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
+                  }
+                >
+                  {building.floors.length === 0 ? (
+                    <p className="py-2 text-sm text-muted-foreground">No floors yet.</p>
+                  ) : (
+                    building.floors.map((floor) => (
+                      <TreeNode
+                        key={floor.id}
+                        icon={<Layers className="size-4 text-amber-500" />}
+                        label={floor.type}
+                        meta={
+                          <>
+                            <Badge variant="secondary">{floor.usableArea} m² usable</Badge>
+                            <Badge variant="secondary">{floor.totalArea} m² total</Badge>
+                            <Badge variant="outline">{floor.units.length} units</Badge>
+                          </>
+                        }
+                        onSelect={() => setDetail({ kind: 'floor', site, building, floor })}
+                        actions={
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="size-7 p-0"
+                              title="Add unit"
+                              onClick={() => setAddUnitOpen({ siteId: site.id, buildingId: building.id, floorId: floor.id })}
+                            >
+                              <Plus className="size-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" className="size-7 p-0">
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setEditFloorOpen({
+                                      siteId: site.id,
+                                      buildingId: building.id,
+                                      floorId: floor.id,
+                                      type: floor.type,
+                                      usableArea: floor.usableArea,
+                                      totalArea: floor.totalArea,
+                                    })
+                                  }
+                                >
+                                  Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    setDuplicateFloorOpen({
+                                      siteId: site.id,
+                                      buildingId: building.id,
+                                      floorId: floor.id,
+                                      type: floor.type,
+                                      usableArea: floor.usableArea,
+                                      totalArea: floor.totalArea,
+                                    })
+                                  }
+                                >
+                                  Duplicate
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() =>
+                                    handleDelete(
+                                      actions.deleteFloor,
+                                      { siteId: site.id, buildingId: building.id, floorId: floor.id },
+                                      `Delete floor "${floor.type}"?`,
+                                    )
+                                  }
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
+                        }
+                      >
+                        {floor.units.length === 0 ? (
+                          <p className="py-2 text-sm text-muted-foreground">No units yet.</p>
+                        ) : (
+                          floor.units.map((unit) => (
+                            <TreeNode
+                              key={unit.id}
+                              icon={<Home className="size-4 text-emerald-500" />}
+                              label={unit.label}
+                              meta={
+                                <span className="truncate">
+                                  {unit.usableArea} m² · {unit.bedrooms} bd · {unit.bathrooms} ba · {unit.balconies} balc · {unit.toilets} wc
+                                </span>
+                              }
+                              onSelect={() => setDetail({ kind: 'unit', site, building, floor, unit })}
+                              actions={
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" className="size-7 p-0">
+                                      <MoreHorizontal className="size-4" />
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => setEditFloorOpen({ siteId: site.id, buildingId: b.id, floorId: f.id, type: f.type, usableArea: f.usableArea, totalArea: f.totalArea })}
-                                    >
-                                      Edit
-                                    </Button>
-                                    <form action={actions.deleteFloor}>
-                                      <input type="hidden" name="siteId" value={site.id} />
-                                      <input type="hidden" name="buildingId" value={b.id} />
-                                      <input type="hidden" name="floorId" value={f.id} />
-                                      <Button type="submit" variant="destructive" size="sm">
-                                        Delete
-                                      </Button>
-                                    </form>
-                                    <Button
-                                      size="sm"
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
                                       onClick={() =>
-                                        setAddUnitOpen({ siteId: site.id, buildingId: b.id, floorId: f.id })
+                                        setEditUnitOpen({
+                                          siteId: site.id,
+                                          buildingId: building.id,
+                                          floorId: floor.id,
+                                          unitId: unit.id,
+                                          label: unit.label,
+                                          usableArea: unit.usableArea,
+                                          bedrooms: unit.bedrooms,
+                                          bathrooms: unit.bathrooms,
+                                          balconies: unit.balconies,
+                                          toilets: unit.toilets,
+                                        })
                                       }
                                     >
-                                      + Unit
-                                    </Button>
-                                  </div>
-                                </div>
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onClick={() =>
+                                        setDuplicateUnitOpen({
+                                          siteId: site.id,
+                                          buildingId: building.id,
+                                          floorId: floor.id,
+                                          unitId: unit.id,
+                                          label: unit.label,
+                                          usableArea: unit.usableArea,
+                                          bedrooms: unit.bedrooms,
+                                          bathrooms: unit.bathrooms,
+                                          balconies: unit.balconies,
+                                          toilets: unit.toilets,
+                                        })
+                                      }
+                                    >
+                                      Duplicate
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive"
+                                      onClick={() =>
+                                        handleDelete(
+                                          actions.deleteUnit,
+                                          { siteId: site.id, buildingId: building.id, floorId: floor.id, unitId: unit.id },
+                                          `Delete unit "${unit.label}"?`,
+                                        )
+                                      }
+                                    >
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              }
+                            />
+                          ))
+                        )}
+                      </TreeNode>
+                    ))
+                  )}
+                </TreeNode>
+              ))
+            )}
+          </TreeNode>
+        ))}
+      </Tree>
 
-                                {openFloors[f.id] && (
-                                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                    {f.units.length === 0 ? (
-                                      <p className="text-sm text-muted-foreground sm:col-span-2">
-                                        No units yet.
-                                      </p>
-                                    ) : (
-                                      f.units.map((u) => (
-                                        <div key={u.id} className="rounded-md border p-3">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div className="flex flex-col">
-                                              <span className="text-sm font-medium">{u.label}</span>
-                                              <span className="text-xs text-muted-foreground">
-                                                {u.usableArea} m² • {u.bedrooms} bd • {u.bathrooms} ba •{' '}
-                                                {u.balconies} balc • {u.toilets} wc
-                                              </span>
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                              <div className="flex gap-1">
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => setEditUnitOpen({ siteId: site.id, buildingId: b.id, floorId: f.id, unitId: u.id, label: u.label, usableArea: u.usableArea, bedrooms: u.bedrooms, bathrooms: u.bathrooms, balconies: u.balconies, toilets: u.toilets })}
-                                                >
-                                                  Edit
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => setDuplicateUnitOpen({ siteId: site.id, buildingId: b.id, floorId: f.id, unitId: u.id, label: u.label, usableArea: u.usableArea, bedrooms: u.bedrooms, bathrooms: u.bathrooms, balconies: u.balconies, toilets: u.toilets })}
-                                                >
-                                                  Duplicate
-                                                </Button>
-                                              </div>
-                                              <form action={actions.deleteUnit}>
-                                                <input type="hidden" name="siteId" value={site.id} />
-                                                <input type="hidden" name="buildingId" value={b.id} />
-                                                <input type="hidden" name="floorId" value={f.id} />
-                                                <input type="hidden" name="unitId" value={u.id} />
-                                                <Button type="submit" variant="destructive" size="sm">
-                                                  Delete
-                                                </Button>
-                                              </form>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Detail Popup */}
+      <DetailPopup
+        open={detail !== null}
+        onOpenChange={(open) => { if (!open) setDetail(null); }}
+        title={
+          detail?.kind === 'site' ? detail.site.name :
+          detail?.kind === 'building' ? detail.building.name :
+          detail?.kind === 'floor' ? detail.floor.type :
+          detail?.kind === 'unit' ? detail.unit.label : ''
+        }
+      >
+        {detail?.kind === 'site' && (
+          <DetailFieldGrid>
+            <DetailField label="Name" value={detail.site.name} />
+            <DetailField label="Address" value={detail.site.address} />
+            <DetailField label="Buildings" value={detail.site.buildings.length} />
+          </DetailFieldGrid>
+        )}
+        {detail?.kind === 'building' && (
+          <DetailFieldGrid>
+            <DetailField label="Name" value={detail.building.name} />
+            <DetailField label="Usable area" value={`${detail.building.usableArea} m²`} />
+            <DetailField label="Total area" value={`${detail.building.totalArea} m²`} />
+            <DetailField label="Floors" value={detail.building.floors.length} />
+            <DetailField label="Site" value={detail.site.name} />
+          </DetailFieldGrid>
+        )}
+        {detail?.kind === 'floor' && (
+          <DetailFieldGrid>
+            <DetailField label="Type" value={detail.floor.type} />
+            <DetailField label="Usable area" value={`${detail.floor.usableArea} m²`} />
+            <DetailField label="Total area" value={`${detail.floor.totalArea} m²`} />
+            <DetailField label="Units" value={detail.floor.units.length} />
+            <DetailField label="Building" value={detail.building.name} />
+          </DetailFieldGrid>
+        )}
+        {detail?.kind === 'unit' && (
+          <DetailFieldGrid>
+            <DetailField label="Label" value={detail.unit.label} />
+            <DetailField label="Usable area" value={`${detail.unit.usableArea} m²`} />
+            <DetailField label="Bedrooms" value={detail.unit.bedrooms} />
+            <DetailField label="Bathrooms" value={detail.unit.bathrooms} />
+            <DetailField label="Balconies" value={detail.unit.balconies} />
+            <DetailField label="Toilets" value={detail.unit.toilets} />
+            <DetailField label="Floor" value={detail.floor.type} />
+          </DetailFieldGrid>
+        )}
+      </DetailPopup>
 
       {/* Create Site Modal */}
       <Modal open={createSiteOpen} onClose={() => setCreateSiteOpen(false)} title="Create construction site">

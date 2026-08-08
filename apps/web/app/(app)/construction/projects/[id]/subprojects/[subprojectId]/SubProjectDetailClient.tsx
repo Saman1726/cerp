@@ -30,18 +30,22 @@ import { Label } from '@cerp/core-web/components/ui/label';
 // ── Workflow type helpers ──
 
 const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+  PLANNED: 'outline',
   ACTIVE: 'default',
-  COMPLETED: 'success',
-  CANCELLED: 'destructive',
   PAUSED: 'secondary',
+  COMPLETED: 'success',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
+  CANCELLED: 'destructive',
 };
 
 const WORKFLOW_STEP_STATUS_VARIANTS: Record<WorkflowStepStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
   PENDING: 'secondary',
   IN_PROGRESS: 'default',
+  BLOCKED: 'outline',
   COMPLETED: 'success',
-  SKIPPED: 'outline',
-  FAILED: 'destructive',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
 };
 
 const STEP_TYPE_ICONS: Record<WorkflowStepType, string> = {
@@ -226,7 +230,7 @@ export default function SubProjectDetailClient({
     try {
       setTemplatesLoading(true);
       console.log('[SubProjectDetailClient] Fetching templates');
-      const res = await fetch('/api/workflow-templates');
+      const res = await fetch('/api/workflows/templates');
       console.log('[SubProjectDetailClient] Templates fetch response status:', res.status, res.statusText);
       if (!res.ok) {
         const errorText = await res.text();
@@ -247,7 +251,7 @@ export default function SubProjectDetailClient({
 
   const fetchTemplateDetail = useCallback(async (templateCode: string) => {
     try {
-      const res = await fetch(`/api/workflow-templates${templateCode}`);
+      const res = await fetch(`/api/workflows/templates/${templateCode}`);
       if (!res.ok) throw new Error('Failed to fetch template detail');
       const data: WorkflowTemplateResponse = await res.json();
       setTemplateDetail(data);
@@ -315,13 +319,25 @@ export default function SubProjectDetailClient({
     }
   };
 
+  const handleStartStep = async (workflowId: string, stepId: string) => {
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/start`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to start step');
+      fetchWorkflows();
+      if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
+    } catch {
+      alert('Failed to start step');
+    }
+  };
+
   const handleCompleteStepFinal = async (workflowId: string, stepId: string) => {
     try {
       const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'COMPLETED',
           evidenceUrls: evidenceUrls.split(',').map((u) => u.trim()).filter((u) => u),
           approvalNotes: approvalNotes || undefined,
         }),
@@ -337,34 +353,80 @@ export default function SubProjectDetailClient({
     }
   };
 
-  const handleStartStep = async (workflowId: string, stepId: string) => {
+  const handleApproveStep = async (workflowId: string, stepId: string) => {
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/approve`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'IN_PROGRESS' }),
+        body: JSON.stringify({ notes: approvalNotes || undefined }),
       });
-      if (!res.ok) throw new Error('Failed to start step');
+      if (!res.ok) throw new Error('Failed to approve step');
       fetchWorkflows();
       if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
+      setStepModalOpen(false);
+      setApprovalNotes('');
     } catch {
-      alert('Failed to start step');
+      alert('Failed to approve step');
     }
   };
 
-  const handleSkipStep = async (workflowId: string, stepId: string) => {
-    if (!confirm('Mark this step as skipped?')) return;
+  const handleRejectStep = async (workflowId: string, stepId: string) => {
+    if (!approvalNotes.trim()) {
+      alert('Please provide a reason for rejecting this step.');
+      return;
+    }
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/reject`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'SKIPPED' }),
+        body: JSON.stringify({ notes: approvalNotes }),
       });
-      if (!res.ok) throw new Error('Failed to skip step');
+      if (!res.ok) throw new Error('Failed to reject step');
       fetchWorkflows();
       if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
+      setStepModalOpen(false);
+      setApprovalNotes('');
     } catch {
-      alert('Failed to skip step');
+      alert('Failed to reject step');
+    }
+  };
+
+  const handleRestartStep = async (workflowId: string, stepId: string) => {
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/restart`, { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to restart step');
+      fetchWorkflows();
+      if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
+      setStepModalOpen(false);
+    } catch {
+      alert('Failed to restart step');
+    }
+  };
+
+  const handleStartWorkflow = async (workflowId: string) => {
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/start`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to start workflow');
+      fetchWorkflows();
+      if (selectedWorkflowId === workflowId) fetchWorkflowDetail(workflowId);
+    } catch {
+      alert('Failed to start workflow');
+    }
+  };
+
+  const handleCompleteWorkflow = async (workflowId: string) => {
+    if (!confirm('Mark this workflow as complete?')) return;
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/complete`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('Failed to complete workflow');
+      fetchWorkflows();
+      if (selectedWorkflowId === workflowId) fetchWorkflowDetail(workflowId);
+    } catch {
+      alert('Failed to complete workflow');
     }
   };
 
@@ -387,9 +449,13 @@ export default function SubProjectDetailClient({
   };
 
   const handlePauseWorkflow = async (workflowId: string) => {
+    const reason = window.prompt('Reason for pausing this workflow:');
+    if (!reason || !reason.trim()) return;
     try {
       const res = await fetch(`/api/workflows/${workflowId}/pause`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
       });
       if (!res.ok) throw new Error('Failed to pause workflow');
       fetchWorkflows();
@@ -629,17 +695,27 @@ export default function SubProjectDetailClient({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {selectedWorkflow.status === 'ACTIVE' && (
-                    <Button onClick={() => handlePauseWorkflow(selectedWorkflowId)} variant="outline" size="sm">
-                      Pause
+                  {selectedWorkflow.status === 'PLANNED' && (
+                    <Button onClick={() => handleStartWorkflow(selectedWorkflowId)} size="sm">
+                      Start
                     </Button>
+                  )}
+                  {selectedWorkflow.status === 'ACTIVE' && (
+                    <>
+                      <Button onClick={() => handleCompleteWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                        Complete
+                      </Button>
+                      <Button onClick={() => handlePauseWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                        Pause
+                      </Button>
+                    </>
                   )}
                   {selectedWorkflow.status === 'PAUSED' && (
                     <Button onClick={() => handleResumeWorkflow(selectedWorkflowId)} variant="outline" size="sm">
                       Resume
                     </Button>
                   )}
-                  {selectedWorkflow.status !== 'CANCELLED' && selectedWorkflow.status !== 'COMPLETED' && (
+                  {(selectedWorkflow.status === 'PLANNED' || selectedWorkflow.status === 'ACTIVE' || selectedWorkflow.status === 'PAUSED') && (
                     <Button onClick={() => handleCancelWorkflow(selectedWorkflowId)} variant="destructive" size="sm">
                       Cancel
                     </Button>
@@ -671,7 +747,12 @@ export default function SubProjectDetailClient({
                             <span className="text-xs">{STEP_TYPE_LABELS[step.type]}</span>
                           </div>
                         </td>
-                        <td className="py-3 pr-4 font-medium">{step.name}</td>
+                        <td className="py-3 pr-4 font-medium">
+                          {step.name}
+                          {step.approvalNotes && (
+                            <p className="mt-0.5 text-xs font-normal text-muted-foreground">{step.approvalNotes}</p>
+                          )}
+                        </td>
                         <td className="py-3 pr-4">
                           <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[step.status] ?? 'secondary'}>
                             {formatStepStatus(step.status)}
@@ -686,27 +767,30 @@ export default function SubProjectDetailClient({
                         <td className="py-3">
                           <div className="flex gap-1">
                             {step.status === 'PENDING' && (
-                              <>
-                                <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setStepModalOpen(true); }}>
-                                  Start
-                                </Button>
-                                <Button variant="ghost" size="sm" onClick={() => handleSkipStep(selectedWorkflowId, step.id)}>
-                                  Skip
-                                </Button>
-                              </>
+                              <Button variant="outline" size="sm" onClick={() => handleStartStep(selectedWorkflowId, step.id)}>
+                                Start
+                              </Button>
                             )}
                             {step.status === 'IN_PROGRESS' && (
-                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setStepModalOpen(true); }}>
+                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
                                 Complete
                               </Button>
                             )}
-                            {(step.status === 'COMPLETED' || step.status === 'SKIPPED') && (
-                              <span className="text-xs text-muted-foreground">Done</span>
-                            )}
-                            {step.status === 'FAILED' && (
-                              <Button variant="outline" size="sm" onClick={() => handleStartStep(selectedWorkflowId, step.id)}>
-                                Retry
+                            {step.status === 'COMPLETED' && (
+                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
+                                Review
                               </Button>
+                            )}
+                            {step.status === 'APPROVED' && (
+                              <span className="text-xs text-muted-foreground">Approved</span>
+                            )}
+                            {step.status === 'REJECTED' && (
+                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
+                                Restart
+                              </Button>
+                            )}
+                            {step.status === 'BLOCKED' && (
+                              <span className="text-xs text-muted-foreground">Blocked</span>
                             )}
                           </div>
                         </td>
@@ -850,17 +934,27 @@ export default function SubProjectDetailClient({
                       </div>
                     </div>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      {workflow.status === 'ACTIVE' && (
-                        <Button onClick={() => handlePauseWorkflow(workflow.id)} variant="ghost" size="sm">
-                          Pause
+                      {workflow.status === 'PLANNED' && (
+                        <Button onClick={() => handleStartWorkflow(workflow.id)} variant="ghost" size="sm">
+                          Start
                         </Button>
+                      )}
+                      {workflow.status === 'ACTIVE' && (
+                        <>
+                          <Button onClick={() => handleCompleteWorkflow(workflow.id)} variant="ghost" size="sm">
+                            Complete
+                          </Button>
+                          <Button onClick={() => handlePauseWorkflow(workflow.id)} variant="ghost" size="sm">
+                            Pause
+                          </Button>
+                        </>
                       )}
                       {workflow.status === 'PAUSED' && (
                         <Button onClick={() => handleResumeWorkflow(workflow.id)} variant="ghost" size="sm">
                           Resume
                         </Button>
                       )}
-                      {workflow.status !== 'CANCELLED' && workflow.status !== 'COMPLETED' && (
+                      {(workflow.status === 'PLANNED' || workflow.status === 'ACTIVE' || workflow.status === 'PAUSED') && (
                         <Button onClick={() => handleCancelWorkflow(workflow.id)} variant="ghost" size="sm" className="text-destructive hover:text-destructive">
                           Cancel
                         </Button>
@@ -1121,9 +1215,6 @@ export default function SubProjectDetailClient({
                 <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[currentStep.status] ?? 'secondary'}>
                   {formatStepStatus(currentStep.status)}
                 </Badge>
-                <Badge variant="outline">{STEP_TYPE_LABELS[currentStep.type]}</Badge>
-                {currentStep.requiresEvidence && <Badge variant="secondary">Requires Evidence</Badge>}
-                {currentStep.requiresApproval && <Badge variant="secondary">Requires Approval</Badge>}
               </div>
             </div>
 
@@ -1139,17 +1230,31 @@ export default function SubProjectDetailClient({
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="approval-notes">Approval Notes</Label>
+                  <Label htmlFor="approval-notes">Notes</Label>
                   <textarea
                     id="approval-notes"
                     rows={2}
                     className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     value={approvalNotes}
                     onChange={(e) => setApprovalNotes(e.target.value)}
-                    placeholder="Optional approval notes..."
+                    placeholder="Optional notes..."
                   />
                 </div>
               </>
+            )}
+
+            {currentStep.status === 'COMPLETED' && (
+              <div className="grid gap-2">
+                <Label htmlFor="approval-notes">Notes</Label>
+                <textarea
+                  id="approval-notes"
+                  rows={2}
+                  className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={approvalNotes}
+                  onChange={(e) => setApprovalNotes(e.target.value)}
+                  placeholder="Notes (required if rejecting)..."
+                />
+              </div>
             )}
 
             <div className="flex gap-2">
@@ -1163,9 +1268,23 @@ export default function SubProjectDetailClient({
                   Complete Step
                 </Button>
               )}
-              {(currentStep.status === 'PENDING' || currentStep.status === 'IN_PROGRESS') && (
-                <Button variant="outline" onClick={() => handleSkipStep(selectedWorkflowId, currentStep.id)} className="flex-1">
-                  Skip Step
+              {currentStep.status === 'COMPLETED' && (
+                <>
+                  <Button onClick={() => handleApproveStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                    Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => handleRejectStep(selectedWorkflowId, currentStep.id)}
+                    className="flex-1"
+                  >
+                    Reject
+                  </Button>
+                </>
+              )}
+              {currentStep.status === 'REJECTED' && (
+                <Button onClick={() => handleRestartStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                  Restart Step
                 </Button>
               )}
             </div>

@@ -25,7 +25,11 @@ async function getCurrentUserInfo(): Promise<{ userId: string; roles: string[] }
 
     const payload = Buffer.from(parts[1] ?? '', 'base64').toString('utf-8');
     const parsed = JSON.parse(payload);
-    const userId = parsed.sub || null;
+    // "internal_user_id" must be checked before "sub": Keycloak-issued tokens carry
+    // Keycloak's own internal id as "sub", which matches no row in identity-service's
+    // user_accounts (see RequestIdentity.creatorId on the backend) - "internal_user_id"
+    // is the claim identity-service mints for exactly this purpose.
+    const userId = parsed.internal_user_id || parsed.sub || null;
     // Handle both old format (role singular) and new format (roles plural, comma-separated)
     let roles: string[] = [];
     if (parsed.roles) {

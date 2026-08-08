@@ -3,6 +3,7 @@ package io.cerp.vendor.controller;
 import io.cerp.vendor.entity.Vendor;
 import io.cerp.vendor.service.VendorService;
 import io.cerp.vendor.security.TenantContext;
+import io.cerp.vendor.security.UserContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -133,21 +134,25 @@ public class VendorController {
     }
 
     /**
-     * Get the current vendor's profile based on the tenant ID from the request context. The tenantId is extracted by TenantRequestFilter from the X-Tenant-Id header.
+     * Get the current vendor's profile based on the user ID from the request context. The
+     * userId is extracted by TenantRequestFilter from the X-User-Id header (or the JWT's
+     * "internal_user_id" claim). Looking this up by tenantId instead would be wrong: tenant_id
+     * on Vendor is a shared value today (and slated to represent a physical region later, not
+     * an owner), so multiple vendors can - and do - share one tenant_id.
      */
     @GetMapping("/profile")
     public ResponseEntity<VendorProfileResponse> getVendorProfile() {
-        UUID tenantId = TenantContext.get().orElse(null);
-        if (tenantId == null) {
+        UUID userId = UserContext.get().orElse(null);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+        Vendor vendor = vendorService.findByUserId(userId).orElse(null);
 
         if (vendor == null) {
             // Return empty profile - vendor hasn't created a profile yet
             vendor = new Vendor();
-            vendor.setTenantId(tenantId);
+            vendor.setUserId(userId);
             return ResponseEntity.ok(toProfileResponse(vendor));
         }
         return ResponseEntity.ok(toProfileResponse(vendor));
@@ -156,17 +161,17 @@ public class VendorController {
     @PostMapping("/profile")
     public ResponseEntity<VendorProfileResponse> postVendorProfile() {
         // Same logic as GET /profile - return the current vendor's profile
-        UUID tenantId = TenantContext.get().orElse(null);
-        if (tenantId == null) {
+        UUID userId = UserContext.get().orElse(null);
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+        Vendor vendor = vendorService.findByUserId(userId).orElse(null);
 
         if (vendor == null) {
             // Return empty profile - vendor hasn't created a profile yet
             vendor = new Vendor();
-            vendor.setTenantId(tenantId);
+            vendor.setUserId(userId);
             return ResponseEntity.ok(toProfileResponse(vendor));
         }
         return ResponseEntity.ok(toProfileResponse(vendor));
@@ -178,18 +183,19 @@ public class VendorController {
     @PatchMapping("/profile")
     public ResponseEntity<VendorProfileResponse> updateVendorProfile(
             @RequestBody UpdateVendorProfileRequest request) {
-        UUID tenantId = TenantContext.get().orElse(null);
+        UUID userId = UserContext.get().orElse(null);
 
-        if (tenantId == null) {
+        if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Vendor vendor = vendorService.findByTenantId(tenantId).orElse(null);
+        Vendor vendor = vendorService.findByUserId(userId).orElse(null);
 
         if (vendor == null) {
             // Create new vendor profile
             vendor = new Vendor();
-            vendor.setTenantId(tenantId);
+            vendor.setUserId(userId);
+            vendor.setTenantId(TenantContext.get().orElse(null));
             vendor.setLegalName(request.legalName() != null ? request.legalName() : "New Vendor");
             vendor.setCategories(List.of());
         }

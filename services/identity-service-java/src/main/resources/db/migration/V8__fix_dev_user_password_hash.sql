@@ -8,7 +8,8 @@
 -- Replaces every row still carrying that broken hash with a freshly generated,
 -- verified BCrypt hash (rounds=12) for the same password: 'Admin123!@#'.
 -- john@cerp.dev / metal@cerp.dev are unaffected - they use a different, working hash
--- generated at runtime by SeedDataConfig for password 'secret'.
+-- for password 'secret' (seeded by V7 with a fixed id; SeedDataConfig only fills in
+-- their resource memberships/subscription now).
 
 UPDATE identity.user_accounts
 SET password_hash = '$2a$12$caYIiqtdkGDYSGP2Um7iB.lFCKQE52bZsf3tTwyV94J1kh.gnxoLm'

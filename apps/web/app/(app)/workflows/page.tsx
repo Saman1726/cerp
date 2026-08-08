@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cerp/core-web/components/ui/tabs';
 import { SagaPage } from '@cerp/core-web/workflow';
 import { TemplatesPage } from '@cerp/core-web/workflow';
+import { ConstructionMonitoringPage } from '@cerp/core-web/workflow';
 
 export default function WorkflowsPage() {
   return (
@@ -11,12 +12,16 @@ export default function WorkflowsPage() {
         <TabsList>
           <TabsTrigger value="sagas">Saga Monitoring</TabsTrigger>
           <TabsTrigger value="templates">Workflow Templates</TabsTrigger>
+          <TabsTrigger value="construction">Construction Monitoring</TabsTrigger>
         </TabsList>
         <TabsContent value="sagas">
           <SagaPage />
         </TabsContent>
         <TabsContent value="templates">
           <TemplatesPage />
+        </TabsContent>
+        <TabsContent value="construction">
+          <ConstructionMonitoringPage />
         </TabsContent>
       </Tabs>
     </div>

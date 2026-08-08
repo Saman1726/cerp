@@ -19,6 +19,8 @@ public interface VendorService {
 
         Optional<Vendor> findByTenantId(UUID tenantId);
 
+        Optional<Vendor> findByUserId(UUID userId);
+
         List<Vendor> findAll();
 
         List<Vendor> findByStatus(String status);

@@ -1,7 +1,6 @@
 'use client';
 
 import type { Project, ProjectUserRole } from '@cerp/shared-types';
-import { Card, CardContent } from '../components/ui/card';
 import { PageHeader } from '../shell/PageHeader';
 import { ProjectList } from './ProjectList';
 
@@ -32,21 +31,17 @@ export function ConstructionEngineeringPageBodyClient({
     <div>
       <PageHeader title="Project Management" description="Manage projects and subprojects. Each construction site can only be linked to one project." />
 
-      <Card className="mb-6">
-        <CardContent className="p-0">
-          <ProjectList
-            projects={projects}
-            constructionSites={constructionSites}
-            createProjectAction={createProjectAction}
-            createSubProjectAction={createSubProjectAction}
-            deleteProjectAction={deleteProjectAction}
-            deleteSubProjectAction={deleteSubProjectAction}
-            assignUsersAction={assignUsersAction}
-            removeUserAction={removeUserAction}
-            currentUserEmail={currentUserEmail}
-          />
-        </CardContent>
-      </Card>
+      <ProjectList
+        projects={projects}
+        constructionSites={constructionSites}
+        createProjectAction={createProjectAction}
+        createSubProjectAction={createSubProjectAction}
+        deleteProjectAction={deleteProjectAction}
+        deleteSubProjectAction={deleteSubProjectAction}
+        assignUsersAction={assignUsersAction}
+        removeUserAction={removeUserAction}
+        currentUserEmail={currentUserEmail}
+      />
     </div>
   );
 }

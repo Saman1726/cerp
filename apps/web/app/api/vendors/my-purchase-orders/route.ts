@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { extractSessionUser } from '../../workflows/utils';
 
 const SESSION_COOKIE = 'cerp_session';
 const WORKFLOW_SERVICE_URL = (process.env.NEXT_PUBLIC_WORKFLOW_SERVICE_URL || process.env.WORKFLOW_SERVICE_URL || 'http://workflow-service-java:8089').replace(/\/$/, '');
@@ -46,6 +47,17 @@ export async function GET(request: NextRequest) {
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  // vendor-service-java resolves "my vendor profile" by X-User-Id (tenant_id is a shared
+  // value across vendors, not an owner - see TenantRequestFilter/VendorController), and GET
+  // /vendors/profile returns 401 outright when neither is set. The Keycloak access token
+  // carries no tenant claim, so tenantId still needs the same default-tenant fallback used
+  // by the other backend proxy routes.
+  const { userId, tenantId } = await extractSessionUser();
+  headers.set('X-Tenant-Id', tenantId);
+  if (userId) {
+    headers.set('X-User-Id', userId);
   }
 
   try {
