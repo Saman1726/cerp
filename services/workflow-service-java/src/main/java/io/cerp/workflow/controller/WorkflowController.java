@@ -267,6 +267,17 @@ public class WorkflowController {
         return ResponseEntity.ok(workflowService.unblockWorkflow(UUID.fromString(id)));
     }
 
+    /**
+     * Archive every Workflow tied to a Project - called by project-service when a Project is
+     * deleted. Hides them from default listings; WorkflowSteps, evidence, and approval history
+     * are left untouched for audit purposes.
+     */
+    @PostMapping("/by-project/{projectId}/archive")
+    public ResponseEntity<Void> archiveByProject(@PathVariable UUID projectId) {
+        workflowService.archiveByProjectId(projectId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ── Step Operations ──
 
     @PostMapping("/{workflowId}/steps/{stepId}/start")

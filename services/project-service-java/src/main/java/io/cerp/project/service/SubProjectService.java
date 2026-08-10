@@ -47,7 +47,7 @@ public class SubProjectService {
      */
     public List<SubProjectResponse> getSubProjectsByProject(UUID projectId) {
         log.debug("Fetching all SubProjects for Project: {}", projectId);
-        return subProjectRepository.findByProjectIdOrderByCodeAsc(projectId)
+        return subProjectRepository.findByProjectIdAndDeletedFalseOrderByCodeAsc(projectId)
             .stream()
             .map(SubProjectResponse::fromEntity)
             .toList();
@@ -101,7 +101,7 @@ public class SubProjectService {
     public List<SubProjectResponse> getSubProjectsByStatus(UUID projectId, SubProject.SubProjectStatus status) {
         log.debug("Fetching SubProjects by status: {} for Project: {}", status, projectId);
         // First get all for the project, then filter by status
-        return subProjectRepository.findByProjectIdOrderByCodeAsc(projectId)
+        return subProjectRepository.findByProjectIdAndDeletedFalseOrderByCodeAsc(projectId)
             .stream()
             .filter(sp -> sp.getStatus() == status)
             .map(SubProjectResponse::fromEntity)
@@ -297,33 +297,34 @@ public class SubProjectService {
     }
 
     /**
-     * Delete a SubProject and all its associated workflows.
+     * Archive a SubProject (soft delete). Its Workflows are untouched by this method - callers
+     * that need the Workflow side archived too (e.g. the project-deletion cascade) go through
+     * ProjectService, which also calls out to workflow-service.
      */
     @Transactional
     public void deleteSubProject(UUID subProjectId, String userId) {
-        log.debug("Deleting SubProject: {}", subProjectId);
+        log.debug("Archiving SubProject: {}", subProjectId);
 
         SubProject subProject = subProjectRepository.findById(subProjectId)
             .orElseThrow(() -> new IllegalArgumentException("SubProject not found with id: " + subProjectId));
 
-        // Delete floor IDs and part IDs (element collections are cascade deleted)
-        subProject.getFloorIds().clear();
-        subProject.getPartIds().clear();
-
+        subProject.setDeleted(true);
+        subProject.setStatus(SubProject.SubProjectStatus.CANCELLED);
         subProject.setUpdatedBy(userId);
 
-        subProjectRepository.delete(subProject);
-        log.info("Deleted SubProject: {}", subProject.getCode());
+        subProjectRepository.save(subProject);
+        log.info("Archived SubProject: {}", subProject.getCode());
     }
 
     /**
-     * Delete all SubProjects for a given Project (cascade).
+     * Archive (soft delete) all SubProjects for a given Project - used when the Project itself is
+     * deleted.
      */
     @Transactional
-    public void deleteSubProjectsByProject(UUID projectId) {
-        log.debug("Deleting all SubProjects for Project: {}", projectId);
-        subProjectRepository.deleteByProjectId(projectId);
-        log.info("Deleted all SubProjects for Project: {}", projectId);
+    public void archiveSubProjectsByProject(UUID projectId) {
+        log.debug("Archiving all SubProjects for Project: {}", projectId);
+        int count = subProjectRepository.archiveByProjectId(projectId, SubProject.SubProjectStatus.CANCELLED);
+        log.info("Archived {} SubProject(s) for Project: {}", count, projectId);
     }
 
     /**

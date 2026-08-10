@@ -2,8 +2,8 @@ import { UserPlus } from 'lucide-react';
 import { ComingSoon } from '@cerp/core-web/components';
 import { PageHeader } from '@cerp/core-web/shell';
 
-export default function InviteAcceptPage({ params }: { params: { code: string } }) {
-  const { code } = params;
+export default async function InviteAcceptPage({ params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params;
 
   return (
     <div>

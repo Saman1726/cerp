@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.project.domain.Project;
+import io.cerp.project.dto.AssignedUserResponse;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
@@ -34,13 +35,22 @@ public class ProjectService {
     private final ProjectRepository repository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient;
+    private final io.cerp.project.client.IdentityUserClient identityUserClient;
+    private final io.cerp.project.client.WorkflowServiceClient workflowServiceClient;
+    private final SubProjectService subProjectService;
 
     public ProjectService(ProjectRepository repository,
             KafkaTemplate<String, Object> kafkaTemplate,
-            io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient) {
+            io.cerp.project.client.IdentitySubscriptionClient identitySubscriptionClient,
+            io.cerp.project.client.IdentityUserClient identityUserClient,
+            io.cerp.project.client.WorkflowServiceClient workflowServiceClient,
+            SubProjectService subProjectService) {
         this.repository = repository;
         this.kafkaTemplate = kafkaTemplate;
         this.identitySubscriptionClient = identitySubscriptionClient;
+        this.identityUserClient = identityUserClient;
+        this.workflowServiceClient = workflowServiceClient;
+        this.subProjectService = subProjectService;
     }
 
     @Transactional(readOnly = true)
@@ -93,7 +103,7 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectResponse create(String tenantId, UUID orgId, ProjectCreateRequest request, String userId) {
+    public ProjectResponse create(String tenantId, UUID orgId, ProjectCreateRequest request, String userId, String callerToken) {
         if (repository.existsByTenantIdAndCodeNotDeleted(tenantId, request.code())) {
             throw new ProjectCodeAlreadyExistsException(tenantId, request.code());
         }
@@ -161,6 +171,11 @@ public class ProjectService {
 
         Project saved = saveGuardingConstructionSiteUniqueness(project, request.constructionSiteId());
         log.info("Created project {} for tenant: {}, org: {}", saved.getId(), tenantId, orgId);
+
+        // Mirror the owner's OWNER entry into identity-service's resource_members so
+        // write-permission checks elsewhere (e.g. workflow-service's saga creation) see it too -
+        // assignedUserRoles alone is project-service-local and nothing else reads it.
+        identityUserClient.grantProjectMembership(callerToken, saved.getId(), primaryOwnerId, "owner");
 
         // Publish Kafka event
         publishEvent(TOPIC_CREATED, saved.getCode(), saved);
@@ -230,14 +245,28 @@ public class ProjectService {
      * Assign users to a project with specific roles. Each assignment includes a user ID and a role (OWNER, MANAGER, SUPERVISOR, or VIEWER).
      */
     @Transactional
-    public ProjectResponse assignUsersWithRoles(String tenantId, UUID projectId, List<ProjectUserAssignmentRequest.UserAssignment> assignments, String userId) {
+    public ProjectResponse assignUsersWithRoles(String tenantId, UUID projectId, List<ProjectUserAssignmentRequest.UserAssignment> assignments, String userId,
+            String callerToken) {
         Project project = repository.findById(projectId)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
 
+        // Resolve each assignment's userId (an email, per the modal - or a UUID, if re-submitted
+        // from already-resolved display data) to a real identity-service UUID up front. This
+        // keeps assignedUserIds consistently UUID-keyed (matching the owner's format instead of
+        // mixing in raw emails) and gives the permission grant below a real UUID to target.
+        record Resolved(UUID userId, String role) {
+        }
+        List<Resolved> resolvedAssignments = assignments.stream()
+            .map(a -> new Resolved(
+                identityUserClient.resolveUserId(a.userId())
+                    .orElseThrow(() -> new IllegalArgumentException("No registered user found for: " + a.userId())),
+                a.role()))
+            .toList();
+
         String primaryOwnerId = project.getPrimaryOwnerId() != null ? project.getPrimaryOwnerId().toString() : null;
-        for (ProjectUserAssignmentRequest.UserAssignment a : assignments) {
-            if (a.userId().equals(primaryOwnerId) && !"OWNER".equals(a.role())) {
+        for (Resolved r : resolvedAssignments) {
+            if (r.userId().toString().equals(primaryOwnerId) && !"OWNER".equals(r.role())) {
                 throw new IllegalArgumentException("Cannot change the primary Owner's role - it is permanent, set at project creation.");
             }
         }
@@ -248,7 +277,7 @@ public class ProjectService {
         if (currentIds != null) {
             java.util.Collections.addAll(combined, currentIds);
         }
-        assignments.forEach(a -> combined.add(a.userId()));
+        resolvedAssignments.forEach(r -> combined.add(r.userId().toString()));
 
         // Merge existing roles with new ones
         java.util.Map<String, String> rolesToUpdate = new java.util.HashMap<>();
@@ -256,9 +285,7 @@ public class ProjectService {
         if (currentRoles != null) {
             rolesToUpdate.putAll(currentRoles);
         }
-        for (ProjectUserAssignmentRequest.UserAssignment a : assignments) {
-            rolesToUpdate.put(a.userId(), a.role());
-        }
+        resolvedAssignments.forEach(r -> rolesToUpdate.put(r.userId().toString(), r.role()));
 
         enforceMemberCap(project, combined, rolesToUpdate);
 
@@ -269,17 +296,39 @@ public class ProjectService {
         Project saved = repository.save(project);
         log.info("Assigned users with roles {} to project {}", assignments, projectId);
 
+        // Mirror into identity-service's resource_members so write-permission checks elsewhere
+        // (e.g. workflow-service's saga creation) see this assignment too.
+        resolvedAssignments.forEach(r -> identityUserClient.grantProjectMembership(callerToken, projectId, r.userId(), toResourceRole(r.role())));
+
         return ProjectResponse.from(saved);
+    }
+
+    /**
+     * Maps project-service's role vocabulary (OWNER/MANAGER/SUPERVISOR/VIEWER) onto identity-service's resource-membership role names (owner/manager/member/viewer).
+     * SUPERVISOR maps to "member" (read+write, no delete/assign) as this app's day-to-day execution role.
+     */
+    private static String toResourceRole(String projectRole) {
+        return switch (projectRole) {
+            case "OWNER" -> "owner";
+            case "MANAGER" -> "manager";
+            case "SUPERVISOR" -> "member";
+            default -> "viewer";
+        };
     }
 
     /**
      * Assign users to a project (legacy method - assigns users without roles for backward compatibility).
      */
     @Transactional
-    public ProjectResponse assignUsers(String tenantId, UUID projectId, List<String> userIds, String userId) {
+    public ProjectResponse assignUsers(String tenantId, UUID projectId, List<String> userIds, String userId, String callerToken) {
         Project project = repository.findById(projectId)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        List<UUID> resolvedIds = userIds.stream()
+            .map(id -> identityUserClient.resolveUserId(id)
+                .orElseThrow(() -> new IllegalArgumentException("No registered user found for: " + id)))
+            .toList();
 
         // Merge existing assigned user IDs with new ones
         String[] currentIds = project.getAssignedUserIds();
@@ -287,7 +336,7 @@ public class ProjectService {
         if (currentIds != null) {
             java.util.Collections.addAll(combined, currentIds);
         }
-        combined.addAll(userIds);
+        resolvedIds.forEach(id -> combined.add(id.toString()));
 
         enforceMemberCap(project, combined, project.getAssignedUserRoles());
 
@@ -296,6 +345,10 @@ public class ProjectService {
 
         Project saved = repository.save(project);
         log.info("Assigned users {} to project {}", userIds, projectId);
+
+        // Legacy endpoint has no role concept - "viewer" matches its own javadoc ("assigns users
+        // with VIEWER role by default" in ProjectController).
+        resolvedIds.forEach(id -> identityUserClient.grantProjectMembership(callerToken, projectId, id, "viewer"));
 
         return ProjectResponse.from(saved);
     }
@@ -338,7 +391,7 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectResponse removeUser(String tenantId, UUID projectId, String userIdToRemove) {
+    public ProjectResponse removeUser(String tenantId, UUID projectId, String userIdToRemove, String callerToken) {
         Project project = repository.findById(projectId)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
@@ -360,17 +413,66 @@ public class ProjectService {
         Project saved = repository.save(project);
         log.info("Removed user {} from project {}", userIdToRemove, projectId);
 
+        // Resolve rather than assume userIdToRemove is already a UUID: projects assigned before
+        // this fix may still hold a raw email for this entry.
+        identityUserClient.resolveUserId(userIdToRemove)
+            .ifPresent(resolvedId -> identityUserClient.revokeProjectMembership(callerToken, projectId, resolvedId));
+
         return ProjectResponse.from(saved);
     }
 
+    /**
+     * Assigned users enriched with their emails, for display (e.g. the Assign Users popup) - assignedUserIds itself is UUID-keyed going forward, which isn't
+     * human-readable on its own.
+     */
+    @Transactional(readOnly = true)
+    public List<AssignedUserResponse> getAssignedUsersWithEmails(String tenantId, UUID projectId, String callerToken) {
+        Project project = repository.findById(projectId)
+            .filter(p -> p.getTenantId().equals(tenantId))
+            .orElseThrow(() -> new ProjectNotFoundException(tenantId, projectId));
+
+        String[] assignedIds = project.getAssignedUserIds();
+        if (assignedIds == null || assignedIds.length == 0) {
+            return List.of();
+        }
+        java.util.Map<String, String> roles = project.getAssignedUserRoles() != null ? project.getAssignedUserRoles() : java.util.Map.of();
+        return java.util.Arrays.stream(assignedIds)
+            .map(id -> new AssignedUserResponse(id, resolveDisplayEmail(callerToken, id), roles.getOrDefault(id, "VIEWER")))
+            .toList();
+    }
+
+    /**
+     * Resolves an assignedUserIds entry to an email for display. Entries are UUIDs going forward, but projects assigned before this fix may still hold a raw email
+     * (assign wasn't resolving through identity-service yet) - those already look like the display value, so no lookup is needed for them.
+     */
+    private String resolveDisplayEmail(String callerToken, String assignedId) {
+        try {
+            UUID uuid = UUID.fromString(assignedId);
+            return identityUserClient.resolveEmail(callerToken, uuid).orElse(assignedId);
+        } catch (IllegalArgumentException notAUuid) {
+            return assignedId;
+        }
+    }
+
+    /**
+     * Delete a project. Cascades to archive (soft-delete, not purge - see SubProject.deleted's
+     * javadoc) everything hanging off it: its SubProjects locally, and its Workflows and
+     * Bidding/Procurement sagas via workflow-service. The cascade runs BEFORE the project itself
+     * is marked deleted, so if workflow-service is unreachable the whole delete fails with the
+     * project (and everything under it) left fully intact and the operation safely retryable,
+     * rather than leaving an inconsistent half-deleted project with live, visible child data.
+     */
     @Transactional
-    public void delete(String tenantId, UUID id) {
+    public void delete(String tenantId, UUID id, String callerToken) {
         Project project = repository.findById(id)
             .filter(p -> p.getTenantId().equals(tenantId))
             .orElseThrow(() -> new ProjectNotFoundException(tenantId, id));
 
         String code = project.getCode();
         String constructionSiteId = project.getConstructionSiteId();
+
+        workflowServiceClient.archiveByProjectId(callerToken, id);
+        subProjectService.archiveSubProjectsByProject(id);
 
         // Soft delete: mark as deleted and release the construction site link
         project.setDeleted(true);

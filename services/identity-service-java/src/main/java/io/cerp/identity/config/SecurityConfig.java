@@ -36,7 +36,9 @@ public class SecurityConfig {
         // /users/profile is intentionally NOT listed here - it falls through to
         // defaultFilterChain (Order 3), which requires a validated Keycloak JWT.
         http
-            .securityMatcher("/tenants", "/users", "/memberships", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription")
+            .securityMatcher("/tenants", "/users", "/memberships", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription",
+                "/api/v1/users/*/can-write-project", "/api/v1/users/*/can-read-project", "/api/v1/users/*/can-delete-project",
+                "/api/v1/users/*/accessible-projects", "/api/v1/users/*/is-tenant-admin-or-manager")
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
@@ -65,6 +67,17 @@ public class SecurityConfig {
                 // called by project-service (and, later, workflow-service) to resolve a
                 // user's plan limits for quota enforcement - internal service-to-service call
                 .requestMatchers(HttpMethod.GET, "/api/v1/users/*/subscription").permitAll()
+                // Read-only permission-check endpoints called by workflow-service (SagaController,
+                // via IdentityPermissionClient) to gate saga creation, and by project-service's
+                // saga-listing access control - internal service-to-service calls with no end-user
+                // token to forward. These were previously uncovered by any securityMatcher here,
+                // so they fell through to defaultFilterChain's anyRequest().authenticated() and
+                // always 401'd - IdentityPermissionClient's catch-all then silently turned that into
+                // "deny" for the specific-project checks (canWriteOnProject et al), so a real
+                // resource membership could never actually grant write access.
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/*/can-write-project", "/api/v1/users/*/can-read-project",
+                    "/api/v1/users/*/can-delete-project", "/api/v1/users/*/accessible-projects",
+                    "/api/v1/users/*/is-tenant-admin-or-manager").permitAll()
                 // everything else on this chain requires auth
                 .anyRequest().authenticated())
             // Validate JWTs issued by Keycloak
@@ -81,6 +94,13 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                // Tomcat's internal error-page redispatch lands here as a fresh request to
+                // "/error" (it doesn't match publicApiFilterChain's securityMatcher, so it falls
+                // through to this chain) - without this, any @ResponseStatus exception thrown
+                // from an otherwise-permitAll GET (e.g. UserController's 404 for "no such email")
+                // hits anyRequest().authenticated() on the redispatch and comes back as a bare 401
+                // instead of the intended status, masking the real error entirely.
+                .requestMatchers("/error").permitAll()
                 // actuator health/info public for dev/k8s probes
                 .requestMatchers("/actuator/**").permitAll()
                 // OpenAPI/Swagger docs

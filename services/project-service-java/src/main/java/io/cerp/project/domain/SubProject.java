@@ -194,6 +194,14 @@ public class SubProject {
     @Column(name = "sync_status", nullable = false, length = 32)
     private SyncStatus syncStatus;
 
+    /**
+     * Soft-delete flag, mirroring Project.deleted. Set when this SubProject is deleted directly,
+     * or archived as part of its parent Project being deleted - the row (and its workflow/floor/
+     * part history) is kept, just hidden from normal listings.
+     */
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean deleted = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -530,6 +538,14 @@ public class SubProject {
 
     public void setSyncStatus(SyncStatus syncStatus) {
         this.syncStatus = syncStatus;
+    }
+
+    public Boolean getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 
     public LocalDateTime getCreatedAt() {

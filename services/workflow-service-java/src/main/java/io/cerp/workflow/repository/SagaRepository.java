@@ -68,7 +68,7 @@ public interface SagaRepository extends JpaRepository<SagaEntity, String> {
         /**
          * Find sagas by project_id.
          */
-        List<SagaEntity> findByProjectId(String projectId);
+        List<SagaEntity> findByProjectIdAndDeletedFalse(String projectId);
 
         /**
          * Find saga by its ID (saga identifier).
@@ -95,4 +95,21 @@ public interface SagaRepository extends JpaRepository<SagaEntity, String> {
         int updateStatusOnlyById(@Param("sagaId") String sagaId,
                                  @Param("status") String status,
                                  @Param("updatedAt") LocalDateTime updatedAt);
+
+        /**
+         * Archive (soft-delete) every saga tied to a Project - called when the Project itself is
+         * deleted. Does not touch bidding.bid_wallets or bidding.bid_transactions.
+         *
+         * @param projectId the project ID
+         * @return number of rows affected
+         */
+        @Modifying
+        @Transactional
+        @Query("UPDATE SagaEntity s SET s.deleted = true WHERE s.projectId = :projectId")
+        int archiveByProjectId(@Param("projectId") String projectId);
+
+        /**
+         * Count non-archived sagas tied to a Project.
+         */
+        long countByProjectIdAndDeletedFalse(String projectId);
 }

@@ -5,5 +5,6 @@ export * from './notification';
 export * from './organisation';
 export * from './procurement';
 export * from './properties';
+export * from './site-capture';
 export * from './vendor';
 export * from './workflow';

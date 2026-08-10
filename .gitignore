@@ -10,6 +10,13 @@ out/
 .turbo/
 .deploy/
 
+# next-pwa generates these into public/ on every `next build --webpack`;
+# filenames are content-hashed, so they're regenerated output, not source.
+apps/web/public/sw.js
+apps/web/public/workbox-*.js
+apps/web/public/swe-worker-*.js
+apps/web/public/fallback-*.js
+
 # Env files - never commit real values
 .env
 .env.*

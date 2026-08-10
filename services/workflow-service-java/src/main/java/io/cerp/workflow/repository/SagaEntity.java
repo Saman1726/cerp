@@ -50,6 +50,9 @@ public class SagaEntity {
     @Column(name = "project_id")
     private String projectId;
 
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean deleted = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -180,5 +183,13 @@ public class SagaEntity {
 
     public void setProjectId(String projectId) {
         this.projectId = projectId;
+    }
+
+    public Boolean getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 }

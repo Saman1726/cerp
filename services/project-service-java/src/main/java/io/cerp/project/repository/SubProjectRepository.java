@@ -5,15 +5,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.project.domain.SubProject;
 
 /**
  * Repository for SubProject entity operations.
- * 
+ *
  * <p>
  * Provides CRUD and query operations for SubProjects (buildings) within Projects. All queries are scoped by tenant_id for multi-tenant isolation.
  */
@@ -21,14 +23,14 @@ import io.cerp.project.domain.SubProject;
 public interface SubProjectRepository extends JpaRepository<SubProject, UUID> {
 
     /**
-     * Find all SubProjects for a specific Project.
+     * Find all non-deleted SubProjects for a specific Project.
      */
-    List<SubProject> findByProjectIdOrderByCodeAsc(UUID projectId);
+    List<SubProject> findByProjectIdAndDeletedFalseOrderByCodeAsc(UUID projectId);
 
     /**
-     * Find all active (non-completed, non-cancelled) SubProjects for a Project.
+     * Find all active (non-completed, non-cancelled, non-deleted) SubProjects for a Project.
      */
-    @Query("SELECT s FROM SubProject s WHERE s.projectId = :projectId AND s.status NOT IN ('COMPLETED', 'CANCELLED') ORDER BY s.code ASC")
+    @Query("SELECT s FROM SubProject s WHERE s.projectId = :projectId AND s.deleted = false AND s.status NOT IN ('COMPLETED', 'CANCELLED') ORDER BY s.code ASC")
     List<SubProject> findActiveByProjectId(@Param("projectId") UUID projectId);
 
     /**
@@ -86,7 +88,14 @@ public interface SubProjectRepository extends JpaRepository<SubProject, UUID> {
     boolean existsByBuildingId(UUID buildingId);
 
     /**
-     * Delete all SubProjects for a given Project (cascade).
+     * Archive (soft-delete) all SubProjects for a given Project - used when the Project itself is
+     * deleted. A bulk update, not a load-each-then-save loop, so it stays cheap regardless of how
+     * many SubProjects the Project has; the tradeoff (per Spring Data JPA bulk updates) is that
+     * updatedAt/@PreUpdate doesn't fire - acceptable here since this replaces what used to be an
+     * unconditional hard delete via deleteByProjectId, which had the same limitation.
      */
-    void deleteByProjectId(UUID projectId);
+    @Modifying
+    @Transactional
+    @Query("UPDATE SubProject s SET s.deleted = true, s.status = :status WHERE s.projectId = :projectId")
+    int archiveByProjectId(@Param("projectId") UUID projectId, @Param("status") SubProject.SubProjectStatus status);
 }

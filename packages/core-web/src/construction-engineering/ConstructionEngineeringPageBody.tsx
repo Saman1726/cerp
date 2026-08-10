@@ -1,6 +1,6 @@
 'use client';
 
-import type { Project, ProjectUserRole } from '@cerp/shared-types';
+import type { Project, ProjectUserRole, ProjectAssignedUser } from '@cerp/shared-types';
 import { PageHeader } from '../shell/PageHeader';
 import { ProjectList } from './ProjectList';
 
@@ -14,6 +14,7 @@ export interface ConstructionEngineeringPageBodyClientProps {
   currentUserEmail?: string;
   assignUsersAction?: (projectId: string, assignments: Array<{ userId: string; role: ProjectUserRole }>) => Promise<{ error?: string }>;
   removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
+  getAssignedUsersAction?: (projectId: string) => Promise<ProjectAssignedUser[]>;
 }
 
 export function ConstructionEngineeringPageBodyClient({
@@ -26,6 +27,7 @@ export function ConstructionEngineeringPageBodyClient({
   currentUserEmail,
   assignUsersAction,
   removeUserAction,
+  getAssignedUsersAction,
 }: ConstructionEngineeringPageBodyClientProps) {
   return (
     <div>
@@ -40,6 +42,7 @@ export function ConstructionEngineeringPageBodyClient({
         deleteSubProjectAction={deleteSubProjectAction}
         assignUsersAction={assignUsersAction}
         removeUserAction={removeUserAction}
+        getAssignedUsersAction={getAssignedUsersAction}
         currentUserEmail={currentUserEmail}
       />
     </div>

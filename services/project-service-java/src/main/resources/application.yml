@@ -59,6 +59,8 @@ spring:
 cerp:
   identity-service:
     url: ${IDENTITY_SERVICE_URL:http://localhost:8090}
+  workflow-service:
+    url: ${WORKFLOW_SERVICE_URL:http://localhost:8089}
 
 management:
   endpoints:

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.workflow.domain.Workflow;
 
@@ -17,18 +18,18 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
 
         List<Workflow> findByTenantId(String tenantId);
 
-        List<Workflow> findByTenantIdAndProjectId(String tenantId, UUID projectId);
+        List<Workflow> findByTenantIdAndProjectIdAndDeletedFalse(String tenantId, UUID projectId);
 
-        List<Workflow> findByTenantIdAndProjectIdAndSubprojectId(String tenantId, UUID projectId, UUID subprojectId);
+        List<Workflow> findByTenantIdAndProjectIdAndSubprojectIdAndDeletedFalse(String tenantId, UUID projectId, UUID subprojectId);
 
-        List<Workflow> findByTenantIdAndSubprojectId(String tenantId, UUID subprojectId);
+        List<Workflow> findByTenantIdAndSubprojectIdAndDeletedFalse(String tenantId, UUID subprojectId);
 
         List<Workflow> findByTenantIdAndStatus(String tenantId, Workflow.WorkflowStatus status);
 
         List<Workflow> findByTenantIdAndProjectIdAndSubprojectIdAndStatus(String tenantId, UUID projectId,
                         UUID subprojectId, Workflow.WorkflowStatus status);
 
-        @Query("SELECT DISTINCT w FROM Workflow w LEFT JOIN FETCH w.steps WHERE w.tenantId = :tenantId ORDER BY w.code")
+        @Query("SELECT DISTINCT w FROM Workflow w LEFT JOIN FETCH w.steps WHERE w.tenantId = :tenantId AND w.deleted = false ORDER BY w.code")
         List<Workflow> findByTenantIdWithSteps(@Param("tenantId") String tenantId);
 
         List<Workflow> findByTenantIdAndStatusAndProgressPercentLessThan(String tenantId,
@@ -79,6 +80,16 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
         /**
          * Find all workflows for a subproject regardless of tenant. Used as a fallback when TenantContext is empty (e.g., development, migration).
          */
-        @Query("SELECT w FROM Workflow w WHERE w.subprojectId = :subprojectId")
+        @Query("SELECT w FROM Workflow w WHERE w.subprojectId = :subprojectId AND w.deleted = false")
         List<Workflow> findBySubprojectIdOnly(@Param("subprojectId") UUID subprojectId);
+
+        /**
+         * Archive every Workflow tied to a Project - called when the Project itself is deleted.
+         * Does not touch WorkflowSteps, evidence, or approval history; only hides the Workflow
+         * rows from default listings.
+         */
+        @Modifying
+        @Transactional
+        @Query("UPDATE Workflow w SET w.deleted = true WHERE w.projectId = :projectId")
+        int archiveByProjectId(@Param("projectId") UUID projectId);
 }

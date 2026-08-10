@@ -742,6 +742,27 @@ public class SagaController {
         }
     }
 
+    /**
+     * Archive every Bidding/Procurement saga (or any other saga type) tied to a Project - called
+     * by project-service when a Project is deleted. Does not touch bidding.bid_wallets or
+     * bidding.bid_transactions, which are per-vendor financial ledgers shared across every project
+     * a vendor has ever bid on, not project-scoped.
+     */
+    @PostMapping("/by-project/{projectId}/archive")
+    public ResponseEntity<Void> archiveByProject(@PathVariable String projectId) {
+        orchestrator.archiveByProjectId(projectId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Count non-archived sagas tied to a Project - used by the frontend to preview what a Project
+     * deletion will archive, before the user confirms.
+     */
+    @GetMapping("/count-by-project/{projectId}")
+    public ResponseEntity<Long> countByProject(@PathVariable String projectId) {
+        return ResponseEntity.ok(orchestrator.countByProjectId(projectId));
+    }
+
     // ── DTOs ──
 
     /**

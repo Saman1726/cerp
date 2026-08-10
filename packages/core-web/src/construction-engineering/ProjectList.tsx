@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   Project,
   ConstructionSite,
   ProjectUserRole,
+  ProjectAssignedUser,
   SubProject,
   SubProjectFloor,
   SubProjectBuildingPart,
@@ -33,6 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu';
+import { apiClient } from '../lib/api-client';
 import {
   Blocks,
   Building2,
@@ -152,6 +154,8 @@ export interface ProjectListProps {
   /** Assign users with roles: [{ userId, role }] */
   assignUsersAction?: (projectId: string, assignments: Array<{ userId: string; role: ProjectUserRole }>) => Promise<{ error?: string }>;
   removeUserAction?: (projectId: string, userId: string) => Promise<{ error?: string }>;
+  /** Resolves assignedUserIds (UUID-keyed) to human-readable emails for the Assign Users popup. */
+  getAssignedUsersAction?: (projectId: string) => Promise<ProjectAssignedUser[]>;
   currentUserEmail?: string;
 }
 
@@ -305,10 +309,13 @@ export function ProjectList({
   deleteSubProjectAction,
   assignUsersAction,
   removeUserAction,
+  getAssignedUsersAction,
 }: ProjectListProps) {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createSubProjectOpen, setCreateSubProjectOpen] = useState<string | null>(null);
   const [assignUsersOpen, setAssignUsersOpen] = useState<string | null>(null);
+  const [assignedUsersDetail, setAssignedUsersDetail] = useState<ProjectAssignedUser[]>([]);
+  const [loadingAssignedUsers, setLoadingAssignedUsers] = useState(false);
   const [selectedConSiteId, setSelectedConSiteId] = useState<string>('');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string>('');
   const [subProjectProjectId, setSubProjectProjectId] = useState<string>('');
@@ -319,6 +326,15 @@ export function ProjectList({
   const [detail, setDetail] = useState<DetailState | null>(null);
   const [editSubProjectOpen, setEditSubProjectOpen] = useState<EditSubProjectState | null>(null);
   const [savingSubProject, setSavingSubProject] = useState(false);
+
+  const [deleteImpact, setDeleteImpact] = useState<{
+    projectId: string;
+    projectName: string;
+    subProjectCount: number;
+    workflowCount: number;
+    sagaCount: number;
+    loading: boolean;
+  } | null>(null);
 
   const [workflowsBySubProject, setWorkflowsBySubProject] = useState<Record<string, Workflow[]>>({});
   const loadedOrLoadingWorkflows = useRef<Set<string>>(new Set());
@@ -351,9 +367,64 @@ export function ProjectList({
     return (project?.assignedUserRoles as Record<string, ProjectUserRole>) || {};
   };
 
-  const handleDeleteProject = async (projectId: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) return;
-    await deleteProjectAction(projectId);
+  // assignedUserIds is UUID-keyed and not human-readable on its own - resolve to emails whenever
+  // the Assign Users popup opens for a project.
+  useEffect(() => {
+    if (!assignUsersOpen || !getAssignedUsersAction) {
+      return;
+    }
+    let cancelled = false;
+    const loadAssignedUsers = async () => {
+      setLoadingAssignedUsers(true);
+      try {
+        const users = await getAssignedUsersAction(assignUsersOpen);
+        if (!cancelled) setAssignedUsersDetail(users);
+      } finally {
+        if (!cancelled) setLoadingAssignedUsers(false);
+      }
+    };
+    loadAssignedUsers();
+    return () => {
+      cancelled = true;
+    };
+  }, [assignUsersOpen, getAssignedUsersAction]);
+
+  // Falls back to the raw stored ID while emails are loading, or if none was resolved for it
+  // (e.g. getAssignedUsersAction isn't wired up, or the lookup failed for that one entry).
+  const getDisplayEmail = (userId: string) => {
+    const resolved = assignedUsersDetail.find((u) => u.userId === userId);
+    return resolved?.email ?? userId;
+  };
+
+  const handleDeleteProject = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    setDeleteImpact({
+      projectId,
+      projectName: project?.name ?? 'this project',
+      subProjectCount: project?.subProjects?.length ?? 0,
+      workflowCount: 0,
+      sagaCount: 0,
+      loading: true,
+    });
+    Promise.all([
+      apiClient.get<unknown[]>(`/api/workflows?projectId=${projectId}`).catch(() => []),
+      apiClient.get<number>(`/api/sagas/count-by-project/${projectId}`).catch(() => 0),
+    ]).then(([workflows, sagaCount]) => {
+      // Guard against a slower first request resolving after the user closed this
+      // modal and opened it again for a different project - only apply the result
+      // if it still belongs to the project currently being previewed.
+      setDeleteImpact((prev) =>
+        prev && prev.projectId === projectId
+          ? { ...prev, workflowCount: workflows.length, sagaCount, loading: false }
+          : prev,
+      );
+    });
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteImpact) return;
+    await deleteProjectAction(deleteImpact.projectId);
+    setDeleteImpact(null);
     window.location.reload();
   };
 
@@ -777,6 +848,7 @@ export function ProjectList({
             setAssignUsersOpen(null);
             setSelectedUserIds([]);
             setUserRoles({});
+            setAssignedUsersDetail([]);
           }}
           title={`Assign users to ${projects.find(p => p.id === assignUsersOpen)?.name ?? 'project'}`}
         >
@@ -806,7 +878,7 @@ export function ProjectList({
                     return (
                       <div key={userId} className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{userId}</Badge>
+                          <Badge variant="secondary">{loadingAssignedUsers ? '…' : getDisplayEmail(userId)}</Badge>
                           <Badge variant={selectedRole === 'OWNER' ? 'destructive' : selectedRole === 'MANAGER' ? 'default' : selectedRole === 'SUPERVISOR' ? 'outline' : 'secondary'}>{selectedRole}</Badge>
                         </div>
                         <div className="flex items-center gap-1">
@@ -905,6 +977,7 @@ export function ProjectList({
                   setSelectedUserIds([]);
                   setUserRoles({});
                   setDefaultRoleForNewUsers('VIEWER');
+                  setAssignedUsersDetail([]);
                 }}
               >
                 Cancel
@@ -1199,6 +1272,41 @@ export function ProjectList({
           </form>
         ) : null}
       </Modal>
+
+      {/* Delete Project Impact Modal */}
+      {deleteImpact && (
+        <Modal
+          open={!!deleteImpact}
+          onClose={() => setDeleteImpact(null)}
+          title={`Delete ${deleteImpact.projectName}?`}
+        >
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              The project will be deleted. Everything below will be archived (hidden, and kept for
+              audit purposes - not permanently erased):
+            </p>
+            <ul className="flex flex-col gap-1 text-sm">
+              <li>{deleteImpact.loading ? '…' : deleteImpact.subProjectCount} SubProject(s)</li>
+              <li>
+                {deleteImpact.loading ? '…' : deleteImpact.workflowCount} Workflow(s) and their steps
+              </li>
+              <li>{deleteImpact.loading ? '…' : deleteImpact.sagaCount} Bidding/Procurement record(s)</li>
+            </ul>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteImpact(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDeleteProject}
+                disabled={deleteImpact.loading}
+              >
+                Delete Project
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

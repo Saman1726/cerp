@@ -123,6 +123,8 @@ services:
         condition: service_started
       identity-service-java:
         condition: service_started
+      workflow-service-java:
+        condition: service_started
     environment:
       PORT: 8085
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cerp}
@@ -131,6 +133,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/cerp
       IDENTITY_SERVICE_URL: http://identity-service-java:8090
+      WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
     ports:

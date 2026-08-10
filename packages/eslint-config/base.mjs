@@ -9,7 +9,20 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   prettier,
   {
-    ignores: ['dist/**', '.next/**', '.turbo/**', 'coverage/**', 'node_modules/**'],
+    // public/sw.js & friends are next-pwa/Workbox build output (regenerated
+    // by `next build --webpack`, content-hashed filenames), not source -
+    // same category as .next/** just below.
+    ignores: [
+      'dist/**',
+      '.next/**',
+      '.turbo/**',
+      'coverage/**',
+      'node_modules/**',
+      'public/sw.js',
+      'public/workbox-*.js',
+      'public/swe-worker-*.js',
+      'public/fallback-*.js',
+    ],
   },
   {
     files: ['**/*.{ts,tsx,js,jsx}'],

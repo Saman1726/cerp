@@ -1,10 +1,11 @@
-import { Building2, HardHat, LayoutDashboard, Settings, Users, Package, Store, GitBranch, FileText, Wallet, Bell, Megaphone } from 'lucide-react';
+import { Building2, Camera, HardHat, LayoutDashboard, Settings, Users, Package, Store, GitBranch, FileText, Wallet, Bell, Megaphone } from 'lucide-react';
 import type { NavItem } from '@cerp/core-web/shell';
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Construction Site', href: '/construction-sites', icon: Building2 },
   { label: 'Project Management', href: '/construction', icon: HardHat },
+  { label: 'Site Capture', href: '/site-capture', icon: Camera },
   { label: 'Procurement', href: '/procurement', icon: Package },
   { label: 'Bid Wallet', href: '/procurement/wallet', icon: Wallet },
   { label: 'Vendors', href: '/vendors', icon: Store },

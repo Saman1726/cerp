@@ -196,13 +196,13 @@ public class SubProjectController {
     }
 
     /**
-     * Delete all SubProjects for a given Project.
+     * Archive (soft-delete) all SubProjects for a given Project.
      */
     @DeleteMapping("/{projectId}/subprojects")
     public ResponseEntity<Void> deleteSubProjectsByProject(
             @PathVariable("projectId") UUID projectId,
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        subProjectService.deleteSubProjectsByProject(projectId);
+        subProjectService.archiveSubProjectsByProject(projectId);
         return ResponseEntity.noContent().build();
     }
 }

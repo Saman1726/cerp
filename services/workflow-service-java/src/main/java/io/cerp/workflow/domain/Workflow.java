@@ -133,6 +133,9 @@ public class Workflow {
     @Column(name = "created_by", length = 128)
     private String createdBy;
 
+    @Column(name = "is_deleted", nullable = false)
+    private Boolean deleted = false;
+
     @JsonManagedReference
     @OneToMany(mappedBy = "workflow", orphanRemoval = true)
     private List<WorkflowStep> steps = new ArrayList<>();
@@ -478,6 +481,14 @@ public class Workflow {
 
     public void setCreatedBy(String createdBy) {
         this.createdBy = createdBy;
+    }
+
+    public Boolean getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Boolean deleted) {
+        this.deleted = deleted;
     }
 
     public String getScopeLevel() {

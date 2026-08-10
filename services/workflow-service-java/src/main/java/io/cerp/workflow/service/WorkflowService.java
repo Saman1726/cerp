@@ -149,7 +149,7 @@ public class WorkflowService {
      */
     @Transactional(readOnly = true)
     public List<Workflow> listByProject(String tenantId, UUID projectId) {
-        return workflowRepository.findByTenantIdAndProjectId(tenantId, projectId);
+        return workflowRepository.findByTenantIdAndProjectIdAndDeletedFalse(tenantId, projectId);
     }
 
     /**
@@ -157,7 +157,7 @@ public class WorkflowService {
      */
     @Transactional(readOnly = true)
     public List<Workflow> listBySubproject(String tenantId, UUID projectId, UUID subprojectId) {
-        return workflowRepository.findByTenantIdAndProjectIdAndSubprojectId(tenantId, projectId, subprojectId);
+        return workflowRepository.findByTenantIdAndProjectIdAndSubprojectIdAndDeletedFalse(tenantId, projectId, subprojectId);
     }
 
     /**
@@ -165,7 +165,7 @@ public class WorkflowService {
      */
     @Transactional(readOnly = true)
     public List<Workflow> getWorkflowsBySubprojectId(String tenantId, UUID subprojectId) {
-        return workflowRepository.findByTenantIdAndSubprojectId(tenantId, subprojectId);
+        return workflowRepository.findByTenantIdAndSubprojectIdAndDeletedFalse(tenantId, subprojectId);
     }
 
     /**
@@ -183,6 +183,14 @@ public class WorkflowService {
     @Transactional(readOnly = true)
     public List<Workflow> getWorkflowsBySubprojectIdWithoutTenant(UUID subprojectId) {
         return workflowRepository.findBySubprojectIdOnly(subprojectId);
+    }
+
+    /**
+     * Archive every Workflow tied to a Project - called when the Project itself is deleted.
+     */
+    @Transactional
+    public int archiveByProjectId(UUID projectId) {
+        return workflowRepository.archiveByProjectId(projectId);
     }
 
     /**

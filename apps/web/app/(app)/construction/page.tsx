@@ -6,6 +6,7 @@ import {
   deleteSubProjectActionWrapper as deleteSubProjectAction,
   assignUsersToProjectAction,
   removeUserFromProjectAction,
+  getProjectAssignedUsers,
 } from './actions';
 import { apiClient } from '@cerp/core-web/lib/api-client';
 import type { Project, ConstructionSite } from '@cerp/shared-types';
@@ -84,6 +85,7 @@ export default async function ConstructionPage() {
       currentUserEmail={userEmail || undefined}
       assignUsersAction={assignUsersToProjectAction}
       removeUserAction={removeUserFromProjectAction}
+      getAssignedUsersAction={getProjectAssignedUsers}
     />
   );
 }

@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.cerp.project.config.RequestIdentity;
+import io.cerp.project.dto.AssignedUserResponse;
 import io.cerp.project.dto.ProjectCreateRequest;
 import io.cerp.project.dto.ProjectResponse;
 import io.cerp.project.dto.ProjectUpdateRequest;
@@ -100,7 +101,7 @@ public class ProjectController {
             @Valid @RequestBody ProjectCreateRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         String creatorId = RequestIdentity.creatorId(jwt).toString();
-        ProjectResponse created = projectService.create(tenantId, request.orgId(), request, creatorId);
+        ProjectResponse created = projectService.create(tenantId, request.orgId(), request, creatorId, jwt.getTokenValue());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -125,8 +126,9 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @PathVariable UUID id) {
-        projectService.delete(tenantId, id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        projectService.delete(tenantId, id, jwt.getTokenValue());
     }
 
     /**
@@ -142,7 +144,7 @@ public class ProjectController {
             return ResponseEntity.badRequest().build();
         }
         String actingUserId = RequestIdentity.creatorId(jwt).toString();
-        ProjectResponse updated = projectService.assignUsersWithRoles(tenantId, id, request.assignments(), actingUserId);
+        ProjectResponse updated = projectService.assignUsersWithRoles(tenantId, id, request.assignments(), actingUserId, jwt.getTokenValue());
         return ResponseEntity.ok(updated);
     }
 
@@ -162,8 +164,21 @@ public class ProjectController {
             return ResponseEntity.badRequest().build();
         }
         String actingUserId = RequestIdentity.creatorId(jwt).toString();
-        ProjectResponse updated = projectService.assignUsers(tenantId, id, userIds, actingUserId);
+        ProjectResponse updated = projectService.assignUsers(tenantId, id, userIds, actingUserId, jwt.getTokenValue());
         return ResponseEntity.ok(updated);
+    }
+
+    /**
+     * Get a project's assigned users enriched with their emails (assignedUserIds itself is UUID-keyed, not human-readable) - used by the Assign Users popup for
+     * display. Resolved on demand rather than folded into the main project response, to avoid an identity-service round trip per assignee on every project list/get.
+     */
+    @GetMapping("/{id}/assigned-users")
+    public ResponseEntity<List<AssignedUserResponse>> getAssignedUsers(
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        List<AssignedUserResponse> users = projectService.getAssignedUsersWithEmails(tenantId, id, jwt.getTokenValue());
+        return ResponseEntity.ok(users);
     }
 
     /**
@@ -173,8 +188,9 @@ public class ProjectController {
     public ResponseEntity<ProjectResponse> removeUser(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID id,
-            @PathVariable String userIdToRemove) {
-        ProjectResponse updated = projectService.removeUser(tenantId, id, userIdToRemove);
+            @PathVariable String userIdToRemove,
+            @AuthenticationPrincipal Jwt jwt) {
+        ProjectResponse updated = projectService.removeUser(tenantId, id, userIdToRemove, jwt.getTokenValue());
         return ResponseEntity.ok(updated);
     }
 }

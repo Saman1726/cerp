@@ -9,6 +9,7 @@ import type {
   WorkflowTemplate,
   Workflow,
   ProjectUserAssignment,
+  ProjectAssignedUser,
 } from '@cerp/shared-types';
 
 // ── Project Actions ──
@@ -114,7 +115,7 @@ export async function assignUsersToProjectAction(projectId: string, assignments:
     return {};
   } catch (error) {
     console.error('Failed to assign users to project:', error);
-    return { error: 'Failed to assign users to project' };
+    return { error: error instanceof Error ? error.message : 'Failed to assign users to project' };
   }
 }
 
@@ -129,7 +130,25 @@ export async function removeUserFromProjectAction(projectId: string, userIdToRem
     return {};
   } catch (error) {
     console.error('Failed to remove user from project:', error);
-    return { error: 'Failed to remove user from project' };
+    return { error: error instanceof Error ? error.message : 'Failed to remove user from project' };
+  }
+}
+
+/**
+ * Assigned users enriched with their emails, for display (assignedUserIds itself is UUID-keyed
+ * and not human-readable on its own). Fetched on demand when the Assign Users popup opens rather
+ * than baked into fetchProjects(), to avoid an identity-service round trip per assignee on every
+ * project list load.
+ */
+export async function getProjectAssignedUsers(projectId: string): Promise<ProjectAssignedUser[]> {
+  try {
+    if (!projectId) {
+      return [];
+    }
+    return await apiClient.get<ProjectAssignedUser[]>(`/api/v1/projects/${projectId}/assigned-users`);
+  } catch (error) {
+    console.error('Failed to fetch assigned users:', error);
+    return [];
   }
 }
 
@@ -192,8 +211,9 @@ async function createSubProjectActionCore(formData: FormData): Promise<{ error?:
     revalidatePath('/construction');
     return { error: undefined, subProjectId: created.id };
   } catch (error) {
+    const errorMessage = error instanceof Error && error.message ? error.message : 'Failed to create subProject';
     console.error('Failed to create subProject:', error);
-    return { error: 'Failed to create subProject' };
+    return { error: errorMessage };
   }
 }
 

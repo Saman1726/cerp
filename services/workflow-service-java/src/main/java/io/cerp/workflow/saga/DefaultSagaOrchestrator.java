@@ -537,6 +537,23 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         return result;
     }
 
+    /**
+     * Archive every Bidding/Procurement saga (or any other saga type) tied to a Project - called
+     * when the Project itself is deleted. Does not touch bidding.bid_wallets or
+     * bidding.bid_transactions, which are per-vendor financial ledgers shared across every project
+     * a vendor has ever bid on, not project-scoped.
+     */
+    public int archiveByProjectId(String projectId) {
+        return sagaRepository.archiveByProjectId(projectId);
+    }
+
+    /**
+     * Count non-archived sagas tied to a Project.
+     */
+    public long countByProjectId(String projectId) {
+        return sagaRepository.countByProjectIdAndDeletedFalse(projectId);
+    }
+
     // --- Entity/State conversion ---
 
     private SagaEntity toEntity(SagaState state) {

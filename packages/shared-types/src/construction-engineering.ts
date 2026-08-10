@@ -30,6 +30,17 @@ export interface ProjectUserAssignment {
   role: ProjectUserRole;
 }
 
+/**
+ * A project assignment enriched with the assignee's email, for display. userId is whatever is
+ * actually stored on the backend (a UUID going forward, potentially a raw email for older
+ * assignments); email is always the best available human-readable form.
+ */
+export interface ProjectAssignedUser {
+  userId: string;
+  email: string;
+  role: ProjectUserRole;
+}
+
 export interface Project {
   id: string;
   code: string;

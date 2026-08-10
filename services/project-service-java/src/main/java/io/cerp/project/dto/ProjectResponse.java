@@ -87,6 +87,7 @@ public record ProjectResponse(
             assignedUserIds,
             assignedUserRoles,
             p.getSubProjects() != null ? p.getSubProjects().stream()
+                .filter(sp -> !Boolean.TRUE.equals(sp.getDeleted()))
                 .map(SubProjectResponse::fromEntity)
                 .toList() : List.of());
     }

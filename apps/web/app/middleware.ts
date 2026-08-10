@@ -11,6 +11,7 @@ export const config = {
     '/vendors/:path*',
     '/settings/:path*',
     '/workflows/:path*',
+    '/site-capture/:path*',
     '/login',
   ],
 };
