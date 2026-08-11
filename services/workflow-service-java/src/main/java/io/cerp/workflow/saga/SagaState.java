@@ -22,6 +22,8 @@ public class SagaState {
     private final Instant createdAt;
     private final Instant updatedAt;
     private final Map<String, Object> data;
+    private final long noteCount;
+    private final long attachmentCount;
 
     public SagaState(UUID sagaId, String sagaType, String tenantId, String status,
             String currentStep, String nextStep, List<SagaStep> steps,
@@ -34,6 +36,19 @@ public class SagaState {
             String currentStep, String nextStep, List<SagaStep> steps,
             SagaError lastError, Instant createdAt, Instant updatedAt,
             Map<String, Object> data) {
+        this(sagaId, sagaType, tenantId, status, currentStep, nextStep, steps, lastError, createdAt, updatedAt,
+            data, 0L, 0L);
+    }
+
+    // Counts are populated only at the HTTP read-boundary methods in DefaultSagaOrchestrator
+    // (getSagaState/getSagaInstancesByAggregate/getActiveSagas), via withCounts() below - never by
+    // the internal state-transition constructor calls above, which is why those keep delegating
+    // to this constructor with 0L, 0L rather than threading two more args through every one of
+    // them (the same "one of N call sites forgets it" bug class a prior feature already hit once).
+    public SagaState(UUID sagaId, String sagaType, String tenantId, String status,
+            String currentStep, String nextStep, List<SagaStep> steps,
+            SagaError lastError, Instant createdAt, Instant updatedAt,
+            Map<String, Object> data, long noteCount, long attachmentCount) {
         this.sagaId = sagaId;
         this.sagaType = sagaType;
         this.tenantId = tenantId;
@@ -45,6 +60,14 @@ public class SagaState {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.data = data != null ? Collections.unmodifiableMap(new HashMap<>(data)) : Collections.emptyMap();
+        this.noteCount = noteCount;
+        this.attachmentCount = attachmentCount;
+    }
+
+    /** Returns a copy with counts populated; the copy is never written back into any internal cache. */
+    public SagaState withCounts(long noteCount, long attachmentCount) {
+        return new SagaState(sagaId, sagaType, tenantId, status, currentStep, nextStep, steps,
+            lastError, createdAt, updatedAt, data, noteCount, attachmentCount);
     }
 
     public UUID getSagaId() {
@@ -92,5 +115,13 @@ public class SagaState {
      */
     public Map<String, Object> getData() {
         return data;
+    }
+
+    public long getNoteCount() {
+        return noteCount;
+    }
+
+    public long getAttachmentCount() {
+        return attachmentCount;
     }
 }

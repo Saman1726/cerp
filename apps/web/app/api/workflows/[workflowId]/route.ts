@@ -32,7 +32,7 @@ function mapStepStatus(status: string): string {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ workflowId: string }> }
+  { params }: { params: Promise<{ workflowId: string }> },
 ) {
   try {
     const { workflowId } = await params;
@@ -45,7 +45,10 @@ export async function GET(
 
     if (!res.ok) {
       const data = await res.json().catch(() => undefined);
-      return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+      return NextResponse.json(
+        { message: data?.message ?? res.statusText },
+        { status: res.status },
+      );
     }
 
     const data = await res.json();
@@ -60,7 +63,7 @@ export async function GET(
     }
 
     const completedSteps = javaSteps.filter(
-      (s: Record<string, unknown>) => s.status === 'COMPLETED' || s.status === 'APPROVED'
+      (s: Record<string, unknown>) => s.status === 'COMPLETED' || s.status === 'APPROVED',
     ).length as number;
     const totalSteps = javaSteps.length as number;
 
@@ -101,7 +104,10 @@ export async function GET(
       let evidenceUrls: string[] = [];
       if (evidence !== undefined && evidence !== null) {
         if (typeof evidence === 'string') {
-          evidenceUrls = evidence.split(',').map((u: string) => u.trim()).filter((u: string) => u.length > 0);
+          evidenceUrls = evidence
+            .split(',')
+            .map((u: string) => u.trim())
+            .filter((u: string) => u.length > 0);
         } else {
           evidenceUrls = [String(evidence)];
         }
@@ -131,6 +137,7 @@ export async function GET(
         completedAt: (step.completedAt as string | undefined) ?? null,
         createdAt: (step.createdAt as string | undefined) ?? new Date().toISOString(),
         updatedAt: (step.updatedAt as string | undefined) ?? new Date().toISOString(),
+        attachmentCount: step.attachmentCount as number | undefined,
       };
     });
 
@@ -138,7 +145,8 @@ export async function GET(
       id: note.id,
       workflowId: javaWorkflow.id,
       content: (note.content as string | undefined) ?? (note.note as string | undefined) ?? '',
-      createdBy: (note.createdBy as string | undefined) ?? (note.createdByUser as string | undefined) ?? '',
+      createdBy:
+        (note.createdBy as string | undefined) ?? (note.createdByUser as string | undefined) ?? '',
       createdAt: note.createdAt,
     }));
 
@@ -150,14 +158,14 @@ export async function GET(
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ workflowId: string }> }
+  { params }: { params: Promise<{ workflowId: string }> },
 ) {
   try {
     const { workflowId } = await params;
@@ -173,7 +181,10 @@ export async function PATCH(
 
     if (!res.ok) {
       const data = await res.json().catch(() => undefined);
-      return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+      return NextResponse.json(
+        { message: data?.message ?? res.statusText },
+        { status: res.status },
+      );
     }
 
     const javaWorkflow = await res.json();
@@ -191,7 +202,10 @@ export async function PATCH(
       phaseType: '',
       currentStepId: null,
       currentStepOrder: null,
-      progress: javaWorkflow.progressPercent?.toNumber?.() ?? (javaWorkflow.progressPercent as number | null) ?? 0,
+      progress:
+        javaWorkflow.progressPercent?.toNumber?.() ??
+        (javaWorkflow.progressPercent as number | null) ??
+        0,
       completedSteps: 0,
       totalSteps: 0,
       parameters: null,
@@ -205,7 +219,7 @@ export async function PATCH(
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

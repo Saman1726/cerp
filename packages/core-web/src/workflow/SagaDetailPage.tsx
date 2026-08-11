@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { SagaStatusBadge } from './SagaStatusBadge';
+import { SagaRowActions } from './SagaRowActions';
+import { useSagaAttachmentSync } from './saga-attachments';
 import { workflowApi } from './api';
 import type { Saga, SagaEvent, SagaDetailTabId } from './types';
-import { SAGA_DETAIL_TABS } from './types';
+import { SAGA_DETAIL_TABS, getSagaProjectId } from './types';
 
 interface SagaDetailPageProps {
   sagaId: string;
@@ -19,6 +21,12 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SagaDetailTabId>('overview');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Owned once here (not per row - there's only one saga on this page, but this matches the
+  // same single-listener convention used everywhere else this queue is drained from): the
+  // upload queue is one shared IndexedDB store, so only one background-sync listener should own
+  // draining it per page.
+  const { syncNow: syncAttachmentsNow, isSyncing: attachmentsSyncing } = useSagaAttachmentSync();
 
   const fetchSaga = useCallback(async () => {
     setLoading(true);
@@ -36,6 +44,18 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
       setLoading(false);
     }
   }, [sagaId]);
+
+  // Refetches whenever a saga-attachment sync round finishes (isSyncing true -> false), not just
+  // right after enqueueing -- this also covers uploads that only complete later, e.g. once the
+  // online-event listener fires after being offline, so the attachment icon/count update on
+  // their own without the user needing to reload the page.
+  const wasSyncingAttachmentsRef = useRef(false);
+  useEffect(() => {
+    if (wasSyncingAttachmentsRef.current && !attachmentsSyncing) {
+      fetchSaga();
+    }
+    wasSyncingAttachmentsRef.current = attachmentsSyncing;
+  }, [attachmentsSyncing, fetchSaga]);
 
   useEffect(() => {
     let mounted = true;
@@ -56,10 +76,16 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
         if (mounted) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [sagaId]);
 
-  const handleAction = async (action: 'compensate' | 'resume' | 'escalate', stepCode?: string, reason?: string) => {
+  const handleAction = async (
+    action: 'compensate' | 'resume' | 'escalate',
+    stepCode?: string,
+    reason?: string,
+  ) => {
     setActionLoading(action);
     try {
       await workflowApi.performAction(sagaId, {
@@ -113,12 +139,7 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => window.history.back()}
-            className="mb-2"
-          >
+          <Button variant="ghost" size="sm" onClick={() => window.history.back()} className="mb-2">
             Back to Sagas
           </Button>
           <h1 className="text-2xl font-bold">Saga Details</h1>
@@ -126,6 +147,12 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
         </div>
         <div className="flex items-center gap-2">
           <SagaStatusBadge status={saga.status} />
+          <SagaRowActions
+            saga={saga}
+            projectId={getSagaProjectId(saga)}
+            onSagaUpdated={fetchSaga}
+            onAttachmentQueued={() => void syncAttachmentsNow()}
+          />
         </div>
       </div>
 
@@ -212,10 +239,7 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
           <CardContent>
             <div className="space-y-3">
               {saga.steps.map((step, index) => (
-                <div
-                  key={index}
-                  className="border rounded-lg p-4 space-y-2"
-                >
+                <div key={index} className="border rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-muted-foreground">
@@ -225,9 +249,7 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
                     </div>
                     <SagaStatusBadge status={step.status} variant="step" />
                   </div>
-                  <div className="text-sm text-muted-foreground font-mono">
-                    {step.stepCode}
-                  </div>
+                  <div className="text-sm text-muted-foreground font-mono">{step.stepCode}</div>
                   {step.errorMessage && (
                     <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
                       Error: {step.errorMessage}
@@ -265,10 +287,7 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
             ) : (
               <div className="space-y-2">
                 {events.map((event) => (
-                  <div
-                    key={event.eventId}
-                    className="border rounded p-3 text-sm"
-                  >
+                  <div key={event.eventId} className="border rounded p-3 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{event.eventType}</span>
                       <span className="text-muted-foreground text-xs">
@@ -309,10 +328,7 @@ export function SagaDetailPage({ sagaId }: SagaDetailPageProps) {
             {saga.status === 'REQUIRES_MANUAL_INTERVENTION' && (
               <div className="space-y-2">
                 <p className="text-sm">Resolve the issue and resume the saga:</p>
-                <Button
-                  onClick={() => handleAction('resume')}
-                  disabled={actionLoading !== null}
-                >
+                <Button onClick={() => handleAction('resume')} disabled={actionLoading !== null}>
                   {actionLoading === 'resume' ? 'Resuming...' : 'Resume Saga'}
                 </Button>
               </div>

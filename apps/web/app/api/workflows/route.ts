@@ -30,12 +30,18 @@ function mapStepStatus(status: string): string {
   return mapping[status] ?? status;
 }
 
-function transformStep(javaStep: Record<string, unknown>, workflowId: unknown): Record<string, unknown> {
+function transformStep(
+  javaStep: Record<string, unknown>,
+  workflowId: unknown,
+): Record<string, unknown> {
   const evidence = javaStep.evidence;
   let evidenceUrls: string[] = [];
   if (evidence !== undefined && evidence !== null) {
     if (typeof evidence === 'string') {
-      evidenceUrls = evidence.split(',').map((u) => u.trim()).filter((u) => u.length > 0);
+      evidenceUrls = evidence
+        .split(',')
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0);
     } else {
       evidenceUrls = [String(evidence)];
     }
@@ -65,12 +71,15 @@ function transformStep(javaStep: Record<string, unknown>, workflowId: unknown): 
     completedAt: (javaStep.completedAt as string | undefined) ?? null,
     createdAt: (javaStep.createdAt as string | undefined) ?? new Date().toISOString(),
     updatedAt: (javaStep.updatedAt as string | undefined) ?? new Date().toISOString(),
+    attachmentCount: javaStep.attachmentCount as number | undefined,
   };
 }
 
 function transformWorkflow(javaWorkflow: Record<string, unknown>): Record<string, unknown> {
   const javaSteps = (javaWorkflow.steps as Record<string, unknown>[] | undefined) ?? [];
-  const completedSteps = javaSteps.filter((s) => s.status === 'COMPLETED' || s.status === 'APPROVED').length;
+  const completedSteps = javaSteps.filter(
+    (s) => s.status === 'COMPLETED' || s.status === 'APPROVED',
+  ).length;
   const totalSteps = javaSteps.length;
 
   const progressPercent = javaWorkflow.progressPercent;
@@ -140,7 +149,10 @@ export async function GET(request: NextRequest) {
 
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
-      return NextResponse.json({ message: body?.message ?? res.statusText }, { status: res.status });
+      return NextResponse.json(
+        { message: body?.message ?? res.statusText },
+        { status: res.status },
+      );
     }
 
     const javaWorkflows = (await res.json()) as Record<string, unknown>[];
@@ -149,7 +161,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -166,7 +178,10 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       const data = await res.json().catch(() => undefined);
-      return NextResponse.json({ message: data?.message ?? res.statusText }, { status: res.status });
+      return NextResponse.json(
+        { message: data?.message ?? res.statusText },
+        { status: res.status },
+      );
     }
 
     const data = await res.json();
@@ -174,7 +189,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

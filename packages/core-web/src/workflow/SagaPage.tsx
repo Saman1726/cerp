@@ -14,9 +14,11 @@ import {
   TableRow,
 } from '../components/ui/table';
 import { SagaStatusBadge } from './SagaStatusBadge';
+import { SagaRowActions } from './SagaRowActions';
+import { useSagaAttachmentSync } from './saga-attachments';
 import { workflowApi } from './api';
 import type { Saga, SagaQuery, SagaQueryResponse } from './types';
-import { SAGA_TYPE_LABELS } from './types';
+import { SAGA_TYPE_LABELS, getSagaProjectId } from './types';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -38,6 +40,10 @@ export function SagaPage() {
 
   const [search, setSearch] = useState('');
 
+  // Owned once here (not per row): the upload queue is one shared IndexedDB store across every
+  // saga row on the page, so a single background-sync listener must drain it, not one per row.
+  const { syncNow: syncAttachmentsNow, isSyncing: attachmentsSyncing } = useSagaAttachmentSync();
+
   const fetchSagas = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -51,6 +57,18 @@ export function SagaPage() {
       setLoading(false);
     }
   }, [filters]);
+
+  // Refetches whenever a saga-attachment sync round finishes (isSyncing true -> false), not just
+  // right after enqueueing -- this also covers uploads that only complete later, e.g. once the
+  // online-event listener fires after being offline, so the attachment icon/count update on
+  // their own without the user needing to reload the page.
+  const wasSyncingAttachmentsRef = useRef(false);
+  useEffect(() => {
+    if (wasSyncingAttachmentsRef.current && !attachmentsSyncing) {
+      fetchSagas();
+    }
+    wasSyncingAttachmentsRef.current = attachmentsSyncing;
+  }, [attachmentsSyncing, fetchSagas]);
 
   const initialized = useRef(false);
 
@@ -217,14 +235,16 @@ export function SagaPage() {
                   ) : (
                     sagas.map((saga) => (
                       <TableRow key={saga.sagaId}>
-                        <TableCell className="font-mono text-xs">{saga.sagaId.slice(0, 8)}...</TableCell>
-                        <TableCell>
-                          {SAGA_TYPE_LABELS[saga.sagaType] || saga.sagaType}
+                        <TableCell className="font-mono text-xs">
+                          {saga.sagaId.slice(0, 8)}...
                         </TableCell>
+                        <TableCell>{SAGA_TYPE_LABELS[saga.sagaType] || saga.sagaType}</TableCell>
                         <TableCell>
                           <SagaStatusBadge status={saga.status} />
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{saga.tenantId.slice(0, 8)}...</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {saga.tenantId.slice(0, 8)}...
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {new Date(saga.createdAt).toLocaleString()}
                         </TableCell>
@@ -232,13 +252,23 @@ export function SagaPage() {
                           {new Date(saga.updatedAt).toLocaleString()}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => (window.location.href = `/workflows/saga/${saga.sagaId}`)}
-                          >
-                            View Details
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                (window.location.href = `/workflows/saga/${saga.sagaId}`)
+                              }
+                            >
+                              View Details
+                            </Button>
+                            <SagaRowActions
+                              saga={saga}
+                              projectId={getSagaProjectId(saga)}
+                              onSagaUpdated={fetchSagas}
+                              onAttachmentQueued={() => void syncAttachmentsNow()}
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
@@ -261,9 +291,7 @@ export function SagaPage() {
                       </option>
                     ))}
                   </select>
-                  <span className="text-sm text-muted-foreground">
-                    {total} total
-                  </span>
+                  <span className="text-sm text-muted-foreground">{total} total</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button

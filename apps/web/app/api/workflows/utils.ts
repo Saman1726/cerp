@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { IDENTITY_SERVICE_URL } from '@cerp/core-web/lib/env';
+import type { WorkflowNote, WorkflowNoteType } from '@cerp/shared-types';
 
 const SESSION_COOKIE = 'cerp_session';
 
@@ -23,7 +24,7 @@ export function getAuthHeaders(request: NextRequest): HeadersInit {
 
 /**
  * Get headers for backend API calls, including tenant ID and auth headers.
- * 
+ *
  * <p>
  * The X-Tenant-Id header is used by Java services to set the TenantContext,
  * which controls data access in multi-tenant deployments.
@@ -123,7 +124,10 @@ export async function extractSessionUser(): Promise<{
   // Extract roles from JWT (comma-separated string or JSON array).
   let roles: string[] = [];
   if (typeof payload.roles === 'string' && payload.roles.trim()) {
-    roles = payload.roles.split(',').map((r) => r.trim()).filter(Boolean);
+    roles = payload.roles
+      .split(',')
+      .map((r) => r.trim())
+      .filter(Boolean);
   } else if (Array.isArray(payload.roles)) {
     roles = (payload.roles as unknown[]).filter((r): r is string => typeof r === 'string');
   }
@@ -132,7 +136,8 @@ export async function extractSessionUser(): Promise<{
   // Keycloak's own internal id as "sub", which matches no row in identity-service's
   // user_accounts (see RequestIdentity.creatorId on the backend) - "internal_user_id"
   // is the claim identity-service mints for exactly this purpose.
-  const internalUserId = typeof payload.internal_user_id === 'string' ? payload.internal_user_id : null;
+  const internalUserId =
+    typeof payload.internal_user_id === 'string' ? payload.internal_user_id : null;
   if (internalUserId) return { userId: internalUserId, tenantId, roles };
 
   const sub = typeof payload.sub === 'string' ? payload.sub : null;
@@ -144,4 +149,31 @@ export async function extractSessionUser(): Promise<{
   // Legacy token: sub is an email — resolve to UUID via identity service.
   const resolved = await resolveUserIdByEmail(sub);
   return { userId: resolved, tenantId, roles };
+}
+
+/** Raw shape workflow-service actually returns for a WorkflowNote (`workflow` is @JsonIgnore'd; `stepId` is a derived getter, not the full step entity). */
+interface BackendWorkflowNote {
+  id: string;
+  stepId: string | null;
+  authorId: string;
+  note: string;
+  type: string;
+  createdAt: string;
+}
+
+/**
+ * Translates workflow-service's WorkflowNote JSON into the frontend-facing shape. The backend
+ * never echoes `workflowId` back (it's @JsonIgnore'd on the entity, and it's always the id
+ * already in the route's own path, so callers supply it directly).
+ */
+export function toFrontendNote(raw: BackendWorkflowNote, workflowId: string): WorkflowNote {
+  return {
+    id: raw.id,
+    workflowId,
+    stepId: raw.stepId,
+    content: raw.note,
+    type: raw.type as WorkflowNoteType,
+    createdBy: raw.authorId,
+    createdAt: raw.createdAt,
+  };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import type {
   Project,
   Workflow,
@@ -16,8 +16,13 @@ import { Button } from '../components/ui/button';
 import { Modal } from '../components/ui/modal';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { StepRowActions } from './StepRowActions';
+import { useAttachmentSync } from './step-attachments';
 
-const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+const WORKFLOW_STATUS_VARIANTS: Record<
+  WorkflowStatus,
+  'default' | 'secondary' | 'success' | 'destructive' | 'outline'
+> = {
   PLANNED: 'outline',
   ACTIVE: 'default',
   PAUSED: 'secondary',
@@ -27,7 +32,10 @@ const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' |
   CANCELLED: 'destructive',
 };
 
-const WORKFLOW_STEP_STATUS_VARIANTS: Record<WorkflowStepStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+const WORKFLOW_STEP_STATUS_VARIANTS: Record<
+  WorkflowStepStatus,
+  'default' | 'secondary' | 'success' | 'destructive' | 'outline'
+> = {
   PENDING: 'secondary',
   IN_PROGRESS: 'default',
   BLOCKED: 'outline',
@@ -50,12 +58,16 @@ interface SubProjectContext {
 
 export function ConstructionMonitoringPage() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [contextBySubproject, setContextBySubproject] = useState<Record<string, SubProjectContext>>({});
+  const [contextBySubproject, setContextBySubproject] = useState<Record<string, SubProjectContext>>(
+    {},
+  );
   const [loading, setLoading] = useState(true);
 
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
-  const [selectedWorkflowAllSteps, setSelectedWorkflowAllSteps] = useState<WorkflowInstanceStep[]>([]);
+  const [selectedWorkflowAllSteps, setSelectedWorkflowAllSteps] = useState<WorkflowInstanceStep[]>(
+    [],
+  );
   const [notes, setNotes] = useState<WorkflowNote[]>([]);
   const [noteContent, setNoteContent] = useState('');
   const [notesLoading, setNotesLoading] = useState(false);
@@ -63,6 +75,10 @@ export function ConstructionMonitoringPage() {
   const [currentStep, setCurrentStep] = useState<WorkflowInstanceStep | null>(null);
   const [evidenceUrls, setEvidenceUrls] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
+
+  // Owned once here (not per step row): the upload queue is one shared IndexedDB store across
+  // every step on the page, so a single background-sync listener must drain it, not one per row.
+  const { syncNow: syncAttachmentsNow, isSyncing: attachmentsSyncing } = useAttachmentSync();
 
   const fetchWorkflows = useCallback(async () => {
     try {
@@ -121,6 +137,18 @@ export function ConstructionMonitoringPage() {
     }
   }, []);
 
+  // Refetches whenever a step-attachment sync round finishes (isSyncing true -> false), not just
+  // right after enqueueing -- this also covers uploads that only complete later, e.g. once the
+  // online-event listener fires after being offline, so the attachment icon/count update on
+  // their own without the user needing to reload the page.
+  const wasSyncingAttachmentsRef = useRef(false);
+  useEffect(() => {
+    if (wasSyncingAttachmentsRef.current && !attachmentsSyncing && selectedWorkflowId) {
+      fetchWorkflowDetail(selectedWorkflowId);
+    }
+    wasSyncingAttachmentsRef.current = attachmentsSyncing;
+  }, [attachmentsSyncing, selectedWorkflowId, fetchWorkflowDetail]);
+
   const fetchNotes = useCallback(async (workflowId: string) => {
     try {
       setNotesLoading(true);
@@ -137,7 +165,9 @@ export function ConstructionMonitoringPage() {
 
   const handleStartStep = async (workflowId: string, stepId: string) => {
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/start`, { method: 'POST' });
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/start`, {
+        method: 'POST',
+      });
       if (!res.ok) throw new Error('Failed to start step');
       fetchWorkflows();
       if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
@@ -152,7 +182,10 @@ export function ConstructionMonitoringPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          evidenceUrls: evidenceUrls.split(',').map((u) => u.trim()).filter((u) => u),
+          evidenceUrls: evidenceUrls
+            .split(',')
+            .map((u) => u.trim())
+            .filter((u) => u),
           approvalNotes: approvalNotes || undefined,
         }),
       });
@@ -207,7 +240,9 @@ export function ConstructionMonitoringPage() {
 
   const handleRestartStep = async (workflowId: string, stepId: string) => {
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/restart`, { method: 'POST' });
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/restart`, {
+        method: 'POST',
+      });
       if (!res.ok) throw new Error('Failed to restart step');
       fetchWorkflows();
       if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
@@ -348,7 +383,8 @@ export function ConstructionMonitoringPage() {
               </div>
               {context && (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {context.projectCode} · {context.projectName} &nbsp;/&nbsp; {context.subProjectCode} · {context.subProjectName}
+                  {context.projectCode} · {context.projectName} &nbsp;/&nbsp;{' '}
+                  {context.subProjectCode} · {context.subProjectName}
                   {' · '}
                   <Link
                     className="text-primary hover:underline"
@@ -362,7 +398,9 @@ export function ConstructionMonitoringPage() {
                 <p className="mt-1 text-sm text-muted-foreground">{selectedWorkflow.description}</p>
               )}
               <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
-                <span>{selectedWorkflow.completedSteps}/{selectedWorkflow.totalSteps} steps</span>
+                <span>
+                  {selectedWorkflow.completedSteps}/{selectedWorkflow.totalSteps} steps
+                </span>
                 <span>·</span>
                 <span>{getWorkflowProgress(selectedWorkflow)}% complete</span>
               </div>
@@ -381,21 +419,39 @@ export function ConstructionMonitoringPage() {
               )}
               {selectedWorkflow.status === 'ACTIVE' && (
                 <>
-                  <Button onClick={() => handleCompleteWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                  <Button
+                    onClick={() => handleCompleteWorkflow(selectedWorkflowId)}
+                    variant="outline"
+                    size="sm"
+                  >
                     Complete
                   </Button>
-                  <Button onClick={() => handlePauseWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                  <Button
+                    onClick={() => handlePauseWorkflow(selectedWorkflowId)}
+                    variant="outline"
+                    size="sm"
+                  >
                     Pause
                   </Button>
                 </>
               )}
               {selectedWorkflow.status === 'PAUSED' && (
-                <Button onClick={() => handleResumeWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                <Button
+                  onClick={() => handleResumeWorkflow(selectedWorkflowId)}
+                  variant="outline"
+                  size="sm"
+                >
                   Resume
                 </Button>
               )}
-              {(selectedWorkflow.status === 'PLANNED' || selectedWorkflow.status === 'ACTIVE' || selectedWorkflow.status === 'PAUSED') && (
-                <Button onClick={() => handleCancelWorkflow(selectedWorkflowId)} variant="destructive" size="sm">
+              {(selectedWorkflow.status === 'PLANNED' ||
+                selectedWorkflow.status === 'ACTIVE' ||
+                selectedWorkflow.status === 'PAUSED') && (
+                <Button
+                  onClick={() => handleCancelWorkflow(selectedWorkflowId)}
+                  variant="destructive"
+                  size="sm"
+                >
                   Cancel
                 </Button>
               )}
@@ -421,7 +477,9 @@ export function ConstructionMonitoringPage() {
                     <td className="py-3 pr-4 font-medium">
                       {step.name}
                       {step.approvalNotes && (
-                        <p className="mt-0.5 text-xs font-normal text-muted-foreground">{step.approvalNotes}</p>
+                        <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                          {step.approvalNotes}
+                        </p>
                       )}
                     </td>
                     <td className="py-3 pr-4">
@@ -429,14 +487,20 @@ export function ConstructionMonitoringPage() {
                         {formatStepStatus(step.status)}
                       </Badge>
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">{step.assignedToName ?? '—'}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {step.assignedToName ?? '—'}
+                    </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {step.dueAt ? new Date(step.dueAt).toLocaleDateString() : '—'}
                     </td>
                     <td className="py-3">
-                      <div className="flex gap-1">
+                      <div className="flex items-center gap-1">
                         {step.status === 'PENDING' && (
-                          <Button variant="outline" size="sm" onClick={() => handleStartStep(selectedWorkflowId, step.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStartStep(selectedWorkflowId, step.id)}
+                          >
                             Start
                           </Button>
                         )}
@@ -461,6 +525,14 @@ export function ConstructionMonitoringPage() {
                         {step.status === 'BLOCKED' && (
                           <span className="text-xs text-muted-foreground">Blocked</span>
                         )}
+                        <StepRowActions
+                          workflowId={selectedWorkflowId}
+                          projectId={context?.projectId}
+                          subProjectId={selectedWorkflow.subprojectIds[0]}
+                          step={step}
+                          onStepUpdated={() => fetchWorkflowDetail(selectedWorkflowId)}
+                          onAttachmentQueued={() => void syncAttachmentsNow()}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -491,7 +563,9 @@ export function ConstructionMonitoringPage() {
                 notes.map((note) => (
                   <div key={note.id} className="rounded-md border p-2">
                     <p className="text-sm">{note.content}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{new Date(note.createdAt).toLocaleString()}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(note.createdAt).toLocaleString()}
+                    </p>
                   </div>
                 ))
               )}
@@ -500,11 +574,17 @@ export function ConstructionMonitoringPage() {
         </div>
 
         {/* Step Action Modal */}
-        <Modal open={stepModalOpen} onClose={() => setStepModalOpen(false)} title={currentStep ? `Step: ${currentStep.name}` : 'Step Details'}>
+        <Modal
+          open={stepModalOpen}
+          onClose={() => setStepModalOpen(false)}
+          title={currentStep ? `Step: ${currentStep.name}` : 'Step Details'}
+        >
           {currentStep && (
             <div className="flex min-w-0 flex-col gap-4">
               <div>
-                <p className="text-sm text-muted-foreground">{currentStep.description || 'No description'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {currentStep.description || 'No description'}
+                </p>
                 <div className="mt-2 flex gap-2">
                   <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[currentStep.status] ?? 'secondary'}>
                     {formatStepStatus(currentStep.status)}
@@ -553,27 +633,43 @@ export function ConstructionMonitoringPage() {
 
               <div className="flex gap-2">
                 {currentStep.status === 'PENDING' && (
-                  <Button onClick={() => handleStartStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                  <Button
+                    onClick={() => handleStartStep(selectedWorkflowId, currentStep.id)}
+                    className="flex-1"
+                  >
                     Start Step
                   </Button>
                 )}
                 {currentStep.status === 'IN_PROGRESS' && (
-                  <Button onClick={() => handleCompleteStepFinal(selectedWorkflowId, currentStep.id)} className="flex-1">
+                  <Button
+                    onClick={() => handleCompleteStepFinal(selectedWorkflowId, currentStep.id)}
+                    className="flex-1"
+                  >
                     Complete Step
                   </Button>
                 )}
                 {currentStep.status === 'COMPLETED' && (
                   <>
-                    <Button onClick={() => handleApproveStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                    <Button
+                      onClick={() => handleApproveStep(selectedWorkflowId, currentStep.id)}
+                      className="flex-1"
+                    >
                       Approve
                     </Button>
-                    <Button variant="destructive" onClick={() => handleRejectStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleRejectStep(selectedWorkflowId, currentStep.id)}
+                      className="flex-1"
+                    >
                       Reject
                     </Button>
                   </>
                 )}
                 {currentStep.status === 'REJECTED' && (
-                  <Button onClick={() => handleRestartStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                  <Button
+                    onClick={() => handleRestartStep(selectedWorkflowId, currentStep.id)}
+                    className="flex-1"
+                  >
                     Restart Step
                   </Button>
                 )}
@@ -639,11 +735,14 @@ export function ConstructionMonitoringPage() {
                     </div>
                     {context && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {context.projectCode} · {context.projectName} / {context.subProjectCode} · {context.subProjectName}
+                        {context.projectCode} · {context.projectName} / {context.subProjectCode} ·{' '}
+                        {context.subProjectName}
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span>{workflow.completedSteps}/{workflow.totalSteps} steps</span>
+                      <span>
+                        {workflow.completedSteps}/{workflow.totalSteps} steps
+                      </span>
                       <span>·</span>
                       <span>{progress}% complete</span>
                       {activeStep && (
@@ -660,31 +759,52 @@ export function ConstructionMonitoringPage() {
                       )}
                     </div>
                     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${progress}%` }}
+                      />
                     </div>
                   </div>
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                     {workflow.status === 'PLANNED' && (
-                      <Button onClick={() => handleStartWorkflow(workflow.id)} variant="ghost" size="sm">
+                      <Button
+                        onClick={() => handleStartWorkflow(workflow.id)}
+                        variant="ghost"
+                        size="sm"
+                      >
                         Start
                       </Button>
                     )}
                     {workflow.status === 'ACTIVE' && (
                       <>
-                        <Button onClick={() => handleCompleteWorkflow(workflow.id)} variant="ghost" size="sm">
+                        <Button
+                          onClick={() => handleCompleteWorkflow(workflow.id)}
+                          variant="ghost"
+                          size="sm"
+                        >
                           Complete
                         </Button>
-                        <Button onClick={() => handlePauseWorkflow(workflow.id)} variant="ghost" size="sm">
+                        <Button
+                          onClick={() => handlePauseWorkflow(workflow.id)}
+                          variant="ghost"
+                          size="sm"
+                        >
                           Pause
                         </Button>
                       </>
                     )}
                     {workflow.status === 'PAUSED' && (
-                      <Button onClick={() => handleResumeWorkflow(workflow.id)} variant="ghost" size="sm">
+                      <Button
+                        onClick={() => handleResumeWorkflow(workflow.id)}
+                        variant="ghost"
+                        size="sm"
+                      >
                         Resume
                       </Button>
                     )}
-                    {(workflow.status === 'PLANNED' || workflow.status === 'ACTIVE' || workflow.status === 'PAUSED') && (
+                    {(workflow.status === 'PLANNED' ||
+                      workflow.status === 'ACTIVE' ||
+                      workflow.status === 'PAUSED') && (
                       <Button
                         onClick={() => handleCancelWorkflow(workflow.id)}
                         variant="ghost"

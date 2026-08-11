@@ -2,9 +2,14 @@ package io.cerp.workflow.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -18,8 +23,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 import io.cerp.workflow.domain.Workflow;
+import io.cerp.workflow.domain.WorkflowNote;
 import io.cerp.workflow.domain.WorkflowStep;
+import io.cerp.workflow.domain.WorkflowStepAttachment;
+import io.cerp.workflow.repository.WorkflowNoteRepository;
 import io.cerp.workflow.repository.WorkflowRepository;
+import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
 import io.cerp.workflow.repository.WorkflowStepRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
 import io.cerp.workflow.state.StateMachineEngine;
@@ -39,6 +48,8 @@ class WorkflowServiceTest {
     private WorkflowRepository workflowRepository;
     private WorkflowTemplateRepository templateRepository;
     private WorkflowStepRepository workflowStepRepository;
+    private WorkflowNoteRepository workflowNoteRepository;
+    private WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
     private WorkflowService service;
 
     @BeforeEach
@@ -46,13 +57,17 @@ class WorkflowServiceTest {
         workflowRepository = mock(WorkflowRepository.class);
         templateRepository = mock(WorkflowTemplateRepository.class);
         workflowStepRepository = mock(WorkflowStepRepository.class);
+        workflowNoteRepository = mock(WorkflowNoteRepository.class);
+        workflowStepAttachmentRepository = mock(WorkflowStepAttachmentRepository.class);
         StateMachineEngine stateMachineEngine = new StateMachineEngine(WorkflowStateMachines.allMachines());
         WorkflowStateStore workflowStateStore = new WorkflowStateStore(workflowRepository);
         WorkflowStepStateStore workflowStepStateStore = new WorkflowStepStateStore(workflowStepRepository);
         service = new WorkflowService(workflowRepository, templateRepository, stateMachineEngine,
-            workflowStateStore, workflowStepStateStore);
+            workflowStateStore, workflowStepStateStore, workflowNoteRepository, workflowStepAttachmentRepository);
         when(workflowRepository.save(any(Workflow.class))).thenAnswer(inv -> inv.getArgument(0));
         when(workflowStepRepository.save(any(WorkflowStep.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(workflowNoteRepository.save(any(WorkflowNote.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(workflowStepAttachmentRepository.save(any(WorkflowStepAttachment.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
     private record Fixture(Workflow workflow, WorkflowStep step) {
@@ -313,5 +328,125 @@ class WorkflowServiceTest {
         service.rejectStep(fx.workflow().getId(), fx.step().getId(), "insufficient", UUID.randomUUID());
 
         assertEquals(0, new BigDecimal("42.00").compareTo(fx.workflow().getProgressPercent()));
+    }
+
+    // ── Notes ──
+
+    @Test
+    void addNote_workflowLevel_persistsWithNullStep() {
+        Workflow workflow = newWorkflow(Workflow.WorkflowStatus.IN_PROGRESS);
+        UUID authorId = UUID.randomUUID();
+
+        WorkflowNote result = service.addNote(workflow.getId(), null, authorId, "materials on site",
+            WorkflowNote.NoteType.GENERAL);
+
+        assertNull(result.getStep());
+        assertEquals(authorId, result.getAuthorId());
+        assertEquals("materials on site", result.getNote());
+        assertEquals(WorkflowNote.NoteType.GENERAL, result.getType());
+    }
+
+    @Test
+    void addNote_stepLevel_persistsWithStep() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID authorId = UUID.randomUUID();
+
+        WorkflowNote result = service.addNote(fx.workflow().getId(), fx.step().getId(), authorId,
+            "delayed by weather", WorkflowNote.NoteType.RISK);
+
+        assertEquals(fx.step(), result.getStep());
+        assertEquals(WorkflowNote.NoteType.RISK, result.getType());
+    }
+
+    @Test
+    void addNote_stepNotInWorkflow_throws() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID unrelatedStepId = UUID.randomUUID();
+
+        assertThrows(IllegalArgumentException.class,
+            () -> service.addNote(fx.workflow().getId(), unrelatedStepId, UUID.randomUUID(), "note",
+                WorkflowNote.NoteType.GENERAL));
+    }
+
+    // ── Step Attachments ──
+
+    @Test
+    void addAttachment_persistsMetadataOnStep() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID attachmentId = UUID.randomUUID();
+        UUID uploadedBy = UUID.randomUUID();
+        when(workflowStepAttachmentRepository.findById(attachmentId)).thenReturn(Optional.empty());
+
+        WorkflowStepAttachment result = service.addAttachment(fx.workflow().getId(), fx.step().getId(),
+            attachmentId, uploadedBy, WorkflowStepAttachment.AttachmentKind.PHOTO,
+            "tenants/t/projects/p/site.jpg", "site.jpg", "image/jpeg", 245_000L);
+
+        assertEquals(attachmentId, result.getId());
+        assertEquals(fx.step(), result.getStep());
+        assertEquals(WorkflowStepAttachment.AttachmentKind.PHOTO, result.getKind());
+        verify(workflowStepAttachmentRepository, times(1)).save(any(WorkflowStepAttachment.class));
+    }
+
+    @Test
+    void addAttachment_retriedWithSameId_isIdempotent() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID attachmentId = UUID.randomUUID();
+        UUID uploadedBy = UUID.randomUUID();
+        when(workflowStepAttachmentRepository.findById(attachmentId)).thenReturn(Optional.empty());
+
+        WorkflowStepAttachment first = service.addAttachment(fx.workflow().getId(), fx.step().getId(),
+            attachmentId, uploadedBy, WorkflowStepAttachment.AttachmentKind.DOCUMENT,
+            "tenants/t/projects/p/spec.pdf", "spec.pdf", "application/pdf", 900_000L);
+
+        // Simulate the offline sync queue retrying after a dropped connection: the row now exists.
+        when(workflowStepAttachmentRepository.findById(attachmentId)).thenReturn(Optional.of(first));
+
+        WorkflowStepAttachment second = service.addAttachment(fx.workflow().getId(), fx.step().getId(),
+            attachmentId, uploadedBy, WorkflowStepAttachment.AttachmentKind.DOCUMENT,
+            "tenants/t/projects/p/spec.pdf", "spec.pdf", "application/pdf", 900_000L);
+
+        assertSame(first, second);
+        verify(workflowStepAttachmentRepository, times(1)).save(any(WorkflowStepAttachment.class));
+    }
+
+    @Test
+    void addAttachment_stepNotInWorkflow_throws() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID attachmentId = UUID.randomUUID();
+        UUID unrelatedStepId = UUID.randomUUID();
+        when(workflowStepAttachmentRepository.findById(attachmentId)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+            () -> service.addAttachment(fx.workflow().getId(), unrelatedStepId, attachmentId,
+                UUID.randomUUID(), WorkflowStepAttachment.AttachmentKind.PHOTO,
+                "key", "file.jpg", "image/jpeg", 1L));
+        verify(workflowStepAttachmentRepository, never()).save(any(WorkflowStepAttachment.class));
+    }
+
+    @Test
+    void deleteAttachment_removesRowAndReturnsObjectKey() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID attachmentId = UUID.randomUUID();
+        WorkflowStepAttachment attachment = new WorkflowStepAttachment(attachmentId, fx.workflow(), fx.step(),
+            UUID.randomUUID(), WorkflowStepAttachment.AttachmentKind.PHOTO, "the-key", "a.jpg", "image/jpeg", 1L);
+        when(workflowStepAttachmentRepository.findByIdAndWorkflowIdAndStepId(
+            attachmentId, fx.workflow().getId(), fx.step().getId())).thenReturn(Optional.of(attachment));
+
+        String objectKey = service.deleteAttachment(fx.workflow().getId(), fx.step().getId(), attachmentId);
+
+        assertEquals("the-key", objectKey);
+        verify(workflowStepAttachmentRepository, times(1)).delete(attachment);
+    }
+
+    @Test
+    void deleteAttachment_notFoundForThisStepOrWorkflow_throws() {
+        Fixture fx = stepFixture(WorkflowStep.StepStatus.IN_PROGRESS);
+        UUID attachmentId = UUID.randomUUID();
+        when(workflowStepAttachmentRepository.findByIdAndWorkflowIdAndStepId(
+            attachmentId, fx.workflow().getId(), fx.step().getId())).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class,
+            () -> service.deleteAttachment(fx.workflow().getId(), fx.step().getId(), attachmentId));
+        verify(workflowStepAttachmentRepository, never()).delete(any(WorkflowStepAttachment.class));
     }
 }

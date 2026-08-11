@@ -56,8 +56,32 @@ export const sagaSchema = z.object({
   steps: z.array(sagaStepSchema),
   data: z.record(z.string(), z.any()),
   errorDetails: z.record(z.string(), z.any()).optional(),
+  /** Missing/undefined means 0 (hide the attachments affordance), not "unknown" - same convention as WorkflowInstanceStep.attachmentCount. */
+  noteCount: z.number().optional(),
+  attachmentCount: z.number().optional(),
 });
 export type Saga = z.infer<typeof sagaSchema>;
+
+// ── Saga Notes ──
+
+export const sagaNoteTypeSchema = z.enum(['GENERAL', 'RISK', 'ISSUE', 'DECISION']);
+export type SagaNoteType = z.infer<typeof sagaNoteTypeSchema>;
+
+export const sagaNoteSchema = z.object({
+  id: z.string(),
+  sagaId: z.string(),
+  authorId: z.string(),
+  note: z.string(),
+  type: sagaNoteTypeSchema,
+  createdAt: z.string(),
+});
+export type SagaNote = z.infer<typeof sagaNoteSchema>;
+
+export interface SagaNoteCreateRequest {
+  note: string;
+  /** Defaults to 'GENERAL' server-side when omitted. */
+  type?: SagaNoteType;
+}
 
 // ── Orchestration Workflow Template Types ──
 
@@ -160,7 +184,16 @@ export type SagaQueryResponse = z.infer<typeof sagaQueryResponseSchema>;
 
 export const sagaActionSchema = z.object({
   sagaId: z.string(),
-  action: z.enum(['resume', 'pause', 'start', 'compensate', 'escalate', 'complete_step', 'insert_step', 'remove_step']),
+  action: z.enum([
+    'resume',
+    'pause',
+    'start',
+    'compensate',
+    'escalate',
+    'complete_step',
+    'insert_step',
+    'remove_step',
+  ]),
   stepCode: z.string().optional(),
   data: z.record(z.string(), z.any()).optional(),
   reason: z.string().optional(),
@@ -191,10 +224,14 @@ export const sequenceDiagramSchema = z.object({
   workflowType: z.string(),
   nodes: z.array(sequenceDiagramNodeSchema),
   messages: z.array(sequenceDiagramMessageSchema),
-  notes: z.array(z.object({
-    participant: z.string(),
-    text: z.string(),
-  })).optional(),
+  notes: z
+    .array(
+      z.object({
+        participant: z.string(),
+        text: z.string(),
+      }),
+    )
+    .optional(),
 });
 export type SequenceDiagram = z.infer<typeof sequenceDiagramSchema>;
 
@@ -203,7 +240,14 @@ export type SequenceDiagram = z.infer<typeof sequenceDiagramSchema>;
 export const mermaidDiagramSchema = z.object({
   id: z.string(),
   title: z.string(),
-  type: z.enum(['sequenceDiagram', 'stateDiagram-v2', 'flowChart', 'gantt', 'classDiagram', 'erDiagram']),
+  type: z.enum([
+    'sequenceDiagram',
+    'stateDiagram-v2',
+    'flowChart',
+    'gantt',
+    'classDiagram',
+    'erDiagram',
+  ]),
   content: z.string(),
   workflowType: z.string(),
   description: z.string().optional(),
@@ -269,10 +313,15 @@ export const createOrchestrationTemplateRequestSchema = z.object({
   applicableCategories: z.array(z.string()).optional(),
   applicableRegions: z.array(z.string()).optional(),
 });
-export type CreateOrchestrationTemplateRequest = z.infer<typeof createOrchestrationTemplateRequestSchema>;
+export type CreateOrchestrationTemplateRequest = z.infer<
+  typeof createOrchestrationTemplateRequestSchema
+>;
 
-export const updateOrchestrationTemplateRequestSchema = createOrchestrationTemplateRequestSchema.extend({
-  version: z.number().optional(),
-  status: orchestrationTemplateStatusSchema.optional(),
-});
-export type UpdateOrchestrationTemplateRequest = z.infer<typeof updateOrchestrationTemplateRequestSchema>;
+export const updateOrchestrationTemplateRequestSchema =
+  createOrchestrationTemplateRequestSchema.extend({
+    version: z.number().optional(),
+    status: orchestrationTemplateStatusSchema.optional(),
+  });
+export type UpdateOrchestrationTemplateRequest = z.infer<
+  typeof updateOrchestrationTemplateRequestSchema
+>;

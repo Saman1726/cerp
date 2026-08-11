@@ -47,3 +47,15 @@ export interface SiteCaptureSubmissionResponse {
   id: string;
   status: string;
 }
+
+// Generic media presign-download contract (document-service's POST /api/v1/media/presign-download),
+// used by Site Capture and by other features (e.g. workflow step attachments) that need to view
+// or download an object after it's already been uploaded via the presign/PUT flow above.
+export interface MediaPresignDownloadRequest {
+  objectKey: string;
+}
+
+export interface MediaPresignDownloadResponse {
+  url: string;
+  expiresAt: string;
+}

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   SubProjectResponse,
   SubProjectFloor,
@@ -26,10 +26,14 @@ import { Button } from '@cerp/core-web/components/ui/button';
 import { Modal } from '@cerp/core-web/components/ui/modal';
 import { Input } from '@cerp/core-web/components/ui/input';
 import { Label } from '@cerp/core-web/components/ui/label';
+import { StepRowActions, useAttachmentSync } from '@cerp/core-web/workflow';
 
 // ── Workflow type helpers ──
 
-const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+const WORKFLOW_STATUS_VARIANTS: Record<
+  WorkflowStatus,
+  'default' | 'secondary' | 'success' | 'destructive' | 'outline'
+> = {
   PLANNED: 'outline',
   ACTIVE: 'default',
   PAUSED: 'secondary',
@@ -39,7 +43,10 @@ const WORKFLOW_STATUS_VARIANTS: Record<WorkflowStatus, 'default' | 'secondary' |
   CANCELLED: 'destructive',
 };
 
-const WORKFLOW_STEP_STATUS_VARIANTS: Record<WorkflowStepStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+const WORKFLOW_STEP_STATUS_VARIANTS: Record<
+  WorkflowStepStatus,
+  'default' | 'secondary' | 'success' | 'destructive' | 'outline'
+> = {
   PENDING: 'secondary',
   IN_PROGRESS: 'default',
   BLOCKED: 'outline',
@@ -71,7 +78,10 @@ function formatStepStatus(status: WorkflowStepStatus): string {
   return status.replace(/_/g, ' ');
 }
 
-const statusVariant: Record<SubProjectStatus, 'default' | 'secondary' | 'success' | 'destructive' | 'outline'> = {
+const statusVariant: Record<
+  SubProjectStatus,
+  'default' | 'secondary' | 'success' | 'destructive' | 'outline'
+> = {
   PLANNED: 'secondary',
   ACTIVE: 'default',
   ON_HOLD: 'secondary',
@@ -102,7 +112,13 @@ const constructionPhaseOptions: SubProjectConstructionPhase[] = [
   'HANDOVER',
 ];
 
-const statusOptions: SubProjectStatus[] = ['PLANNED', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+const statusOptions: SubProjectStatus[] = [
+  'PLANNED',
+  'ACTIVE',
+  'ON_HOLD',
+  'COMPLETED',
+  'CANCELLED',
+];
 
 type TabKey = 'overview' | 'workflows' | 'templates';
 
@@ -182,7 +198,9 @@ export default function SubProjectDetailClient({
   const [selectedTemplateCode, setSelectedTemplateCode] = useState('');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
-  const [selectedWorkflowAllSteps, setSelectedWorkflowAllSteps] = useState<WorkflowInstanceStep[]>([]);
+  const [selectedWorkflowAllSteps, setSelectedWorkflowAllSteps] = useState<WorkflowInstanceStep[]>(
+    [],
+  );
   const [notes, setNotes] = useState<WorkflowNote[]>([]);
   const [noteContent, setNoteContent] = useState('');
   const [notesLoading, setNotesLoading] = useState(false);
@@ -191,6 +209,10 @@ export default function SubProjectDetailClient({
   const [evidenceUrls, setEvidenceUrls] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
 
+  // Owned once here (not per step row): the upload queue is one shared IndexedDB store across
+  // every step on the page, so a single background-sync listener must drain it, not one per row.
+  const { syncNow: syncAttachmentsNow, isSyncing: attachmentsSyncing } = useAttachmentSync();
+
   const subprojectId = subProject.id;
 
   const fetchWorkflows = useCallback(async () => {
@@ -198,14 +220,21 @@ export default function SubProjectDetailClient({
       setWorkflowLoading(true);
       console.log('[SubProjectDetailClient] Fetching workflows for subproject:', subprojectId);
       const res = await fetch(`/api/workflows/subprojects/${subprojectId}`);
-      console.log('[SubProjectDetailClient] Workflow fetch response status:', res.status, res.statusText);
+      console.log(
+        '[SubProjectDetailClient] Workflow fetch response status:',
+        res.status,
+        res.statusText,
+      );
       if (!res.ok) {
         const errorText = await res.text();
         console.error('[SubProjectDetailClient] Workflow fetch error:', res.status, errorText);
         throw new Error('Failed to fetch workflows');
       }
       const data = await res.json();
-      console.log('[SubProjectDetailClient] Workflows data received:', JSON.stringify(data, null, 2));
+      console.log(
+        '[SubProjectDetailClient] Workflows data received:',
+        JSON.stringify(data, null, 2),
+      );
       console.log('[SubProjectDetailClient] workflows array:', data.workflows);
       setWorkflows(data.workflows ?? []);
 
@@ -217,7 +246,6 @@ export default function SubProjectDetailClient({
         stepsMap[wf.id] = wfSteps;
       }
       setWorkflowSteps(stepsMap);
-      
     } catch (error) {
       console.error('[SubProjectDetailClient] Error fetching workflows:', error);
       // Silently fail — workflows are optional
@@ -231,14 +259,21 @@ export default function SubProjectDetailClient({
       setTemplatesLoading(true);
       console.log('[SubProjectDetailClient] Fetching templates');
       const res = await fetch('/api/workflows/templates');
-      console.log('[SubProjectDetailClient] Templates fetch response status:', res.status, res.statusText);
+      console.log(
+        '[SubProjectDetailClient] Templates fetch response status:',
+        res.status,
+        res.statusText,
+      );
       if (!res.ok) {
         const errorText = await res.text();
         console.error('[SubProjectDetailClient] Templates fetch error:', res.status, errorText);
         throw new Error('Failed to fetch templates');
       }
       const data: WorkflowTemplate[] = await res.json();
-      console.log('[SubProjectDetailClient] Templates data received:', JSON.stringify(data, null, 2));
+      console.log(
+        '[SubProjectDetailClient] Templates data received:',
+        JSON.stringify(data, null, 2),
+      );
       console.log('[SubProjectDetailClient] templates array:', data);
       setTemplates(data);
     } catch (error) {
@@ -272,6 +307,18 @@ export default function SubProjectDetailClient({
       alert('Failed to load workflow details');
     }
   }, []);
+
+  // Refetches whenever a step-attachment sync round finishes (isSyncing true -> false), not just
+  // right after enqueueing -- this also covers uploads that only complete later, e.g. once the
+  // online-event listener fires after being offline, so the attachment icon/count update on
+  // their own without the user needing to reload the page.
+  const wasSyncingAttachmentsRef = useRef(false);
+  useEffect(() => {
+    if (wasSyncingAttachmentsRef.current && !attachmentsSyncing && selectedWorkflowId) {
+      fetchWorkflowDetail(selectedWorkflowId);
+    }
+    wasSyncingAttachmentsRef.current = attachmentsSyncing;
+  }, [attachmentsSyncing, selectedWorkflowId, fetchWorkflowDetail]);
 
   const fetchNotes = useCallback(async (workflowId: string) => {
     try {
@@ -338,7 +385,10 @@ export default function SubProjectDetailClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          evidenceUrls: evidenceUrls.split(',').map((u) => u.trim()).filter((u) => u),
+          evidenceUrls: evidenceUrls
+            .split(',')
+            .map((u) => u.trim())
+            .filter((u) => u),
           approvalNotes: approvalNotes || undefined,
         }),
       });
@@ -393,7 +443,9 @@ export default function SubProjectDetailClient({
 
   const handleRestartStep = async (workflowId: string, stepId: string) => {
     try {
-      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/restart`, { method: 'POST' });
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/restart`, {
+        method: 'POST',
+      });
       if (!res.ok) throw new Error('Failed to restart step');
       fetchWorkflows();
       if (selectedWorkflowId) fetchWorkflowDetail(selectedWorkflowId);
@@ -511,7 +563,9 @@ export default function SubProjectDetailClient({
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Construction Phase</p>
-          <p className="mt-1 text-sm font-medium">{subProject.constructionPhase?.replace(/_/g, ' ') ?? '—'}</p>
+          <p className="mt-1 text-sm font-medium">
+            {subProject.constructionPhase?.replace(/_/g, ' ') ?? '—'}
+          </p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Project ID</p>
@@ -532,13 +586,17 @@ export default function SubProjectDetailClient({
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Actual Start Date</p>
           <p className="mt-1 text-sm font-medium">
-            {subProject.actualStartDate ? new Date(subProject.actualStartDate).toLocaleDateString() : '—'}
+            {subProject.actualStartDate
+              ? new Date(subProject.actualStartDate).toLocaleDateString()
+              : '—'}
           </p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Actual End Date</p>
           <p className="mt-1 text-sm font-medium">
-            {subProject.actualEndDate ? new Date(subProject.actualEndDate).toLocaleDateString() : '—'}
+            {subProject.actualEndDate
+              ? new Date(subProject.actualEndDate).toLocaleDateString()
+              : '—'}
           </p>
         </div>
         <div className="rounded-lg border p-4">
@@ -550,7 +608,9 @@ export default function SubProjectDetailClient({
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Budget</p>
           <p className="mt-1 text-sm font-medium">
-            {subProject.budget != null ? `${subProject.budget} ${subProject.currencyCode ?? ''}` : '—'}
+            {subProject.budget != null
+              ? `${subProject.budget} ${subProject.currencyCode ?? ''}`
+              : '—'}
           </p>
         </div>
         <div className="rounded-lg border p-4">
@@ -560,11 +620,7 @@ export default function SubProjectDetailClient({
         <div className="rounded-lg border p-4">
           <p className="text-xs font-medium text-muted-foreground">Sync Status</p>
           <p className="mt-1 text-sm font-medium">
-            {subProject.syncStatus ? (
-              <Badge variant="outline">{subProject.syncStatus}</Badge>
-            ) : (
-              '—'
-            )}
+            {subProject.syncStatus ? <Badge variant="outline">{subProject.syncStatus}</Badge> : '—'}
           </p>
         </div>
       </div>
@@ -572,7 +628,9 @@ export default function SubProjectDetailClient({
       {/* Floors */}
       {subProject.floors && subProject.floors.length > 0 && (
         <div className="rounded-lg border p-4">
-          <h3 className="mb-3 text-sm font-medium text-muted-foreground">Floors ({subProject.floors.length})</h3>
+          <h3 className="mb-3 text-sm font-medium text-muted-foreground">
+            Floors ({subProject.floors.length})
+          </h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {subProject.floors.map((floor: SubProjectFloor) => (
               <div key={floor.id} className="rounded-md border p-3">
@@ -613,7 +671,9 @@ export default function SubProjectDetailClient({
                 {part.description && (
                   <p className="mt-1 text-xs text-muted-foreground">{part.description}</p>
                 )}
-                <Badge variant="outline" className="mt-2 text-xs">{part.scopeLevel}</Badge>
+                <Badge variant="outline" className="mt-2 text-xs">
+                  {part.scopeLevel}
+                </Badge>
               </div>
             ))}
           </div>
@@ -637,8 +697,7 @@ export default function SubProjectDetailClient({
             {subProject.createdBy ?? '—'}
           </div>
           <div>
-            <span className="text-muted-foreground">Updated By: </span>
-            —
+            <span className="text-muted-foreground">Updated By: </span>—
           </div>
           {subProject.externalId && (
             <div>
@@ -658,7 +717,16 @@ export default function SubProjectDetailClient({
       return (
         <div className="flex flex-col gap-6">
           {/* Back button */}
-          <Button variant="ghost" size="sm" onClick={() => { setSelectedWorkflowId(null); setSelectedWorkflow(null); setSelectedWorkflowAllSteps([]); setNotes([]); }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedWorkflowId(null);
+              setSelectedWorkflow(null);
+              setSelectedWorkflowAllSteps([]);
+              setNotes([]);
+            }}
+          >
             ← Back to all workflows
           </Button>
 
@@ -669,20 +737,28 @@ export default function SubProjectDetailClient({
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold">{selectedWorkflow.name}</h3>
-                    <Badge variant={WORKFLOW_STATUS_VARIANTS[selectedWorkflow.status] ?? 'secondary'}>
+                    <Badge
+                      variant={WORKFLOW_STATUS_VARIANTS[selectedWorkflow.status] ?? 'secondary'}
+                    >
                       {selectedWorkflow.status}
                     </Badge>
                     {selectedWorkflow.templateCode && (
-                      <Badge variant="outline" className="font-mono text-xs">{selectedWorkflow.templateCode}</Badge>
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {selectedWorkflow.templateCode}
+                      </Badge>
                     )}
                   </div>
                   {selectedWorkflow.description && (
-                    <p className="mt-1 text-sm text-muted-foreground">{selectedWorkflow.description}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {selectedWorkflow.description}
+                    </p>
                   )}
                   <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
                     <span>{formatPhaseType(selectedWorkflow.phaseType)}</span>
                     <span>·</span>
-                    <span>{selectedWorkflow.completedSteps}/{selectedWorkflow.totalSteps} steps</span>
+                    <span>
+                      {selectedWorkflow.completedSteps}/{selectedWorkflow.totalSteps} steps
+                    </span>
                     <span>·</span>
                     <span>{getWorkflowProgress(selectedWorkflow)}% complete</span>
                   </div>
@@ -702,21 +778,39 @@ export default function SubProjectDetailClient({
                   )}
                   {selectedWorkflow.status === 'ACTIVE' && (
                     <>
-                      <Button onClick={() => handleCompleteWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                      <Button
+                        onClick={() => handleCompleteWorkflow(selectedWorkflowId)}
+                        variant="outline"
+                        size="sm"
+                      >
                         Complete
                       </Button>
-                      <Button onClick={() => handlePauseWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                      <Button
+                        onClick={() => handlePauseWorkflow(selectedWorkflowId)}
+                        variant="outline"
+                        size="sm"
+                      >
                         Pause
                       </Button>
                     </>
                   )}
                   {selectedWorkflow.status === 'PAUSED' && (
-                    <Button onClick={() => handleResumeWorkflow(selectedWorkflowId)} variant="outline" size="sm">
+                    <Button
+                      onClick={() => handleResumeWorkflow(selectedWorkflowId)}
+                      variant="outline"
+                      size="sm"
+                    >
                       Resume
                     </Button>
                   )}
-                  {(selectedWorkflow.status === 'PLANNED' || selectedWorkflow.status === 'ACTIVE' || selectedWorkflow.status === 'PAUSED') && (
-                    <Button onClick={() => handleCancelWorkflow(selectedWorkflowId)} variant="destructive" size="sm">
+                  {(selectedWorkflow.status === 'PLANNED' ||
+                    selectedWorkflow.status === 'ACTIVE' ||
+                    selectedWorkflow.status === 'PAUSED') && (
+                    <Button
+                      onClick={() => handleCancelWorkflow(selectedWorkflowId)}
+                      variant="destructive"
+                      size="sm"
+                    >
                       Cancel
                     </Button>
                   )}
@@ -750,11 +844,15 @@ export default function SubProjectDetailClient({
                         <td className="py-3 pr-4 font-medium">
                           {step.name}
                           {step.approvalNotes && (
-                            <p className="mt-0.5 text-xs font-normal text-muted-foreground">{step.approvalNotes}</p>
+                            <p className="mt-0.5 text-xs font-normal text-muted-foreground">
+                              {step.approvalNotes}
+                            </p>
                           )}
                         </td>
                         <td className="py-3 pr-4">
-                          <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[step.status] ?? 'secondary'}>
+                          <Badge
+                            variant={WORKFLOW_STEP_STATUS_VARIANTS[step.status] ?? 'secondary'}
+                          >
                             {formatStepStatus(step.status)}
                           </Badge>
                         </td>
@@ -765,19 +863,41 @@ export default function SubProjectDetailClient({
                           {step.dueAt ? new Date(step.dueAt).toLocaleDateString() : '—'}
                         </td>
                         <td className="py-3">
-                          <div className="flex gap-1">
+                          <div className="flex items-center gap-1">
                             {step.status === 'PENDING' && (
-                              <Button variant="outline" size="sm" onClick={() => handleStartStep(selectedWorkflowId, step.id)}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleStartStep(selectedWorkflowId, step.id)}
+                              >
                                 Start
                               </Button>
                             )}
                             {step.status === 'IN_PROGRESS' && (
-                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setCurrentStep(step);
+                                  setEvidenceUrls('');
+                                  setApprovalNotes('');
+                                  setStepModalOpen(true);
+                                }}
+                              >
                                 Complete
                               </Button>
                             )}
                             {step.status === 'COMPLETED' && (
-                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setCurrentStep(step);
+                                  setEvidenceUrls('');
+                                  setApprovalNotes('');
+                                  setStepModalOpen(true);
+                                }}
+                              >
                                 Review
                               </Button>
                             )}
@@ -785,13 +905,30 @@ export default function SubProjectDetailClient({
                               <span className="text-xs text-muted-foreground">Approved</span>
                             )}
                             {step.status === 'REJECTED' && (
-                              <Button variant="outline" size="sm" onClick={() => { setCurrentStep(step); setEvidenceUrls(''); setApprovalNotes(''); setStepModalOpen(true); }}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setCurrentStep(step);
+                                  setEvidenceUrls('');
+                                  setApprovalNotes('');
+                                  setStepModalOpen(true);
+                                }}
+                              >
                                 Restart
                               </Button>
                             )}
                             {step.status === 'BLOCKED' && (
                               <span className="text-xs text-muted-foreground">Blocked</span>
                             )}
+                            <StepRowActions
+                              workflowId={selectedWorkflowId}
+                              projectId={projectId}
+                              subProjectId={subprojectId}
+                              step={step}
+                              onStepUpdated={() => fetchWorkflowDetail(selectedWorkflowId)}
+                              onAttachmentQueued={() => void syncAttachmentsNow()}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -909,7 +1046,9 @@ export default function SubProjectDetailClient({
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span>{formatPhaseType(workflow.phaseType)}</span>
                         <span>·</span>
-                        <span>{workflow.completedSteps}/{workflow.totalSteps} steps</span>
+                        <span>
+                          {workflow.completedSteps}/{workflow.totalSteps} steps
+                        </span>
                         <span>·</span>
                         <span>{progress}% complete</span>
                         {activeStep && (
@@ -935,27 +1074,50 @@ export default function SubProjectDetailClient({
                     </div>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       {workflow.status === 'PLANNED' && (
-                        <Button onClick={() => handleStartWorkflow(workflow.id)} variant="ghost" size="sm">
+                        <Button
+                          onClick={() => handleStartWorkflow(workflow.id)}
+                          variant="ghost"
+                          size="sm"
+                        >
                           Start
                         </Button>
                       )}
                       {workflow.status === 'ACTIVE' && (
                         <>
-                          <Button onClick={() => handleCompleteWorkflow(workflow.id)} variant="ghost" size="sm">
+                          <Button
+                            onClick={() => handleCompleteWorkflow(workflow.id)}
+                            variant="ghost"
+                            size="sm"
+                          >
                             Complete
                           </Button>
-                          <Button onClick={() => handlePauseWorkflow(workflow.id)} variant="ghost" size="sm">
+                          <Button
+                            onClick={() => handlePauseWorkflow(workflow.id)}
+                            variant="ghost"
+                            size="sm"
+                          >
                             Pause
                           </Button>
                         </>
                       )}
                       {workflow.status === 'PAUSED' && (
-                        <Button onClick={() => handleResumeWorkflow(workflow.id)} variant="ghost" size="sm">
+                        <Button
+                          onClick={() => handleResumeWorkflow(workflow.id)}
+                          variant="ghost"
+                          size="sm"
+                        >
                           Resume
                         </Button>
                       )}
-                      {(workflow.status === 'PLANNED' || workflow.status === 'ACTIVE' || workflow.status === 'PAUSED') && (
-                        <Button onClick={() => handleCancelWorkflow(workflow.id)} variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                      {(workflow.status === 'PLANNED' ||
+                        workflow.status === 'ACTIVE' ||
+                        workflow.status === 'PAUSED') && (
+                        <Button
+                          onClick={() => handleCancelWorkflow(workflow.id)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                        >
                           Cancel
                         </Button>
                       )}
@@ -985,7 +1147,8 @@ export default function SubProjectDetailClient({
       ) : (
         <div className="flex flex-col gap-3">
           {templates.map((template) => {
-            const templateSteps = (template as WorkflowTemplate & { steps?: WorkflowTemplateStep[] }).steps ?? [];
+            const templateSteps =
+              (template as WorkflowTemplate & { steps?: WorkflowTemplateStep[] }).steps ?? [];
             return (
               <div key={template.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between">
@@ -996,7 +1159,9 @@ export default function SubProjectDetailClient({
                         {template.code}
                       </Badge>
                       <Badge variant="secondary">
-                        {formatPhaseType((template as { status?: string | undefined }).status ?? null)}
+                        {formatPhaseType(
+                          (template as { status?: string | undefined }).status ?? null,
+                        )}
                       </Badge>
                     </div>
                     {template.description && (
@@ -1034,14 +1199,18 @@ export default function SubProjectDetailClient({
                 {/* Show first few steps inline */}
                 {templateSteps.length > 0 && templateSteps.length <= 5 && (
                   <div className="mt-3 flex flex-col gap-1">
-                    {templateSteps.sort((a, b) => a.order - b.order).map((step: WorkflowTemplateStep) => (
-                      <div key={step.id} className="flex items-center gap-2 text-xs">
-                        <span>{STEP_TYPE_ICONS[step.type]}</span>
-                        <span className="text-muted-foreground">{step.order}.</span>
-                        <span>{step.name}</span>
-                        <Badge variant="outline" className="text-xs">{STEP_TYPE_LABELS[step.type]}</Badge>
-                      </div>
-                    ))}
+                    {templateSteps
+                      .sort((a, b) => a.order - b.order)
+                      .map((step: WorkflowTemplateStep) => (
+                        <div key={step.id} className="flex items-center gap-2 text-xs">
+                          <span>{STEP_TYPE_ICONS[step.type]}</span>
+                          <span className="text-muted-foreground">{step.order}.</span>
+                          <span>{step.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {STEP_TYPE_LABELS[step.type]}
+                          </Badge>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>
@@ -1062,7 +1231,9 @@ export default function SubProjectDetailClient({
               <p className="text-sm text-muted-foreground">{templateDetail.template.description}</p>
               <div className="mt-2 flex gap-2">
                 <Badge variant="outline">{templateDetail.template.code}</Badge>
-                <Badge variant="secondary">{formatPhaseType(templateDetail.template.phaseType)}</Badge>
+                <Badge variant="secondary">
+                  {formatPhaseType(templateDetail.template.phaseType)}
+                </Badge>
               </div>
             </div>
             <div>
@@ -1075,14 +1246,20 @@ export default function SubProjectDetailClient({
                       <div className="flex items-center gap-2">
                         <span>{STEP_TYPE_ICONS[step.type]}</span>
                         <span className="font-medium">{step.name}</span>
-                        <Badge variant="outline" className="text-xs">{STEP_TYPE_LABELS[step.type]}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {STEP_TYPE_LABELS[step.type]}
+                        </Badge>
                       </div>
                       {step.description && (
                         <p className="mt-1 text-xs text-muted-foreground">{step.description}</p>
                       )}
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {step.requiresEvidence && <Badge variant="secondary">Requires Evidence</Badge>}
-                        {step.requiresApproval && <Badge variant="secondary">Requires Approval</Badge>}
+                        {step.requiresEvidence && (
+                          <Badge variant="secondary">Requires Evidence</Badge>
+                        )}
+                        {step.requiresApproval && (
+                          <Badge variant="secondary">Requires Approval</Badge>
+                        )}
                         {step.slaHours && <span>SLA: {step.slaHours}h</span>}
                       </div>
                     </div>
@@ -1109,7 +1286,9 @@ export default function SubProjectDetailClient({
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold">{subProject.name}</h1>
-              <Badge variant={statusVariant[subProject.status] ?? 'secondary'}>{subProject.status}</Badge>
+              <Badge variant={statusVariant[subProject.status] ?? 'secondary'}>
+                {subProject.status}
+              </Badge>
             </div>
             {subProject.code && (
               <p className="mt-1 text-sm text-muted-foreground font-mono">{subProject.code}</p>
@@ -1132,11 +1311,11 @@ export default function SubProjectDetailClient({
       {/* Tabs */}
       <div className="border-b">
         <nav className="flex gap-1">
-          {([
+          {[
             { key: 'overview' as TabKey, label: 'Overview' },
             { key: 'workflows' as TabKey, label: `Workflows (${workflows.length})` },
             { key: 'templates' as TabKey, label: `Templates (${templates.length})` },
-          ]).map((tab) => (
+          ].map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -1179,7 +1358,8 @@ export default function SubProjectDetailClient({
                 const tWithSteps = t as WorkflowTemplate & { steps?: WorkflowTemplateStep[] };
                 return (
                   <option key={t.id} value={t.code}>
-                    {t.name} ({formatPhaseType(t.phaseType)}) — {tWithSteps.steps?.length ?? 0} steps
+                    {t.name} ({formatPhaseType(t.phaseType)}) — {tWithSteps.steps?.length ?? 0}{' '}
+                    steps
                   </option>
                 );
               })}
@@ -1210,7 +1390,9 @@ export default function SubProjectDetailClient({
         {currentStep && selectedWorkflowId && (
           <div className="flex min-w-0 flex-col gap-4">
             <div>
-              <p className="text-sm text-muted-foreground">{currentStep.description || 'No description'}</p>
+              <p className="text-sm text-muted-foreground">
+                {currentStep.description || 'No description'}
+              </p>
               <div className="mt-2 flex gap-2">
                 <Badge variant={WORKFLOW_STEP_STATUS_VARIANTS[currentStep.status] ?? 'secondary'}>
                   {formatStepStatus(currentStep.status)}
@@ -1259,18 +1441,27 @@ export default function SubProjectDetailClient({
 
             <div className="flex gap-2">
               {currentStep.status === 'PENDING' && (
-                <Button onClick={() => handleStartStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                <Button
+                  onClick={() => handleStartStep(selectedWorkflowId, currentStep.id)}
+                  className="flex-1"
+                >
                   Start Step
                 </Button>
               )}
               {currentStep.status === 'IN_PROGRESS' && (
-                <Button onClick={() => handleCompleteStepFinal(selectedWorkflowId, currentStep.id)} className="flex-1">
+                <Button
+                  onClick={() => handleCompleteStepFinal(selectedWorkflowId, currentStep.id)}
+                  className="flex-1"
+                >
                   Complete Step
                 </Button>
               )}
               {currentStep.status === 'COMPLETED' && (
                 <>
-                  <Button onClick={() => handleApproveStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                  <Button
+                    onClick={() => handleApproveStep(selectedWorkflowId, currentStep.id)}
+                    className="flex-1"
+                  >
                     Approve
                   </Button>
                   <Button
@@ -1283,7 +1474,10 @@ export default function SubProjectDetailClient({
                 </>
               )}
               {currentStep.status === 'REJECTED' && (
-                <Button onClick={() => handleRestartStep(selectedWorkflowId, currentStep.id)} className="flex-1">
+                <Button
+                  onClick={() => handleRestartStep(selectedWorkflowId, currentStep.id)}
+                  className="flex-1"
+                >
                   Restart Step
                 </Button>
               )}
@@ -1337,7 +1531,12 @@ export default function SubProjectDetailClient({
                 <select
                   id="buildingType"
                   value={formData.buildingType}
-                  onChange={(e) => setFormData({ ...formData, buildingType: e.target.value as SubProjectBuildingType })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      buildingType: e.target.value as SubProjectBuildingType,
+                    })
+                  }
                   className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {buildingTypeOptions.map((option) => (
@@ -1353,7 +1552,10 @@ export default function SubProjectDetailClient({
                   id="constructionPhase"
                   value={formData.constructionPhase}
                   onChange={(e) =>
-                    setFormData({ ...formData, constructionPhase: e.target.value as SubProjectConstructionPhase })
+                    setFormData({
+                      ...formData,
+                      constructionPhase: e.target.value as SubProjectConstructionPhase,
+                    })
                   }
                   className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
@@ -1370,7 +1572,9 @@ export default function SubProjectDetailClient({
               <select
                 id="status"
                 value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value as SubProjectStatus })}
+                onChange={(e) =>
+                  setFormData({ ...formData, status: e.target.value as SubProjectStatus })
+                }
                 className="flex h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {statusOptions.map((option) => (

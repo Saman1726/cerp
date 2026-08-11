@@ -14,6 +14,7 @@ import jakarta.validation.constraints.NotNull;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,8 +28,10 @@ import org.springframework.web.bind.annotation.RestController;
 import io.cerp.workflow.domain.Workflow;
 import io.cerp.workflow.domain.WorkflowNote;
 import io.cerp.workflow.domain.WorkflowStep;
+import io.cerp.workflow.domain.WorkflowStepAttachment;
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.repository.WorkflowNoteRepository;
+import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
 import io.cerp.workflow.service.WorkflowService;
 
 /**
@@ -56,6 +59,9 @@ import io.cerp.workflow.service.WorkflowService;
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/restart</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/block</li>
  * <li>POST /api/v1/workflows/{id}/steps/{stepId}/unblock</li>
+ * <li>GET /api/v1/workflows/{id}/attachments</li>
+ * <li>GET /api/v1/workflows/{id}/steps/{stepId}/attachments</li>
+ * <li>POST /api/v1/workflows/{id}/steps/{stepId}/attachments</li>
  * </ul>
  */
 @RestController
@@ -64,10 +70,14 @@ public class WorkflowController {
 
     private final WorkflowService workflowService;
     private final WorkflowNoteRepository workflowNoteRepository;
+    private final WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
 
-    public WorkflowController(WorkflowService workflowService, WorkflowNoteRepository workflowNoteRepository) {
+    public WorkflowController(WorkflowService workflowService,
+            WorkflowNoteRepository workflowNoteRepository,
+            WorkflowStepAttachmentRepository workflowStepAttachmentRepository) {
         this.workflowService = workflowService;
         this.workflowNoteRepository = workflowNoteRepository;
+        this.workflowStepAttachmentRepository = workflowStepAttachmentRepository;
     }
 
     // ── Workflow CRUD ──
@@ -335,17 +345,55 @@ public class WorkflowController {
     // ── Notes ──
 
     @GetMapping("/{workflowId}/notes")
-    public ResponseEntity<List<WorkflowNote>> getNotes(@PathVariable String workflowId) {
-        List<WorkflowNote> workflowNotes = workflowNoteRepository
-            .findByWorkflowIdOrderByCreatedAtDesc(UUID.fromString(workflowId));
+    public ResponseEntity<List<WorkflowNote>> getNotes(@PathVariable String workflowId,
+            @RequestParam(required = false) UUID stepId) {
+        List<WorkflowNote> workflowNotes = stepId != null
+                ? workflowNoteRepository.findByWorkflowIdAndStepIdOrderByCreatedAtDesc(UUID.fromString(workflowId), stepId)
+                : workflowNoteRepository.findByWorkflowIdOrderByCreatedAtDesc(UUID.fromString(workflowId));
         return ResponseEntity.ok(workflowNotes);
     }
 
     @PostMapping("/{workflowId}/notes")
     public ResponseEntity<WorkflowNote> addNote(@PathVariable String workflowId,
             @Valid @RequestBody AddNoteRequest request) {
-        // Notes will be implemented in next iteration
-        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        WorkflowNote created = workflowService.addNote(UUID.fromString(workflowId),
+            request.stepId(), request.userId(), request.note(),
+            WorkflowNote.NoteType.valueOf(request.type().toUpperCase()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    // ── Step Attachments ──
+
+    @GetMapping("/{workflowId}/attachments")
+    public ResponseEntity<List<WorkflowStepAttachment>> getAttachments(@PathVariable String workflowId) {
+        return ResponseEntity.ok(workflowStepAttachmentRepository
+            .findByWorkflowIdOrderByCreatedAtDesc(UUID.fromString(workflowId)));
+    }
+
+    @GetMapping("/{workflowId}/steps/{stepId}/attachments")
+    public ResponseEntity<List<WorkflowStepAttachment>> getStepAttachments(
+            @PathVariable String workflowId, @PathVariable String stepId) {
+        return ResponseEntity.ok(workflowStepAttachmentRepository
+            .findByWorkflowIdAndStepIdOrderByCreatedAtDesc(UUID.fromString(workflowId), UUID.fromString(stepId)));
+    }
+
+    @PostMapping("/{workflowId}/steps/{stepId}/attachments")
+    public ResponseEntity<WorkflowStepAttachment> addStepAttachment(
+            @PathVariable String workflowId, @PathVariable String stepId,
+            @Valid @RequestBody AddAttachmentRequest request) {
+        WorkflowStepAttachment created = workflowService.addAttachment(
+            UUID.fromString(workflowId), UUID.fromString(stepId), request.id(), request.uploadedBy(),
+            WorkflowStepAttachment.AttachmentKind.valueOf(request.kind().toUpperCase()),
+            request.objectKey(), request.originalFileName(), request.contentType(), request.byteSize());
+        return ResponseEntity.ok(created);
+    }
+
+    @DeleteMapping("/{workflowId}/steps/{stepId}/attachments/{attachmentId}")
+    public ResponseEntity<DeleteAttachmentResponse> deleteStepAttachment(
+            @PathVariable String workflowId, @PathVariable String stepId, @PathVariable String attachmentId) {
+        String objectKey = workflowService.deleteAttachment(
+            UUID.fromString(workflowId), UUID.fromString(stepId), UUID.fromString(attachmentId));
+        return ResponseEntity.ok(new DeleteAttachmentResponse(objectKey));
     }
 
     // ── Helpers ──
@@ -396,5 +444,18 @@ public class WorkflowController {
             UUID stepId,
             @NotBlank String note,
             @NotBlank String type) {
+    }
+
+    public record AddAttachmentRequest(
+            @NotNull UUID id,
+            @NotNull UUID uploadedBy,
+            @NotBlank String kind,
+            @NotBlank String objectKey,
+            @NotBlank String originalFileName,
+            @NotBlank String contentType,
+            long byteSize) {
+    }
+
+    public record DeleteAttachmentResponse(String objectKey) {
     }
 }

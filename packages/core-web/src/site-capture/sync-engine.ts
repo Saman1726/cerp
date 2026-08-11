@@ -3,11 +3,11 @@ import type {
   SiteCapturePresignResponse,
   SiteCaptureSubmission,
 } from '@cerp/shared-types';
+import { processQueue as processGenericQueue, type SyncResult } from '../offline-sync/sync-engine';
 import {
   listQueuedCaptures,
   removeQueuedCapture,
   markCaptureFailed,
-  MAX_SYNC_ATTEMPTS,
   type QueuedCapture,
 } from './offline-queue';
 
@@ -18,11 +18,7 @@ export interface SyncEndpoints {
   submitUrl?: string;
 }
 
-export interface SyncResult {
-  synced: string[];
-  failed: string[];
-  remaining: number;
-}
+export type { SyncResult };
 
 type ResolvedEndpoints = Required<SyncEndpoints>;
 
@@ -82,8 +78,7 @@ async function syncOne(capture: QueuedCapture, endpoints: ResolvedEndpoints): Pr
 /**
  * Drains the offline queue one capture at a time, oldest first, so a weak
  * site connection is never asked to push multiple multi-megabyte uploads
- * concurrently. Framework-agnostic (only fetch + IndexedDB) so it can run
- * from a plain window context or, later, a service worker.
+ * concurrently.
  */
 export async function processQueue(endpoints: SyncEndpoints = {}): Promise<SyncResult> {
   const resolved: ResolvedEndpoints = {
@@ -91,31 +86,8 @@ export async function processQueue(endpoints: SyncEndpoints = {}): Promise<SyncR
     submitUrl: endpoints.submitUrl ?? '/api/site-captures',
   };
 
-  const queued = await listQueuedCaptures();
-  const synced: string[] = [];
-  const failed: string[] = [];
-
-  for (const capture of queued) {
-    // Connection dropped again mid-drain - stop rather than burn through
-    // retry attempts on items that never got a real chance to send.
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      break;
-    }
-
-    if (capture.attempts >= MAX_SYNC_ATTEMPTS) {
-      failed.push(capture.clientId);
-      continue;
-    }
-
-    try {
-      await syncOne(capture, resolved);
-      await removeQueuedCapture(capture.clientId);
-      synced.push(capture.clientId);
-    } catch (error) {
-      await markCaptureFailed(capture.clientId, error instanceof Error ? error.message : 'Unknown sync error');
-      failed.push(capture.clientId);
-    }
-  }
-
-  return { synced, failed, remaining: failed.length };
+  return processGenericQueue(
+    { list: listQueuedCaptures, remove: removeQueuedCapture, markFailed: markCaptureFailed },
+    (capture) => syncOne(capture, resolved),
+  );
 }

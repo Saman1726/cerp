@@ -8,6 +8,8 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 
+import org.hibernate.annotations.Formula;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -82,6 +84,13 @@ public class WorkflowStep {
 
     @Column(name = "weight", precision = 5, scale = 2)
     private BigDecimal weight = BigDecimal.ONE;
+
+    // Read-only, computed per-query. {alias} is Hibernate's placeholder for whatever alias it
+    // assigns this entity's own table in a given query -- required because this table has an
+    // "id" column too, so a bare `id` reference in the subquery would resolve to
+    // workflow_step_attachments.id instead of this row's id (silently always 0).
+    @Formula("(SELECT COUNT(*) FROM workflow.workflow_step_attachments a WHERE a.step_id = {alias}.id)")
+    private Long attachmentCount;
 
     // ── Enums ──
 
@@ -287,5 +296,9 @@ public class WorkflowStep {
 
     public void setWeight(BigDecimal weight) {
         this.weight = weight;
+    }
+
+    public Long getAttachmentCount() {
+        return attachmentCount;
     }
 }

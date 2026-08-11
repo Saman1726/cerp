@@ -5,13 +5,20 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 import io.cerp.document.config.StorageProperties;
 import io.cerp.document.domain.SiteCapture;
+import io.cerp.document.dto.DeleteObjectRequest;
+import io.cerp.document.dto.PresignDownloadRequest;
+import io.cerp.document.dto.PresignDownloadResponse;
 import io.cerp.document.dto.PresignRequest;
 import io.cerp.document.dto.PresignResponse;
 import io.cerp.document.dto.SiteCaptureSubmissionRequest;
@@ -21,11 +28,14 @@ import io.cerp.document.repository.SiteCaptureRepository;
 @Service
 public class DocumentService {
 
+    private final S3Client s3Client;
     private final S3Presigner s3Presigner;
     private final StorageProperties storageProperties;
     private final SiteCaptureRepository repository;
 
-    public DocumentService(S3Presigner s3Presigner, StorageProperties storageProperties, SiteCaptureRepository repository) {
+    public DocumentService(S3Client s3Client, S3Presigner s3Presigner, StorageProperties storageProperties,
+            SiteCaptureRepository repository) {
+        this.s3Client = s3Client;
         this.s3Presigner = s3Presigner;
         this.storageProperties = storageProperties;
         this.repository = repository;
@@ -49,6 +59,38 @@ public class DocumentService {
             .build());
 
         return new PresignResponse(presigned.url().toString(), objectKey, Instant.now().plus(ttl).toString());
+    }
+
+    // Symmetric to presign() above, but for reading an already-uploaded object back: presign()
+    // only ever mints short-lived PUT URLs, so there was previously no way to get a viewable/
+    // downloadable URL for an object after it was stored (needed e.g. to display a workflow
+    // step's attached photos).
+    public PresignDownloadResponse presignDownload(PresignDownloadRequest request) {
+        Duration ttl = Duration.ofMinutes(storageProperties.presignTtlMinutes());
+
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+            .bucket(storageProperties.bucket())
+            .key(request.objectKey())
+            .build();
+
+        PresignedGetObjectRequest presigned = s3Presigner.presignGetObject(GetObjectPresignRequest.builder()
+            .signatureDuration(ttl)
+            .getObjectRequest(getObjectRequest)
+            .build());
+
+        return new PresignDownloadResponse(presigned.url().toString(), Instant.now().plus(ttl).toString());
+    }
+
+    // Uses the internal (Docker-network) S3Client directly, not a presigned URL - this is a
+    // server-to-server delete, never something a browser needs to do itself. Best-effort from
+    // the caller's perspective: workflow-service deletes its metadata row first and treats this
+    // as cleanup, not a transactional dependency (a delete failing here just leaves an orphaned
+    // object, which never affects correctness the way a dangling metadata row would).
+    public void deleteObject(DeleteObjectRequest request) {
+        s3Client.deleteObject(software.amazon.awssdk.services.s3.model.DeleteObjectRequest.builder()
+            .bucket(storageProperties.bucket())
+            .key(request.objectKey())
+            .build());
     }
 
     public SiteCaptureSubmissionResponse submit(UUID tenantId, SiteCaptureSubmissionRequest request) {

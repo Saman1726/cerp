@@ -1,4 +1,4 @@
-import type { SagaStatus } from '@cerp/shared-types';
+import type { Saga, SagaStatus } from '@cerp/shared-types';
 
 /**
  * Re-export workflow types from shared-types for convenience.
@@ -32,6 +32,17 @@ export type {
 /**
  * UI-specific types for the saga monitoring interface.
  */
+
+/**
+ * projectId isn't guaranteed for every saga type (confirmed present for Bidding sagas from their
+ * first step onward, confirmed absent for Delivery sagas) - it lives in the free-form `data` map,
+ * not a top-level field. Centralized here so the extraction logic lives in one place rather than
+ * being repeated at each call site.
+ */
+export function getSagaProjectId(saga: Saga): string | undefined {
+  const projectId = saga.data?.projectId;
+  return typeof projectId === 'string' ? projectId : undefined;
+}
 
 export type SagaFilterStatus = SagaStatus | 'ALL';
 
@@ -82,9 +93,21 @@ export const SAGA_TYPE_LABELS: Record<string, string> = {
 // ── Procurement Saga Step Definitions ──
 
 export const PROCUREMENT_SAGA_STEPS: { code: string; label: string; description: string }[] = [
-  { code: 'CreateProcurementRequest', label: 'Create Request', description: 'Create a new procurement request' },
-  { code: 'SubmitForApproval', label: 'Submit for Approval', description: 'Submit the request for approval' },
-  { code: 'ApproveRequest', label: 'Approve Request', description: 'Approve or reject the request' },
+  {
+    code: 'CreateProcurementRequest',
+    label: 'Create Request',
+    description: 'Create a new procurement request',
+  },
+  {
+    code: 'SubmitForApproval',
+    label: 'Submit for Approval',
+    description: 'Submit the request for approval',
+  },
+  {
+    code: 'ApproveRequest',
+    label: 'Approve Request',
+    description: 'Approve or reject the request',
+  },
   { code: 'IssuePurchaseOrder', label: 'Issue PO', description: 'Issue purchase order to vendor' },
   { code: 'ReceiveDelivery', label: 'Receive Delivery', description: 'Receive goods at site' },
   { code: 'ConfirmDelivery', label: 'Confirm Delivery', description: 'Confirm delivery accepted' },
@@ -96,7 +119,11 @@ export const PROCUREMENT_SAGA_STEPS: { code: string; label: string; description:
 export const BIDDING_SAGA_STEPS: { code: string; label: string; description: string }[] = [
   { code: 'Tender.CreateAndOpen', label: 'Create Tender', description: 'Create and open a tender' },
   { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Open bid collection period' },
-  { code: 'Tender.InviteVendors', label: 'Invite Vendors', description: 'Invite selected vendors to bid' },
+  {
+    code: 'Tender.InviteVendors',
+    label: 'Invite Vendors',
+    description: 'Invite selected vendors to bid',
+  },
   { code: 'Bidding.Evaluate', label: 'Evaluate Bids', description: 'Evaluate received bids' },
   { code: 'Tender.Award', label: 'Award Tender', description: 'Award tender and issue PO' },
 ];
@@ -104,7 +131,11 @@ export const BIDDING_SAGA_STEPS: { code: string; label: string; description: str
 export const OPEN_TENDER_SAGA_STEPS: { code: string; label: string; description: string }[] = [
   { code: 'Tender.CreateAndOpen', label: 'Create Tender', description: 'Create and open a tender' },
   { code: 'Bidding.CollectBids', label: 'Collect Bids', description: 'Open bid collection period' },
-  { code: 'OpenTender.Publish', label: 'Publish Open Tender', description: 'Broadcast tender to the open channel' },
+  {
+    code: 'OpenTender.Publish',
+    label: 'Publish Open Tender',
+    description: 'Broadcast tender to the open channel',
+  },
   { code: 'Bidding.Evaluate', label: 'Evaluate Bids', description: 'Evaluate received bids' },
   { code: 'Tender.Award', label: 'Award Tender', description: 'Award tender and issue PO' },
 ];

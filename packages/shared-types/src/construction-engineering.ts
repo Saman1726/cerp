@@ -223,8 +223,10 @@ export interface UpdateSubProjectRequest {
 
 // ── Workflow Types ──
 
-export type WorkflowStatus = 'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
-export type WorkflowStepStatus = 'PENDING' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'APPROVED' | 'REJECTED';
+export type WorkflowStatus =
+  'PLANNED' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type WorkflowStepStatus =
+  'PENDING' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'APPROVED' | 'REJECTED';
 export type WorkflowStepType = 'TASK' | 'MILESTONE' | 'INSPECTION' | 'APPROVAL';
 export type WorkflowTemplateStatus = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 
@@ -250,7 +252,7 @@ export interface Workflow {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  steps:WorkflowInstanceStep[];
+  steps: WorkflowInstanceStep[];
 }
 
 export interface WorkflowResponse {
@@ -284,6 +286,14 @@ export interface WorkflowInstanceStep {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Count of photo/document attachments on this step. Optional (not `| null`) because older
+   * backend responses simply omit the field -- treat missing/undefined as 0 (hide the
+   * attachments affordance), not as "unknown".
+   */
+  attachmentCount?: number;
+  /** Count of notes on this step; not required to gate the always-visible Notes button. */
+  noteCount?: number;
 }
 
 // ── Workflow Template ──
@@ -328,12 +338,24 @@ export interface WorkflowTemplateResponse {
 
 // ── Workflow Note ──
 
+export type WorkflowNoteType = 'GENERAL' | 'RISK' | 'ISSUE' | 'DECISION';
+
 export interface WorkflowNote {
   id: string;
   workflowId: string;
+  /** null for a workflow-level note, a step id for a step-scoped one. */
+  stepId: string | null;
   content: string;
+  type: WorkflowNoteType;
   createdBy: string;
   createdAt: string;
+}
+
+export interface WorkflowNoteCreateRequest {
+  stepId?: string | null;
+  /** Defaults to 'GENERAL' server-side when omitted. */
+  type?: WorkflowNoteType;
+  content: string;
 }
 
 // ── Workflow Requests ──
@@ -428,12 +450,7 @@ export interface SubProjectBuildingPart {
 }
 
 export type SubProjectBuildingType =
-  | 'RESIDENTIAL'
-  | 'COMMERCIAL'
-  | 'INDUSTRIAL'
-  | 'MIXED_USE'
-  | 'INFRASTRUCTURE'
-  | 'OTHER';
+  'RESIDENTIAL' | 'COMMERCIAL' | 'INDUSTRIAL' | 'MIXED_USE' | 'INFRASTRUCTURE' | 'OTHER';
 
 export type SubProjectConstructionPhase =
   | 'PRE_CONSTRUCTION'

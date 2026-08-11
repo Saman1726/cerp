@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.cerp.workflow.config.TenantContext;
+import io.cerp.workflow.repository.SagaAttachmentEntity;
+import io.cerp.workflow.repository.SagaNoteEntity;
 import io.cerp.workflow.saga.DefaultSagaOrchestrator;
 import io.cerp.workflow.saga.SagaContext;
 import io.cerp.workflow.saga.SagaError;
@@ -763,6 +766,47 @@ public class SagaController {
         return ResponseEntity.ok(orchestrator.countByProjectId(projectId));
     }
 
+    // ── Notes & Attachments ──
+    //
+    // Saga-level only (no step scoping) - see SagaNoteEntity's Javadoc for why. The frontend
+    // reaches these through apps/web/app/api/sagas/[...path]/route.ts's generic passthrough,
+    // which has no field-translation layer, so these response shapes must already be
+    // frontend-friendly (no renaming needed for GET, unlike the workflow-step equivalents).
+
+    @GetMapping("/{sagaId}/notes")
+    public ResponseEntity<List<SagaNoteEntity>> getSagaNotes(@PathVariable String sagaId) {
+        return ResponseEntity.ok(orchestrator.listNotes(sagaId));
+    }
+
+    @PostMapping("/{sagaId}/notes")
+    public ResponseEntity<SagaNoteEntity> addSagaNote(@PathVariable String sagaId,
+            @RequestBody AddSagaNoteRequest request) {
+        SagaNoteEntity created = orchestrator.addNote(sagaId, request.authorId(), request.note(),
+            SagaNoteEntity.NoteType.valueOf(request.type().toUpperCase()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @GetMapping("/{sagaId}/attachments")
+    public ResponseEntity<List<SagaAttachmentEntity>> getSagaAttachments(@PathVariable String sagaId) {
+        return ResponseEntity.ok(orchestrator.listAttachments(sagaId));
+    }
+
+    @PostMapping("/{sagaId}/attachments")
+    public ResponseEntity<SagaAttachmentEntity> addSagaAttachment(@PathVariable String sagaId,
+            @RequestBody AddSagaAttachmentRequest request) {
+        SagaAttachmentEntity created = orchestrator.addAttachment(sagaId, request.id(), request.uploadedBy(),
+            SagaAttachmentEntity.AttachmentKind.valueOf(request.kind().toUpperCase()),
+            request.objectKey(), request.originalFileName(), request.contentType(), request.byteSize());
+        return ResponseEntity.ok(created);
+    }
+
+    @DeleteMapping("/{sagaId}/attachments/{attachmentId}")
+    public ResponseEntity<DeleteSagaAttachmentResponse> deleteSagaAttachment(
+            @PathVariable String sagaId, @PathVariable String attachmentId) {
+        String objectKey = orchestrator.deleteAttachment(sagaId, UUID.fromString(attachmentId));
+        return ResponseEntity.ok(new DeleteSagaAttachmentResponse(objectKey));
+    }
+
     // ── DTOs ──
 
     /**
@@ -819,6 +863,25 @@ public class SagaController {
      */
     public record ResumeRequest(
             String stepCode) {
+    }
+
+    public record AddSagaNoteRequest(
+            UUID authorId,
+            String note,
+            String type) {
+    }
+
+    public record AddSagaAttachmentRequest(
+            UUID id,
+            UUID uploadedBy,
+            String kind,
+            String objectKey,
+            String originalFileName,
+            String contentType,
+            long byteSize) {
+    }
+
+    public record DeleteSagaAttachmentResponse(String objectKey) {
     }
 
     /**

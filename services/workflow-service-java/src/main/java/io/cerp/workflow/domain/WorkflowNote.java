@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -100,6 +101,24 @@ public class WorkflowNote {
 
     public void setStep(WorkflowStep step) {
         this.step = step;
+    }
+
+    /**
+     * Exposes just the step id (not the full, {@code @JsonIgnore}'d step entity) so API
+     * responses can tell which notes are step-scoped -- null for a workflow-level note.
+     *
+     * <p>
+     * Deliberately NOT named {@code getStepId()}: Spring Data's query derivation for
+     * {@code WorkflowNoteRepository.findByWorkflowIdAndStepIdOrderByCreatedAtDesc} resolves
+     * "StepId" against this class's bean properties before falling back to nested traversal
+     * (i.e. {@code step.id}) -- a same-named {@code stepId} property short-circuits that
+     * fallback and Spring Data tries to resolve it as a direct (non-existent) JPA attribute
+     * instead, which fails at startup. {@code @JsonProperty} keeps the JSON field named
+     * "stepId" for API consumers without exposing a same-named Java bean property.
+     */
+    @JsonProperty("stepId")
+    public UUID getLinkedStepId() {
+        return step != null ? step.getId() : null;
     }
 
     public UUID getAuthorId() {

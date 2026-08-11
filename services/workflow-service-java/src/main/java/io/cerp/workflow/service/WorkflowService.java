@@ -13,10 +13,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.workflow.config.KafkaEventPublisher;
 import io.cerp.workflow.domain.Workflow;
+import io.cerp.workflow.domain.WorkflowNote;
 import io.cerp.workflow.domain.WorkflowStep;
+import io.cerp.workflow.domain.WorkflowStepAttachment;
 import io.cerp.workflow.domain.WorkflowTemplate;
 import io.cerp.workflow.domain.WorkflowTemplateStep;
+import io.cerp.workflow.repository.WorkflowNoteRepository;
 import io.cerp.workflow.repository.WorkflowRepository;
+import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
 import io.cerp.workflow.state.StateMachineEngine;
 import io.cerp.workflow.state.WorkflowStateMachines;
@@ -39,17 +43,23 @@ public class WorkflowService {
     private final StateMachineEngine stateMachineEngine;
     private final WorkflowStateStore workflowStateStore;
     private final WorkflowStepStateStore workflowStepStateStore;
+    private final WorkflowNoteRepository workflowNoteRepository;
+    private final WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
 
     public WorkflowService(WorkflowRepository workflowRepository,
             WorkflowTemplateRepository templateRepository,
             StateMachineEngine stateMachineEngine,
             WorkflowStateStore workflowStateStore,
-            WorkflowStepStateStore workflowStepStateStore) {
+            WorkflowStepStateStore workflowStepStateStore,
+            WorkflowNoteRepository workflowNoteRepository,
+            WorkflowStepAttachmentRepository workflowStepAttachmentRepository) {
         this.workflowRepository = workflowRepository;
         this.templateRepository = templateRepository;
         this.stateMachineEngine = stateMachineEngine;
         this.workflowStateStore = workflowStateStore;
         this.workflowStepStateStore = workflowStepStateStore;
+        this.workflowNoteRepository = workflowNoteRepository;
+        this.workflowStepAttachmentRepository = workflowStepAttachmentRepository;
     }
 
     private void transition(String aggregateType, UUID aggregateId, String transitionCode,
@@ -435,6 +445,67 @@ public class WorkflowService {
 
         log.info("Unblocked step {} of workflow {}", stepId, workflowId);
         return step;
+    }
+
+    /**
+     * Add a note to a workflow, optionally scoped to a specific step.
+     */
+    @Transactional
+    public WorkflowNote addNote(UUID workflowId, UUID stepId, UUID authorId, String note,
+            WorkflowNote.NoteType type) {
+        Workflow workflow = getById(workflowId);
+        WorkflowStep step = stepId != null ? findStepById(workflowId, stepId) : null;
+        WorkflowNote created = new WorkflowNote(workflow, step, authorId, note, type);
+        WorkflowNote saved = workflowNoteRepository.save(created);
+        log.info("Added {} note to workflow {}{}", type, workflowId,
+            stepId != null ? " step " + stepId : "");
+        return saved;
+    }
+
+    /**
+     * Record a photo/document attachment on a step. The file bytes are uploaded directly from the
+     * browser to object storage via document-service's presign endpoint; this only stores the
+     * reference metadata.
+     *
+     * <p>
+     * Idempotent by {@code id}: a client-generated id lets the offline upload queue safely retry
+     * this call after a dropped connection without creating a duplicate row.
+     */
+    @Transactional
+    public WorkflowStepAttachment addAttachment(UUID workflowId, UUID stepId, UUID id,
+            UUID uploadedBy, WorkflowStepAttachment.AttachmentKind kind, String objectKey,
+            String originalFileName, String contentType, Long byteSize) {
+        Optional<WorkflowStepAttachment> existing = workflowStepAttachmentRepository.findById(id);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        Workflow workflow = getById(workflowId);
+        WorkflowStep step = findStepById(workflowId, stepId);
+
+        WorkflowStepAttachment attachment = new WorkflowStepAttachment(id, workflow, step,
+            uploadedBy, kind, objectKey, originalFileName, contentType, byteSize);
+        WorkflowStepAttachment saved = workflowStepAttachmentRepository.save(attachment);
+        log.info("Recorded {} attachment {} on step {} of workflow {}", kind, saved.getId(), stepId, workflowId);
+        return saved;
+    }
+
+    /**
+     * Delete a photo/document attachment from a step. Returns the deleted attachment's object
+     * key so the caller (the frontend proxy) can also remove the underlying object from storage
+     * via document-service -- this service has no direct dependency on document-service.
+     */
+    @Transactional
+    public String deleteAttachment(UUID workflowId, UUID stepId, UUID attachmentId) {
+        WorkflowStepAttachment attachment = workflowStepAttachmentRepository
+            .findByIdAndWorkflowIdAndStepId(attachmentId, workflowId, stepId)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Attachment " + attachmentId + " not found on step " + stepId + " of workflow " + workflowId));
+
+        String objectKey = attachment.getObjectKey();
+        workflowStepAttachmentRepository.delete(attachment);
+        log.info("Deleted attachment {} from step {} of workflow {}", attachmentId, stepId, workflowId);
+        return objectKey;
     }
 
     // ── Helpers ──

@@ -3,7 +3,11 @@ package io.cerp.workflow.saga;
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.seed.TenantSeedInitializer;
 import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.repository.SagaAttachmentEntity;
+import io.cerp.workflow.repository.SagaAttachmentRepository;
 import io.cerp.workflow.repository.SagaEntity;
+import io.cerp.workflow.repository.SagaNoteEntity;
+import io.cerp.workflow.repository.SagaNoteRepository;
 import io.cerp.workflow.repository.SagaRepository;
 import io.cerp.workflow.service.EventPublisher;
 import java.time.Duration;
@@ -42,19 +46,26 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
 
     private final SagaRepository sagaRepository;
     private final EventPublisher eventPublisher;
+    private final SagaNoteRepository sagaNoteRepository;
+    private final SagaAttachmentRepository sagaAttachmentRepository;
     private final Map<String, SagaHandler> handlers = new ConcurrentHashMap<>();
     private final Map<UUID, SagaState> activeSagas = new ConcurrentHashMap<>();
     private final RetryConfig retryConfig;
 
     @Autowired
-    public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher) {
-        this(sagaRepository, eventPublisher, new RetryConfig(3, Duration.ofSeconds(2), 2.0));
+    public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher,
+            SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository) {
+        this(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository,
+            new RetryConfig(3, Duration.ofSeconds(2), 2.0));
     }
 
     public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher,
+            SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository,
             RetryConfig retryConfig) {
         this.sagaRepository = sagaRepository;
         this.eventPublisher = eventPublisher;
+        this.sagaNoteRepository = sagaNoteRepository;
+        this.sagaAttachmentRepository = sagaAttachmentRepository;
         this.retryConfig = retryConfig;
     }
 
@@ -439,7 +450,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
                 activeSagas.put(sagaId, state);
             }
         }
-        return state;
+        return decorateWithCounts(state);
     }
 
     @Override
@@ -505,7 +516,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             }
         }
 
-        return results;
+        return decorateWithCounts(results);
     }
 
     /**
@@ -534,7 +545,7 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             }
         }
 
-        return result;
+        return decorateWithCounts(result);
     }
 
     /**
@@ -552,6 +563,75 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
      */
     public long countByProjectId(String projectId) {
         return sagaRepository.countByProjectIdAndDeletedFalse(projectId);
+    }
+
+    // --- Notes & Attachments ---
+    //
+    // Sagas have no individually-addressable step records (see SagaNoteEntity's Javadoc), so
+    // unlike WorkflowService's equivalent methods there is no optional step-level scoping here -
+    // every note/attachment is saga-level.
+
+    /**
+     * Add a note to a saga.
+     */
+    public SagaNoteEntity addNote(String sagaId, UUID authorId, String note, SagaNoteEntity.NoteType type) {
+        if (!sagaRepository.existsById(sagaId)) {
+            throw new IllegalArgumentException("Saga not found: " + sagaId);
+        }
+        SagaNoteEntity saved = sagaNoteRepository.save(new SagaNoteEntity(sagaId, authorId, note, type));
+        log.info("Added {} note to saga {}", type, sagaId);
+        return saved;
+    }
+
+    public List<SagaNoteEntity> listNotes(String sagaId) {
+        return sagaNoteRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
+    }
+
+    /**
+     * Record a photo/document attachment on a saga. The file bytes are uploaded directly from
+     * the browser to object storage via document-service's presign endpoint; this only stores
+     * the reference metadata.
+     *
+     * <p>
+     * Idempotent by {@code id}: a client-generated id lets the offline upload queue safely retry
+     * this call after a dropped connection without creating a duplicate row.
+     */
+    public SagaAttachmentEntity addAttachment(String sagaId, UUID id, UUID uploadedBy,
+            SagaAttachmentEntity.AttachmentKind kind, String objectKey, String originalFileName,
+            String contentType, Long byteSize) {
+        Optional<SagaAttachmentEntity> existing = sagaAttachmentRepository.findById(id);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        if (!sagaRepository.existsById(sagaId)) {
+            throw new IllegalArgumentException("Saga not found: " + sagaId);
+        }
+
+        SagaAttachmentEntity attachment = new SagaAttachmentEntity(id, sagaId, uploadedBy, kind,
+            objectKey, originalFileName, contentType, byteSize);
+        SagaAttachmentEntity saved = sagaAttachmentRepository.save(attachment);
+        log.info("Recorded {} attachment {} on saga {}", kind, saved.getId(), sagaId);
+        return saved;
+    }
+
+    public List<SagaAttachmentEntity> listAttachments(String sagaId) {
+        return sagaAttachmentRepository.findBySagaIdOrderByCreatedAtDesc(sagaId);
+    }
+
+    /**
+     * Delete a photo/document attachment from a saga. Returns the deleted attachment's object
+     * key so the caller can also remove the underlying object from storage.
+     */
+    public String deleteAttachment(String sagaId, UUID attachmentId) {
+        SagaAttachmentEntity attachment = sagaAttachmentRepository.findByIdAndSagaId(attachmentId, sagaId)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Attachment " + attachmentId + " not found on saga " + sagaId));
+
+        String objectKey = attachment.getObjectKey();
+        sagaAttachmentRepository.delete(attachment);
+        log.info("Deleted attachment {} from saga {}", attachmentId, sagaId);
+        return objectKey;
     }
 
     // --- Entity/State conversion ---
@@ -625,6 +705,46 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             entity.getCreatedAt() != null ? entity.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
             entity.getUpdatedAt() != null ? entity.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant() : Instant.now(),
             data);
+    }
+
+    // --- Note/attachment count decoration ---
+    //
+    // Applied only at the three methods above that hand a SagaState (or list of them) across the
+    // HTTP boundary to SagaController (getSagaState, getSagaInstancesByAggregate, getActiveSagas)
+    // - deliberately never inside toState()/toEntity() or written back into the activeSagas
+    // cache, so internal state-transition logic never pays this cost and counts are always
+    // recomputed fresh (cheap indexed COUNTs) on every external read rather than risking
+    // staleness after a note/attachment is added.
+
+    private SagaState decorateWithCounts(SagaState state) {
+        if (state == null) {
+            return null;
+        }
+        String sagaId = state.getSagaId().toString();
+        return state.withCounts(sagaNoteRepository.countBySagaId(sagaId), sagaAttachmentRepository.countBySagaId(sagaId));
+    }
+
+    private List<SagaState> decorateWithCounts(List<SagaState> states) {
+        if (states.isEmpty()) {
+            return states;
+        }
+        List<String> sagaIds = states.stream().map(s -> s.getSagaId().toString()).collect(java.util.stream.Collectors.toList());
+        Map<String, Long> noteCounts = toCountMap(sagaNoteRepository.countBySagaIdIn(sagaIds));
+        Map<String, Long> attachmentCounts = toCountMap(sagaAttachmentRepository.countBySagaIdIn(sagaIds));
+        return states.stream()
+            .map(s -> {
+                String sagaId = s.getSagaId().toString();
+                return s.withCounts(noteCounts.getOrDefault(sagaId, 0L), attachmentCounts.getOrDefault(sagaId, 0L));
+            })
+            .collect(java.util.stream.Collectors.toList());
+    }
+
+    private Map<String, Long> toCountMap(List<Object[]> rows) {
+        Map<String, Long> map = new HashMap<>();
+        for (Object[] row : rows) {
+            map.put((String) row[0], (Long) row[1]);
+        }
+        return map;
     }
 
     /**
