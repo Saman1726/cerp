@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_URL } from '@cerp/core-web/lib/env';
+import { DOCUMENT_SERVICE_URL } from '@cerp/core-web/lib/env';
 import type { SiteCapturePresignRequest, SiteCapturePresignResponse } from '@cerp/shared-types';
 
 const SESSION_COOKIE = 'cerp_session';
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   headers.set('X-Tenant-Id', request.headers.get('x-tenant-id') ?? DEFAULT_TENANT_ID);
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/media/presign`, {
+    const response = await fetch(`${DOCUMENT_SERVICE_URL}/api/v1/media/presign`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

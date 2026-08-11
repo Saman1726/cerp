@@ -43,6 +43,23 @@ const DB_NAME = 'cerp-site-capture';
 const DB_VERSION = 1;
 const STORE_NAME = 'captures';
 
+// crypto.randomUUID() only exists in secure contexts (HTTPS, or localhost) -
+// on a plain-HTTP LAN address (e.g. a phone testing against a laptop's dev
+// server over Wi-Fi) it's simply absent, and calling it throws before this
+// function ever reaches IndexedDB. getRandomValues() has no such
+// restriction, so build a v4 UUID from it directly instead of relying on
+// randomUUID() being there.
+function generateClientId(): string {
+  if (typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 let dbPromise: Promise<IDBPDatabase<SiteCaptureDB>> | null = null;
 
 function getDB(): Promise<IDBPDatabase<SiteCaptureDB>> {
@@ -61,7 +78,7 @@ export async function enqueueCapture(input: NewQueuedCapture): Promise<QueuedCap
   const now = new Date().toISOString();
   const record: QueuedCapture = {
     ...input,
-    clientId: crypto.randomUUID(),
+    clientId: generateClientId(),
     status: 'PENDING',
     attempts: 0,
     createdAt: now,

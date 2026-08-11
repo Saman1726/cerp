@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@cerp/core-web', '@cerp/shared-types'],
+  // Next blocks cross-origin requests to dev-server internals (HMR, RSC) by
+  // default - without this, hydration never completes for anyone loading the
+  // dev server via this LAN IP (e.g. testing from a phone on the same
+  // Wi-Fi): the page renders, but every onClick/useState is silently dead.
+  // Update this if the laptop's LAN IP changes.
+  allowedDevOrigins: ['192.168.8.213'],
 };
 
 const withPWA = withPWAInit({

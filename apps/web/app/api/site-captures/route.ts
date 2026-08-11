@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { API_URL } from '@cerp/core-web/lib/env';
+import { DOCUMENT_SERVICE_URL } from '@cerp/core-web/lib/env';
 import type { SiteCaptureSubmission, SiteCaptureSubmissionResponse } from '@cerp/shared-types';
 
 const SESSION_COOKIE = 'cerp_session';
@@ -22,9 +22,9 @@ function extractSessionToken(request: NextRequest): string | null {
   return null;
 }
 
-// Forwards the lightweight capture metadata (now including the S3 object key
-// from the presign step) to the gateway, which is responsible for publishing
-// it onto Kafka. The image binary itself never passes through here.
+// Forwards the lightweight capture metadata (now including the object key
+// from the presign step) to document-service. The image binary itself never
+// passes through here - it already went straight from the browser to storage.
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as SiteCaptureSubmission | null;
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   headers.set('X-Tenant-Id', request.headers.get('x-tenant-id') ?? DEFAULT_TENANT_ID);
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/site-captures`, {
+    const response = await fetch(`${DOCUMENT_SERVICE_URL}/api/v1/site-captures`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),

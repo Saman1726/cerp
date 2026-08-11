@@ -8,3 +8,8 @@ node_modules
 .env
 .env.*
 !.env.example
+# Explicit **-anchored rule, since a bare `.env.*` above only reliably
+# excludes root-level matches under Docker's ignore-pattern semantics -
+# apps/web/.env.local (host-local URLs) must never reach an image; it would
+# take precedence over the real values passed via docker-compose environment.
+**/.env.local

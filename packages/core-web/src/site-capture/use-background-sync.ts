@@ -39,7 +39,13 @@ export function useBackgroundSync(endpoints?: SyncEndpoints): UseBackgroundSyncR
 
   const syncNow = useCallback(async () => {
     if (isSyncingRef.current) return;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      // Still refresh: the caller (e.g. the form, right after enqueueing a
+      // new capture) needs the count to reflect reality even though there's
+      // no connection to actually drain the queue over.
+      await refreshPendingCount();
+      return;
+    }
 
     isSyncingRef.current = true;
     setIsSyncing(true);
