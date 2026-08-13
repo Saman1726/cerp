@@ -178,4 +178,89 @@ public class IdentityPermissionClient {
         }
         return false;
     }
+
+    /**
+     * Grant a user (vendor) read/write access to a specific delivery saga.
+     * Called automatically when a vendor creates a delivery schedule from their "My Purchase Orders" page.
+     */
+    public ResourceMembershipDto grantDeliverySagaAccess(UUID sagaId, UUID vendorUserId, UUID invitedBy) {
+        try {
+            Map<String, Object> request = new java.util.HashMap<>();
+            request.put("userId", vendorUserId);
+            request.put("roles", List.of("member"));
+            request.put("permissions", Map.of(
+                "read", true,
+                "write", true,
+                "delete", false,
+                "assign", false
+            ));
+            if (invitedBy != null) {
+                request.put("invitedBy", invitedBy);
+            }
+
+            java.util.Map<String, Object> response = restClient.post()
+                .uri("/api/v1/resources/SAGA/{sagaId}/members", sagaId)
+                .body(request)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+
+            if (response != null && response.get("id") != null) {
+                UUID memId = UUID.fromString(response.get("id").toString());
+                UUID memResourceId = UUID.fromString(response.get("resourceId").toString());
+                UUID memUserId = UUID.fromString(response.get("userId").toString());
+                @SuppressWarnings("unchecked")
+                List<String> memRoles = (List<String>) response.get("roles");
+                @SuppressWarnings("unchecked")
+                Map<String, Boolean> memPermissions = (Map<String, Boolean>) response.get("permissions");
+                UUID memInvitedBy = response.get("invitedBy") != null
+                    ? UUID.fromString(response.get("invitedBy").toString()) : null;
+                String memCreatedAt = response.get("createdAt") != null ? response.get("createdAt").toString() : null;
+
+                return new ResourceMembershipDto(
+                    memId, "SAGA", memResourceId, memUserId, memRoles, memPermissions,
+                    memInvitedBy, memCreatedAt);
+            }
+            return null;
+        } catch (Exception e) {
+            log.warn("Failed to grant delivery saga access for saga {} to user {}: {}",
+                sagaId, vendorUserId, e.getMessage());
+            // Fail-open: do not block saga creation if permission grant fails
+            return null;
+        }
+    }
+
+    /**
+     * DTO for resource membership responses from the identity service.
+     */
+    public static class ResourceMembershipDto {
+        private final UUID id;
+        private final String resourceType;
+        private final UUID resourceId;
+        private final UUID userId;
+        private final List<String> roles;
+        private final Map<String, Boolean> permissions;
+        private final UUID invitedBy;
+        private final String createdAt;
+
+        public ResourceMembershipDto(UUID id, String resourceType, UUID resourceId, UUID userId,
+                List<String> roles, Map<String, Boolean> permissions, UUID invitedBy, String createdAt) {
+            this.id = id;
+            this.resourceType = resourceType;
+            this.resourceId = resourceId;
+            this.userId = userId;
+            this.roles = roles;
+            this.permissions = permissions;
+            this.invitedBy = invitedBy;
+            this.createdAt = createdAt;
+        }
+
+        public UUID getId() { return id; }
+        public String getResourceType() { return resourceType; }
+        public UUID getResourceId() { return resourceId; }
+        public UUID getUserId() { return userId; }
+        public List<String> getRoles() { return roles; }
+        public Map<String, Boolean> getPermissions() { return permissions; }
+        public UUID getInvitedBy() { return invitedBy; }
+        public String getCreatedAt() { return createdAt; }
+    }
 }

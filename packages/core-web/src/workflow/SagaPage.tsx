@@ -22,7 +22,7 @@ import { SAGA_TYPE_LABELS, getSagaProjectId } from './types';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-export function SagaPage() {
+export function SagaPage({ vendorId }: { vendorId?: string }) {
   const [sagas, setSagas] = useState<Saga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +31,7 @@ export function SagaPage() {
   const [filters, setFilters] = useState<SagaQuery>({
     sagaType: undefined,
     status: undefined,
+    vendorId: vendorId ?? undefined,
     tenantId: undefined,
     page: 1,
     pageSize: 25,
@@ -78,6 +79,17 @@ export function SagaPage() {
       fetchSagas();
     }
   }, [fetchSagas]);
+
+  // Sync vendorId prop into filters
+  useEffect(() => {
+    setFilters((prev) => {
+      if (prev.vendorId !== vendorId) {
+        return { ...prev, vendorId: vendorId ?? undefined, page: 1 };
+      }
+      return prev;
+    });
+    fetchSagas();
+  }, [vendorId, fetchSagas]);
 
   const handleStatusFilter = (status: string) => {
     setFilters((prev) => ({

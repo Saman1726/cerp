@@ -164,6 +164,7 @@ export const sagaQuerySchema = z.object({
   sagaType: z.string().optional(),
   status: sagaStatusSchema.optional(),
   tenantId: z.string().optional(),
+  vendorId: z.string().optional(),
   aggregateId: z.string().optional(),
   page: z.number().optional(),
   pageSize: z.number().optional(),

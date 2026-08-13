@@ -101,22 +101,61 @@ export async function GET(request: NextRequest) {
       return data.vendorId === vendorId;
     });
 
+    // Fetch all delivery sagas for enriched info
+    const deliverySagasRes = await fetch(
+      `${WORKFLOW_SERVICE_URL}/api/v1/sagas?sagaType=DELIVERY_WORKFLOW&pageSize=500`,
+      { headers },
+    );
+    const deliverySagasData: Record<string, unknown>[] = deliverySagasRes.ok
+      ? ((await deliverySagasRes.json())?.items as Record<string, unknown>[]) || []
+      : [];
+
     // Map to simplified PO summary format
     const items = assignedSagas.map((saga) => {
       const data = (saga.data ?? {}) as Record<string, unknown>;
       const steps = (saga.steps as unknown[] | undefined) || [];
+      const sagaId = String(saga.sagaId ?? '');
+
+      // Compute delivery schedule info
+      const linkedDeliveries = deliverySagasData.filter((d) => {
+        const dData = (d.data ?? {}) as Record<string, unknown>;
+        return dData.procurementSagaId === sagaId;
+      });
+      const deliveredQty = linkedDeliveries.reduce((sum, d) => {
+        const dData = (d.data ?? {}) as Record<string, unknown>;
+        return sum + (Number(dData.quantity) || 0);
+      }, 0);
+      const completedDeliveries = linkedDeliveries.filter((d) => {
+        const dData = (d.data ?? {}) as Record<string, unknown>;
+        return dData.deliveryStatus === 'COMPLETED' || dData.status === 'Closed';
+      }).length;
+
       return {
-        sagaId: String(saga.sagaId ?? ''),
+        sagaId,
         status: String(saga.status ?? ''),
         currentStep: String(saga.currentStep ?? ''),
         vendorId: String(data.vendorId ?? ''),
         projectId: String(data.projectId ?? ''),
         materialId: String(data.materialId ?? ''),
         quantity: Number(data.quantity ?? 0),
+        deliveredQuantity: deliveredQty,
         description: String(data.description ?? ''),
         createdAt: String(saga.createdAt ?? ''),
         updatedAt: String(saga.updatedAt ?? ''),
         stepCount: steps.length,
+        deliverySchedules: linkedDeliveries.map((d) => {
+          const dData = (d.data ?? {}) as Record<string, unknown>;
+          return {
+            deliverySagaId: String(d.sagaId ?? ''),
+            scheduledDate: String(dData.scheduledDate ?? ''),
+            quantity: Number(dData.quantity) || 0,
+            status: String(
+              dData.deliveryStatus || dData.status || 'SCHEDULED',
+            ),
+            createdAt: String(d.createdAt ?? ''),
+          };
+        }),
+        pendingDeliveryCount: linkedDeliveries.length - completedDeliveries,
       };
     });
 

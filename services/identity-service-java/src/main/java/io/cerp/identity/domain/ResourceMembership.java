@@ -26,7 +26,7 @@ import java.util.UUID;
 public class ResourceMembership {
 
     public enum ResourceType {
-        PROJECT, CONSTRUCTION_SITE
+        PROJECT, CONSTRUCTION_SITE, SAGA
     }
 
     @Id

@@ -19,6 +19,7 @@ import type {
 } from '@cerp/shared-types';
 import { ProjectSelect } from './ProjectSelect';
 import { VendorSelect } from './VendorSelect';
+import { DeliverySchedulesSection } from './DeliverySchedulesSection';
 import { generateDeterministicSagaId, validateSagaName, normalizeSagaName } from '../lib/sagaIdUtils';
 
 interface ProcurementSagaFormProps {
@@ -431,8 +432,8 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
       // Main condition: vendor must be non-null before executing the step
       // Vendor is assigned via Bidding (COMPLETED/ABORTED) OR manually
       if (hasVendor(createdSaga)) {
-        // Vendor is assigned, proceed to next step
-        await handleExecuteStep('ReceiveDelivery');
+        // Vendor is assigned, proceed to IssuePurchaseOrder so backend validates vendor and advances the saga
+        await handleExecuteStep('IssuePurchaseOrder');
         await reloadRelatedBiddingSagas(createdSaga.sagaId);
       } else {
         // No vendor assigned - show vendor assignment modal
@@ -465,8 +466,8 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
       // Main condition: vendor must be non-null before executing the step
       // Vendor is assigned via Bidding (COMPLETED/ABORTED) OR manually
       if (hasVendor(s)) {
-        // Vendor is assigned, proceed to next step with force refresh
-        const request: ExecuteProcurementSagaStepRequest = { command: 'ReceiveDelivery' };
+        // Vendor is assigned, proceed to IssuePurchaseOrder so backend validates vendor and advances the saga
+        const request: ExecuteProcurementSagaStepRequest = { command: 'IssuePurchaseOrder' };
         const updatedSaga = await workflowApi.executeStep(s.sagaId, request as unknown as Parameters<typeof workflowApi.executeStep>[1]);
         // Force refresh to get the latest currentStep value from backend
         const refreshed = await refreshSaga(updatedSaga.sagaId);
@@ -535,8 +536,8 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
               return null;
             })()}
 
-            {/* Action buttons for viewing mode */}
-            {viewOnly && (saga.status === 'RUNNING' || saga.status === 'PAUSED' || saga.status === 'REQUIRES_MANUAL_INTERVENTION') && (
+            {/* Action buttons for viewing mode (hidden when createdSaga is set to avoid duplicate action buttons) */}
+            {!createdSaga && viewOnly && (saga.status === 'RUNNING' || saga.status === 'PAUSED' || saga.status === 'REQUIRES_MANUAL_INTERVENTION') && (
               <div className="pt-2 space-y-2">
                 <div className="text-xs font-medium text-muted-foreground">Actions</div>
 
@@ -727,6 +728,14 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                   }
                   return null;
                 })()}
+
+                {/* Linked Delivery Schedules */}
+                {saga && (
+                  <DeliverySchedulesSection
+                    procurementSagaId={saga.sagaId}
+                    tenantId={tenantId}
+                  />
+                )}
 
                 {/* Issue Purchase Order button for IssuePurchaseOrder step (vendor not assigned yet) */}
                 {(() => {
@@ -1147,35 +1156,24 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
                   return null;
                 })()}
 
+                {/* ApproveRequest step: Issue Purchase Order to trigger vendor assignment */}
                 {(() => {
                   const effectiveStep = getEffectiveStep(createdSaga);
                   if (effectiveStep === 'ApproveRequest') {
                     return (
-                      <>
-                        {/* Create Bidding button - show when no completed bidding exists */}
-                        {!hasCompletedBidding(createdSaga) && onViewBidding && (
-                          <Button
-                            variant="secondary"
-                            onClick={onViewBidding}
-                            disabled={loading}
-                          >
-                            Create Bidding
-                          </Button>
-                        )}
-                        <Button
-                          onClick={() => {
-                            // Check vendor before proceeding - show modal if not assigned
-                            if (hasVendor(createdSaga)) {
-                              handleExecuteStep('IssuePurchaseOrder');
-                            } else {
-                              setShowVendorAssignModal(true);
-                            }
-                          }}
-                          disabled={loading}
-                        >
-                          Issue Purchase Order
-                        </Button>
-                      </>
+                      <Button
+                        onClick={() => {
+                          // Check vendor before proceeding - show modal if not assigned
+                          if (hasVendor(createdSaga)) {
+                            handleIssuePurchaseOrder();
+                          } else {
+                            setShowVendorAssignModal(true);
+                          }
+                        }}
+                        disabled={loading}
+                      >
+                        Issue Purchase Order (Assign Vendor)
+                      </Button>
                     );
                   }
                   return null;

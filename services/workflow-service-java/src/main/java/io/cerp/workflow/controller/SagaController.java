@@ -281,7 +281,7 @@ public class SagaController {
     @PutMapping("/{sagaId}")
     public ResponseEntity<Map<String, Object>> updateSaga(
             @PathVariable String sagaId,
-            @RequestBody UpdateSagaRequest request) {
+            @RequestBody Map<String, Object> data) {
         try {
             SagaState state = orchestrator.getSagaState(UUID.fromString(sagaId));
             if (state == null) {
@@ -302,7 +302,7 @@ public class SagaController {
             // Update the saga data by merging the new fields
             SagaContext updatedContext = orchestrator.updateSagaData(
                 UUID.fromString(sagaId),
-                request.data());
+                data);
 
             Map<String, Object> response = new HashMap<>();
             response.put("sagaId", sagaId);

@@ -157,8 +157,36 @@ public class DeliverySagaHandler implements SagaHandler {
     // --- Execute methods ---
 
     private void executeScheduleDelivery(SagaContext context) throws Exception {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> deliveryData = (Map<String, Object>) context.getData().get("deliveryData");
+        // Persist delivery schedule details from the payload into saga context
+        String procurementSagaId = context.get("procurementSagaId") != null
+                ? context.get("procurementSagaId").toString() : null;
+        Object quantityObj = context.get("quantity");
+        int quantity = 0;
+        if (quantityObj instanceof Number n) {
+            quantity = n.intValue();
+        }
+        String scheduledDate = context.get("scheduledDate") != null
+                ? context.get("scheduledDate").toString() : null;
+        String expectedArrivalTime = context.get("expectedArrivalTime") != null
+                ? context.get("expectedArrivalTime").toString() : null;
+        String description = context.get("description") != null
+                ? context.get("description").toString() : "";
+
+        // Store delivery details in context for downstream access
+        context.put("deliveryQuantity", quantity);
+        context.put("deliveryScheduledDate", scheduledDate);
+        context.put("deliveryExpectedArrivalTime", expectedArrivalTime);
+        context.put("deliveryDescription", description);
+        context.put("deliveryStatus", "SCHEDULED");
+        context.put("procurementSagaId", procurementSagaId);
+
+        Map<String, Object> deliveryData = Map.of(
+            "status", "Scheduled",
+            "procurementSagaId", procurementSagaId,
+            "quantity", quantity,
+            "scheduledDate", scheduledDate,
+            "expectedArrivalTime", expectedArrivalTime,
+            "description", description);
 
         WorkflowEvent event = WorkflowEvent.builder()
             .eventType("DeliveryScheduled")
@@ -168,10 +196,12 @@ public class DeliverySagaHandler implements SagaHandler {
             .aggregateType("Delivery")
             .tenantId(context.getTenantId())
             .userId(context.getUserId())
-            .data(deliveryData != null ? deliveryData : Map.of("status", "Scheduled"))
+            .data(deliveryData)
             .build();
 
         eventPublisher.publish(event);
+        log.info("Delivery scheduled for procurementSagaId={}, deliverySagaId={}, quantity={}",
+            procurementSagaId, context.getSagaId(), quantity);
         context.setCurrentStep(STEP_START_TRANSIT);
     }
 
@@ -237,18 +267,32 @@ public class DeliverySagaHandler implements SagaHandler {
     }
 
     private void executeConfirmDelivery(SagaContext context) throws Exception {
+        String deliverySagaId = context.getSagaId().toString();
+        String procurementSagaId = context.get("procurementSagaId") != null
+                ? context.get("procurementSagaId").toString() : null;
+        Object quantityObj = context.get("deliveryQuantity");
+        int quantity = quantityObj instanceof Number n ? n.intValue() : 0;
+
+        context.put("deliveryStatus", "CONFIRMED");
+
         WorkflowEvent event = WorkflowEvent.builder()
             .eventType("DeliveryConfirmed")
             .sagaType("DeliverySaga")
-            .sagaId(context.getSagaId().toString())
+            .sagaId(deliverySagaId)
             .aggregateId(context.getAggregateId())
             .aggregateType("Delivery")
             .tenantId(context.getTenantId())
             .userId(context.getUserId())
-            .data(Map.of("status", "Confirmed", "confirmBy", context.getUserId()))
+            .data(Map.of(
+                "status", "Confirmed",
+                "confirmBy", context.getUserId(),
+                "procurementSagaId", procurementSagaId,
+                "quantity", quantity))
             .build();
 
         eventPublisher.publish(event);
+        log.info("Delivery confirmed for deliverySagaId={}, procurementSagaId={}, quantity={}",
+            deliverySagaId, procurementSagaId, quantity);
         context.setCurrentStep(STEP_CLOSE);
     }
 
@@ -294,19 +338,32 @@ public class DeliverySagaHandler implements SagaHandler {
     }
 
     private void executeClose(SagaContext context) throws Exception {
+        String deliverySagaId = context.getSagaId().toString();
+        String procurementSagaId = context.get("procurementSagaId") != null
+                ? context.get("procurementSagaId").toString() : null;
+        int quantity = context.get("deliveryQuantity") instanceof Number n ? n.intValue() : 0;
+
+        context.put("deliveryStatus", "COMPLETED");
+
         WorkflowEvent event = WorkflowEvent.builder()
             .eventType("DeliveryClosed")
             .sagaType("DeliverySaga")
-            .sagaId(context.getSagaId().toString())
+            .sagaId(deliverySagaId)
             .aggregateId(context.getAggregateId())
             .aggregateType("Delivery")
             .tenantId(context.getTenantId())
             .userId(context.getUserId())
-            .data(Map.of("status", "Closed"))
+            .data(Map.of(
+                "status", "Closed",
+                "procurementSagaId", procurementSagaId,
+                "quantity", quantity,
+                "deliveryStatus", "COMPLETED"))
             .build();
 
         eventPublisher.publish(event);
         context.complete();
+        log.info("Delivery closed/completed for deliverySagaId={}, procurementSagaId={}, quantity={}",
+            deliverySagaId, procurementSagaId, quantity);
     }
 
     // --- Compensation methods ---

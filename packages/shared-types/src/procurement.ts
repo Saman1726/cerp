@@ -98,6 +98,59 @@ export const executeProcurementSagaStepRequestSchema = z.object({
 });
 export type ExecuteProcurementSagaStepRequest = z.infer<typeof executeProcurementSagaStepRequestSchema>;
 
+// ── Delivery Schedule Types ──
+
+/**
+ * Represents a delivery schedule linked to a ProcurementSaga (Purchase Order).
+ * A single PO can have multiple delivery schedules (partial deliveries).
+ */
+export interface DeliverySchedule {
+  id: string;
+  procurementSagaId: string;
+  deliverySagaId: string;
+  scheduledDate: string;
+  expectedArrivalTime?: string;
+  quantity: number;
+  description?: string;
+  status: DeliveryScheduleStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DeliveryScheduleStatus =
+  | 'SCHEDULED'
+  | 'IN_TRANSIT'
+  | 'ARRIVED'
+  | 'COMPLETED'
+  | 'FAILED';
+
+export const deliveryScheduleStatusSchema = z.enum([
+  'SCHEDULED',
+  'IN_TRANSIT',
+  'ARRIVED',
+  'COMPLETED',
+  'FAILED',
+]);
+
+export interface CreateDeliveryScheduleRequest {
+  procurementSagaId: string;
+  scheduledDate: string;
+  quantity: number;
+  expectedArrivalTime?: string;
+  description?: string;
+}
+
+export const createDeliveryScheduleRequestSchema = z.object({
+  procurementSagaId: z.string(),
+  scheduledDate: z.string().min(1),
+  quantity: z.number().positive(),
+  expectedArrivalTime: z.string().optional(),
+  description: z.string().max(500).optional(),
+});
+export type CreateDeliveryScheduleRequestSchema = z.infer<
+  typeof createDeliveryScheduleRequestSchema
+>;
+
 // ── Bidding Saga Types ──
 
 /**

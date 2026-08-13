@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { DeliverySchedule } from './procurement';
 
 // ── Vendor Category Types ──
 
@@ -237,10 +238,12 @@ export interface VendorPurchaseOrder {
   projectId: string;
   materialId: string;
   quantity: number;
+  deliveredQuantity: number;
   description: string;
   createdAt: string;
   updatedAt: string;
   stepCount: number;
+  deliverySchedules: DeliverySchedule[];
 }
 
 export interface VendorPurchaseOrderResponse {

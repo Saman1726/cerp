@@ -21,6 +21,7 @@ import io.cerp.workflow.repository.SagaAttachmentRepository;
 import io.cerp.workflow.repository.SagaNoteEntity;
 import io.cerp.workflow.repository.SagaNoteRepository;
 import io.cerp.workflow.repository.SagaRepository;
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.service.EventPublisher;
 
 /**
@@ -33,6 +34,7 @@ class DefaultSagaOrchestratorTest {
     private SagaRepository sagaRepository;
     private SagaNoteRepository sagaNoteRepository;
     private SagaAttachmentRepository sagaAttachmentRepository;
+    private IdentityPermissionClient identityPermissionClient;
     private DefaultSagaOrchestrator orchestrator;
 
     @BeforeEach
@@ -41,7 +43,8 @@ class DefaultSagaOrchestratorTest {
         EventPublisher eventPublisher = mock(EventPublisher.class);
         sagaNoteRepository = mock(SagaNoteRepository.class);
         sagaAttachmentRepository = mock(SagaAttachmentRepository.class);
-        orchestrator = new DefaultSagaOrchestrator(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository);
+        identityPermissionClient = mock(IdentityPermissionClient.class);
+        orchestrator = new DefaultSagaOrchestrator(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository, identityPermissionClient);
         when(sagaNoteRepository.save(any(SagaNoteEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(sagaAttachmentRepository.save(any(SagaAttachmentEntity.class))).thenAnswer(inv -> inv.getArgument(0));
     }

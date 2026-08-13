@@ -1,13 +1,30 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FileText, Package, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  FileText,
+  Package,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Plus,
+  Truck,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Layers,
+  Calendar,
+  Hash,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@cerp/core-web/components/ui/card';
 import { Badge } from '@cerp/core-web/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@cerp/core-web/components/ui/table';
 import { Button } from '@cerp/core-web/components/ui/button';
 import { PageHeader } from '@cerp/core-web/shell';
-import type { VendorPurchaseOrder } from '@cerp/shared-types';
+import { DeliveryScheduleForm } from '@cerp/core-web/procurement';
+import type { VendorPurchaseOrder, DeliverySchedule } from '@cerp/shared-types';
 
 function statusBadge(status: string): 'default' | 'success' | 'destructive' | 'secondary' | 'outline' {
   switch (status) {
@@ -37,9 +54,13 @@ function stepIcon(step: string) {
 }
 
 export default function MyPurchaseOrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<VendorPurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [deliveryFormOpen, setDeliveryFormOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<VendorPurchaseOrder | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +78,22 @@ export default function MyPurchaseOrdersPage() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const refreshOrders = async () => {
+    try {
+      const res = await fetch('/api/vendors/my-purchase-orders');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setOrders(data.items ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh orders');
+    }
+  };
+
+  const handleAddDelivery = (order: VendorPurchaseOrder) => {
+    setSelectedOrder(order);
+    setDeliveryFormOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -105,6 +142,14 @@ export default function MyPurchaseOrdersPage() {
         </Card>
       </div>
 
+      {error && (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-destructive text-sm">{error}</p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Purchase Orders</CardTitle>
@@ -128,9 +173,12 @@ export default function MyPurchaseOrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10"></TableHead>
                   <TableHead>Order ID</TableHead>
                   <TableHead>Material</TableHead>
                   <TableHead>Qty</TableHead>
+                  <TableHead>Delivered</TableHead>
+                  <TableHead>Deliveries</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Step</TableHead>
@@ -139,42 +187,131 @@ export default function MyPurchaseOrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
-                  <TableRow key={order.sagaId}>
-                    <TableCell className="font-mono text-xs">
-                      {order.sagaId.slice(0, 12)}...
-                    </TableCell>
-                    <TableCell className="font-medium">{order.materialId}</TableCell>
-                    <TableCell>{order.quantity}</TableCell>
-                    <TableCell className="max-w-xs truncate text-muted-foreground">
-                      {order.description || '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadge(order.status)} className="capitalize">
-                        {order.status.replace(/_/g, ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {stepIcon(order.currentStep)}
-                        <span className="text-sm">{order.currentStep}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(order.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Button size="sm" variant="ghost" className="text-xs">
-                        View Details
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {orders.map((order) => {
+                  const isExpanded = expandedRow === order.sagaId;
+                  const deliveries = (order.deliverySchedules as DeliverySchedule[]) ?? [];
+                  return (
+                    <>
+                      <TableRow
+                        key={order.sagaId}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => setExpandedRow(isExpanded ? null : order.sagaId)}
+                      >
+                        <TableCell className="w-10">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{order.sagaId.slice(0, 12)}...</TableCell>
+                        <TableCell className="font-medium">{order.materialId}</TableCell>
+                        <TableCell>{order.quantity}</TableCell>
+                        <TableCell>{order.deliveredQuantity ?? 0}</TableCell>
+                        <TableCell>
+                          {deliveries.length > 0 ? (
+                            <div className="flex items-center gap-1">
+                              <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+                              <span className="text-sm">{deliveries.length}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate text-muted-foreground">{order.description || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadge(order.status)} className="capitalize">
+                            {order.status.replace(/_/g, ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {stepIcon(order.currentStep)}
+                            <span className="text-sm">{order.currentStep}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
+                        <TableCell>
+                          <Button size="sm" variant="ghost" className="text-xs" onClick={(e) => { e.stopPropagation(); router.push(`/workflows/saga/${order.sagaId}`); }}>
+                            <Eye className="h-3 w-3" /> Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow key={`${order.sagaId}:expanded`} className="bg-muted/30">
+                          <TableCell colSpan={10} className="p-0">
+                            <div className="px-6 py-4 space-y-4">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium">Procurement Saga Details</p>
+                                  <p className="text-xs font-mono text-muted-foreground">{order.sagaId}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button size="sm" variant="default" onClick={(e) => { e.stopPropagation(); handleAddDelivery(order); }}>
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Delivery
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => router.push(`/workflows/saga/${order.sagaId}`)}>
+                                    <Layers className="h-3.5 w-3.5 mr-1" /> Full Saga View
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-4 gap-4 text-sm">
+                                <div><p className="text-muted-foreground flex items-center gap-1.5"><Hash className="h-3.5 w-3.5" /> Material</p><p className="font-medium mt-0.5">{order.materialId || '—'}</p></div>
+                                <div><p className="text-muted-foreground flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /> Step</p><p className="font-medium mt-0.5 flex items-center gap-1.5">{stepIcon(order.currentStep)} {order.currentStep}</p></div>
+                                <div><p className="text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Created</p><p className="font-medium mt-0.5">{new Date(order.createdAt).toLocaleDateString()}</p></div>
+                                <div><p className="text-muted-foreground flex items-center gap-1.5"><Truck className="h-3.5 w-3.5" /> Deliveries</p><p className="font-medium mt-0.5">{deliveries.length} scheduled · {order.deliveredQuantity ?? 0}/{order.quantity} qty</p></div>
+                              </div>
+                              {deliveries.length > 0 && (
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground mb-2">Linked Delivery Schedules</p>
+                                  <div className="border rounded overflow-hidden">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow className="bg-muted/50">
+                                          <TableHead className="text-xs">Date</TableHead>
+                                          <TableHead className="text-xs">Qty</TableHead>
+                                          <TableHead className="text-xs">Status</TableHead>
+                                          <TableHead className="text-xs">Action</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {deliveries.map((d) => (
+                                          <TableRow key={d.deliverySagaId ?? d.id} className="hover:bg-transparent">
+                                            <TableCell className="text-xs py-1.5">{d.scheduledDate ? new Date(d.scheduledDate).toLocaleDateString() : '—'}</TableCell>
+                                            <TableCell className="text-xs py-1.5">{d.quantity}</TableCell>
+                                            <TableCell className="text-xs py-1.5"><Badge variant={d.status === 'COMPLETED' ? 'success' : d.status === 'FAILED' ? 'destructive' : 'secondary'} className="text-[10px]">{d.status}</Badge></TableCell>
+                                            <TableCell className="text-xs py-1.5">{d.deliverySagaId && <Button size="sm" variant="ghost" className="text-xs h-5 px-1.5" onClick={() => router.push(`/workflows/saga/${d.deliverySagaId}`)}>View</Button>}</TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
+
+      {/* Delivery Schedule Creation Dialog */}
+      {selectedOrder && (
+        <DeliveryScheduleForm
+          open={deliveryFormOpen}
+          onOpenChange={(open) => { setDeliveryFormOpen(open); if (!open) setSelectedOrder(null); }}
+          sagaId={selectedOrder.sagaId}
+          vendorId={selectedOrder.vendorId}
+          availableQuantity={(selectedOrder.quantity ?? 0) - (selectedOrder.deliveredQuantity ?? 0)}
+          onSuccess={refreshOrders}
+        />
+      )}
     </div>
   );
 }

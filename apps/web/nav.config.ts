@@ -10,6 +10,7 @@ export const navItems: NavItem[] = [
   { label: 'Bid Wallet', href: '/procurement/wallet', icon: Wallet },
   { label: 'Vendors', href: '/vendors', icon: Store },
   { label: 'My Purchase Orders', href: '/vendors/my-purchase-orders', icon: FileText },
+  { label: 'My Workflows', href: '/vendors/my-workflows', icon: GitBranch },
   { label: 'Tenants', href: '/tenants', icon: Users },
   { label: 'Settings', href: '/settings', icon: Settings },
   { label: 'Workflows', href: '/workflows', icon: GitBranch },

@@ -2,11 +2,16 @@ package io.cerp.workflow.saga;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.cerp.workflow.event.WorkflowEvent;
+import io.cerp.workflow.repository.SagaEntity;
+import io.cerp.workflow.repository.SagaRepository;
 import io.cerp.workflow.service.EventPublisher;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,10 +44,13 @@ public class ProcurementSagaHandler implements SagaHandler {
 
     private final EventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final SagaRepository sagaRepository;
 
-    public ProcurementSagaHandler(EventPublisher eventPublisher, ObjectMapper objectMapper) {
+    @Autowired
+    public ProcurementSagaHandler(EventPublisher eventPublisher, ObjectMapper objectMapper, SagaRepository sagaRepository) {
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.sagaRepository = sagaRepository;
     }
 
     // --- Step codes ---
@@ -255,6 +263,10 @@ public class ProcurementSagaHandler implements SagaHandler {
     private SagaContext executeIssuePO(SagaContext context, Map<String, Object> payload) throws Exception {
         // Validate that a vendor is assigned before allowing PO issuance
         Object vendorIdObj = context.getData().get("vendorId");
+        // Fallback: accept vendorId from the step payload if not yet in saga context
+        if (vendorIdObj == null && payload != null) {
+            vendorIdObj = payload.get("vendorId");
+        }
         if (vendorIdObj == null || (vendorIdObj instanceof String s && s.isBlank())) {
             throw new SagaException("VENDOR_REQUIRED", "Vendor must be assigned before issuing a purchase order. Please assign a vendor via the vendor assignment modal or complete/abort the related bidding.", Map.of("sagaId", context.getSagaId().toString()));
         }
@@ -279,6 +291,45 @@ public class ProcurementSagaHandler implements SagaHandler {
     }
 
     private SagaContext executeReceiveDelivery(SagaContext context, Map<String, Object> payload) throws Exception {
+        String procurementSagaId = context.getSagaId().toString();
+
+        // Retrieve all linked delivery sagas from the database
+        String sagaIdPattern = "%" + procurementSagaId + "%";
+        List<SagaEntity> deliverySagas = sagaRepository.findDeliverySagasByProcurementSagaId(sagaIdPattern);
+
+        // Filter to only DeliverySaga type and exclude already completed ones
+        List<SagaEntity> pendingDeliveries = deliverySagas.stream()
+            .filter(s -> "DeliverySaga".equals(s.getSagaType()) && !"COMPLETED".equals(s.getStatus()))
+            .toList();
+
+        if (!pendingDeliveries.isEmpty()) {
+            String pendingIds = pendingDeliveries.stream()
+                .map(SagaEntity::getId)
+                .collect(Collectors.joining(", "));
+            throw new SagaException(
+                "PENDING_DELIVERIES",
+                "Cannot advance to ConfirmDelivery: " + pendingDeliveries.size() +
+                " linked delivery schedule(s) are still in progress: " + pendingIds,
+                Map.of(
+                    "pendingDeliverySagas", pendingDeliveries.stream().map(SagaEntity::getId).collect(Collectors.toList()),
+                    "pendingCount", pendingDeliveries.size()));
+        }
+
+        // All linked deliveries are complete — calculate total delivered quantity
+        int totalDelivered = deliverySagas.stream()
+            .mapToInt(s -> {
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> data = objectMapper.readValue(s.getDataJson(), Map.class);
+                    Object qty = data.get("quantity");
+                    if (qty instanceof Number n) return n.intValue();
+                } catch (Exception ignored) { /* ignore parse errors */ }
+                return 0;
+            })
+            .sum();
+
+        context.put("totalDeliveredQuantity", totalDelivered);
+
         WorkflowEvent event = WorkflowEvent.builder()
             .eventType("DeliveryReceived")
             .sagaType("ProcurementSaga")
@@ -287,7 +338,10 @@ public class ProcurementSagaHandler implements SagaHandler {
             .aggregateType("Delivery")
             .tenantId(context.getTenantId())
             .userId(context.getUserId())
-            .data(Map.of("status", "Arrived"))
+            .data(Map.of(
+                "status", "Arrived",
+                "totalDeliveredQuantity", totalDelivered,
+                "deliverySagasCompleted", deliverySagas.stream().map(SagaEntity::getId).collect(Collectors.toList())))
             .build();
 
         eventPublisher.publish(event);

@@ -10,6 +10,8 @@ import io.cerp.workflow.repository.SagaNoteEntity;
 import io.cerp.workflow.repository.SagaNoteRepository;
 import io.cerp.workflow.repository.SagaRepository;
 import io.cerp.workflow.service.EventPublisher;
+import io.cerp.workflow.security.IdentityPermissionClient;
+import io.cerp.workflow.security.IdentityPermissionClient.ResourceMembershipDto;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -48,24 +50,35 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     private final EventPublisher eventPublisher;
     private final SagaNoteRepository sagaNoteRepository;
     private final SagaAttachmentRepository sagaAttachmentRepository;
+    private final IdentityPermissionClient identityPermissionClient;
     private final Map<String, SagaHandler> handlers = new ConcurrentHashMap<>();
     private final Map<UUID, SagaState> activeSagas = new ConcurrentHashMap<>();
     private final RetryConfig retryConfig;
 
     @Autowired
     public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher,
-            SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository) {
-        this(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository,
+            SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository,
+            IdentityPermissionClient identityPermissionClient) {
+        this(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository, identityPermissionClient,
             new RetryConfig(3, Duration.ofSeconds(2), 2.0));
     }
 
     public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher,
             SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository,
             RetryConfig retryConfig) {
+        this(sagaRepository, eventPublisher, sagaNoteRepository, sagaAttachmentRepository,
+            new IdentityPermissionClient("http://localhost:8081"), retryConfig);
+    }
+
+    public DefaultSagaOrchestrator(SagaRepository sagaRepository, EventPublisher eventPublisher,
+            SagaNoteRepository sagaNoteRepository, SagaAttachmentRepository sagaAttachmentRepository,
+            IdentityPermissionClient identityPermissionClient,
+            RetryConfig retryConfig) {
         this.sagaRepository = sagaRepository;
         this.eventPublisher = eventPublisher;
         this.sagaNoteRepository = sagaNoteRepository;
         this.sagaAttachmentRepository = sagaAttachmentRepository;
+        this.identityPermissionClient = identityPermissionClient;
         this.retryConfig = retryConfig;
     }
 
@@ -147,6 +160,11 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         try {
             // Execute the step — only business logic exceptions should trigger retry/abort
             context = handler.execute(context, command, payload);
+
+            // Grant vendor access to their delivery saga after first step completes
+            if ("DELIVERY_WORKFLOW".equals(state.getSagaType())) {
+                grantDeliverySagaPermissions(sagaId, context);
+            }
 
             // Determine next step
             String nextStep = handler.getNextStep(context, command);
@@ -874,6 +892,36 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         }
 
         return null;
+    }
+
+    /**
+     * Grant the vendor read/write access to their delivery saga immediately after the first step completes.
+     * This ensures vendors can see and interact with their delivery schedules from the "My Purchase Orders" page.
+     */
+    private void grantDeliverySagaPermissions(UUID sagaId, SagaContext context) {
+        try {
+            Map<String, Object> data = context.getData();
+            String vendorIdStr = (data != null) ? (String) data.get("vendorId") : null;
+            String userIdStr = (data != null) ? (String) data.get("userId") : null;
+
+            if (vendorIdStr != null && userIdStr != null) {
+                UUID vendorUuid = UUID.fromString(vendorIdStr);
+                UUID userUuid = UUID.fromString(userIdStr);
+                ResourceMembershipDto membership = identityPermissionClient
+                    .grantDeliverySagaAccess(sagaId, vendorUuid, userUuid);
+                if (membership != null) {
+                    log.info("Granted delivery saga access for vendor {} on saga {}", vendorIdStr, sagaId);
+                } else {
+                    log.warn("Failed to grant delivery saga access for vendor {} on saga {} (identity service returned null)",
+                        vendorIdStr, sagaId);
+                }
+            } else {
+                log.debug("Skipping delivery saga permission grant: vendorId={}, userId={}", vendorIdStr, userIdStr);
+            }
+        } catch (Exception e) {
+            log.error("Error granting delivery saga permissions for saga {}: {}", sagaId, e.getMessage(), e);
+            // Fail-open: do not block saga execution if permission grant fails
+        }
     }
 
     private SagaContext createContextFromState(SagaState state) {

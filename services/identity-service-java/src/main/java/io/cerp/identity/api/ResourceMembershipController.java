@@ -211,7 +211,7 @@ public class ResourceMembershipController {
             return ResourceType.valueOf(type.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid resource type: " + type
-                    + ". Must be one of: PROJECT, CONSTRUCTION_SITE");
+                    + ". Must be one of: PROJECT, CONSTRUCTION_SITE, SAGA");
         }
     }
 

@@ -109,6 +109,12 @@ public interface SagaRepository extends JpaRepository<SagaEntity, String> {
         int archiveByProjectId(@Param("projectId") String projectId);
 
         /**
+         * Find delivery sagas linked to a specific procurement saga by checking data_json.
+         */
+        @Query(value = "SELECT * FROM workflow.saga_events s WHERE s.saga_type = 'DeliverySaga' AND s.data_json LIKE :procurementSagaId AND s.deleted = false AND s.status != 'COMPLETED'", nativeQuery = true)
+        List<SagaEntity> findDeliverySagasByProcurementSagaId(@Param("procurementSagaId") String procurementSagaId);
+
+        /**
          * Count non-archived sagas tied to a Project.
          */
         long countByProjectIdAndDeletedFalse(String projectId);
