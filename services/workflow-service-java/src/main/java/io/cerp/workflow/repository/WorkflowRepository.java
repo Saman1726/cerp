@@ -92,4 +92,17 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
         @Transactional
         @Query("UPDATE Workflow w SET w.deleted = true WHERE w.projectId = :projectId")
         int archiveByProjectId(@Param("projectId") UUID projectId);
+
+        /**
+         * Find workflows created by a specific user (non-deleted).
+         */
+        List<Workflow> findByCreatedBy(String createdBy);
+
+        /**
+         * Find all workflows where user is creator or has an assigned step.
+         */
+        @Query("SELECT DISTINCT w FROM Workflow w LEFT JOIN w.steps s WHERE " +
+                "(w.createdBy = :createdBy) OR (s.assigneeUserId = :assigneeUserId) AND w.deleted = false")
+        List<Workflow> findByUserAccess(@Param("createdBy") String createdBy,
+                                         @Param("assigneeUserId") UUID assigneeUserId);
 }

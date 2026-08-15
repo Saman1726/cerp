@@ -115,6 +115,12 @@ export interface DeliverySchedule {
   status: DeliveryScheduleStatus;
   createdAt: string;
   updatedAt: string;
+  // Delivery saga metadata (enriched from saga entity)
+  assignedTo?: string;
+  partyIds?: string;
+  currentStep?: string;
+  deliveryPercentage?: number;
+  totalQuantity?: number;
 }
 
 export type DeliveryScheduleStatus =

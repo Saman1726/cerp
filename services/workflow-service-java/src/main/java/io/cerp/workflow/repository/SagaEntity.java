@@ -44,8 +44,31 @@ public class SagaEntity {
     @Column(name = "data_json", columnDefinition = "TEXT")
     private String dataJson;
 
+    /**
+     * Legacy user ID field — kept for backward compatibility.
+     * New code should use {@link #createdBy} and {@link #assignedTo}.
+     */
     @Column(name = "user_id")
     private String userId;
+
+    /**
+     * User ID of the saga creator. Used to show sagas in "Created by Me" view.
+     */
+    @Column(name = "created_by")
+    private String createdBy;
+
+    /**
+     * User ID of the person assigned to the saga. Used to show sagas in "Assigned to Me" view.
+     */
+    @Column(name = "assigned_to")
+    private String assignedTo;
+
+    /**
+     * Party IDs (vendor IDs, org IDs) that have access to this saga.
+     * Used for vendor/procurement shared access. Stored as JSON array.
+     */
+    @Column(name = "party_ids", columnDefinition = "TEXT")
+    private String partyIds;
 
     @Column(name = "project_id")
     private String projectId;
@@ -64,7 +87,8 @@ public class SagaEntity {
 
     public SagaEntity(String id, String sagaType, String tenantId, String status,
             String currentStep, String nextStep, String stepsJson,
-            String lastErrorJson, String dataJson, String userId, String projectId,
+            String lastErrorJson, String dataJson, String userId, String createdBy,
+            String assignedTo, String partyIds, String projectId,
             LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.sagaType = sagaType;
@@ -76,6 +100,9 @@ public class SagaEntity {
         this.lastErrorJson = lastErrorJson;
         this.dataJson = dataJson;
         this.userId = userId;
+        this.createdBy = createdBy;
+        this.assignedTo = assignedTo;
+        this.partyIds = partyIds;
         this.projectId = projectId;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -183,6 +210,30 @@ public class SagaEntity {
 
     public void setProjectId(String projectId) {
         this.projectId = projectId;
+    }
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    public String getAssignedTo() {
+        return assignedTo;
+    }
+
+    public void setAssignedTo(String assignedTo) {
+        this.assignedTo = assignedTo;
+    }
+
+    public String getPartyIds() {
+        return partyIds;
+    }
+
+    public void setPartyIds(String partyIds) {
+        this.partyIds = partyIds;
     }
 
     public Boolean getDeleted() {

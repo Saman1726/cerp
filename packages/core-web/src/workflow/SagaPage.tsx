@@ -17,12 +17,12 @@ import { SagaStatusBadge } from './SagaStatusBadge';
 import { SagaRowActions } from './SagaRowActions';
 import { useSagaAttachmentSync } from './saga-attachments';
 import { workflowApi } from './api';
-import type { Saga, SagaQuery, SagaQueryResponse } from './types';
+import type { Saga, SagaQuery, SagaQueryResponse, SagaAccessMode } from './types';
 import { SAGA_TYPE_LABELS, getSagaProjectId } from './types';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-export function SagaPage({ vendorId }: { vendorId?: string }) {
+export function SagaPage({ vendorId, accessMode }: { vendorId?: string; accessMode?: SagaAccessMode }) {
   const [sagas, setSagas] = useState<Saga[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +33,7 @@ export function SagaPage({ vendorId }: { vendorId?: string }) {
     status: undefined,
     vendorId: vendorId ?? undefined,
     tenantId: undefined,
+    accessMode: accessMode,
     page: 1,
     pageSize: 25,
     sortBy: 'updatedAt',
@@ -231,6 +232,8 @@ export function SagaPage({ vendorId }: { vendorId?: string }) {
                     <TableHead>Saga ID</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Created By</TableHead>
+                    <TableHead>Assigned To</TableHead>
                     <TableHead>Tenant</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead>Updated</TableHead>
@@ -240,7 +243,7 @@ export function SagaPage({ vendorId }: { vendorId?: string }) {
                 <TableBody>
                   {sagas.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground">
                         No sagas found
                       </TableCell>
                     </TableRow>
@@ -253,6 +256,12 @@ export function SagaPage({ vendorId }: { vendorId?: string }) {
                         <TableCell>{SAGA_TYPE_LABELS[saga.sagaType] || saga.sagaType}</TableCell>
                         <TableCell>
                           <SagaStatusBadge status={saga.status} />
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {saga.createdBy ? saga.createdBy.slice(0, 8) + '...' : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {saga.assignedTo ? saga.assignedTo.slice(0, 8) + '...' : '—'}
                         </TableCell>
                         <TableCell className="font-mono text-xs">
                           {saga.tenantId.slice(0, 8)}...

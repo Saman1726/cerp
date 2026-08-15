@@ -6,6 +6,7 @@ import type { Saga, SagaStatus } from '@cerp/shared-types';
 export type {
   Saga,
   SagaStatus,
+  SagaAccessMode,
   SagaStep,
   SagaQuery,
   SagaQueryResponse,
@@ -53,7 +54,7 @@ export interface SagaTableFilters {
   search: string;
 }
 
-export type SagaDetailTabId = 'overview' | 'steps' | 'events' | 'compensation';
+export type SagaDetailTabId = 'overview' | 'steps' | 'events' | 'actions' | 'compensation';
 
 export interface SagaDetailTab {
   id: SagaDetailTabId;
@@ -64,6 +65,7 @@ export const SAGA_DETAIL_TABS: SagaDetailTab[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'steps', label: 'Steps' },
   { id: 'events', label: 'Events Log' },
+  { id: 'actions', label: 'Actions' },
   { id: 'compensation', label: 'Compensation' },
 ];
 

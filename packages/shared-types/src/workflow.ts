@@ -25,6 +25,10 @@ export const sagaStatusSchema = z.enum([
 ]);
 export type SagaStatus = z.infer<typeof sagaStatusSchema>;
 
+/** Access mode for filtering sagas in the list endpoint. */
+export const sagaAccessModeSchema = z.enum(['created', 'assigned', 'project']);
+export type SagaAccessMode = z.infer<typeof sagaAccessModeSchema>;
+
 /**
  * A single step executed within a saga.
  */
@@ -59,6 +63,12 @@ export const sagaSchema = z.object({
   /** Missing/undefined means 0 (hide the attachments affordance), not "unknown" - same convention as WorkflowInstanceStep.attachmentCount. */
   noteCount: z.number().optional(),
   attachmentCount: z.number().optional(),
+  /** User ID of the saga creator. Used to show sagas in "Created by Me" view. */
+  createdBy: z.string().optional(),
+  /** User ID of the person assigned to the saga. Used to show sagas in "Assigned to Me" view. */
+  assignedTo: z.string().optional(),
+  /** Party IDs (vendor IDs, org IDs) that have access to this saga. Used for vendor/procurement shared access. */
+  partyIds: z.array(z.string()).optional(),
 });
 export type Saga = z.infer<typeof sagaSchema>;
 
@@ -166,6 +176,9 @@ export const sagaQuerySchema = z.object({
   tenantId: z.string().optional(),
   vendorId: z.string().optional(),
   aggregateId: z.string().optional(),
+  userId: z.string().optional(),
+  /** Filter mode for saga access: 'created' (sagas created by user), 'assigned' (sagas assigned to user), 'project' (project-accessible sagas), or undefined (default/all). */
+  accessMode: sagaAccessModeSchema.optional(),
   page: z.number().optional(),
   pageSize: z.number().optional(),
   sortBy: z.enum(['createdAt', 'updatedAt', 'status']).optional(),
@@ -295,6 +308,12 @@ export const createSagaRequestSchema = z.object({
   aggregateId: z.string().optional(),
   tenantId: z.string(),
   data: z.record(z.string(), z.any()),
+  /** User ID of the saga creator. Optional — defaults to the authenticated user. */
+  createdBy: z.string().optional(),
+  /** User ID of the person assigned to the saga. */
+  assignedTo: z.string().optional(),
+  /** Party IDs (vendor IDs, org IDs) that have access to this saga. */
+  partyIds: z.array(z.string()).optional(),
 });
 export type CreateSagaRequest = z.infer<typeof createSagaRequestSchema>;
 

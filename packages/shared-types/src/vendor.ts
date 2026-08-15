@@ -243,6 +243,7 @@ export interface VendorPurchaseOrder {
   createdAt: string;
   updatedAt: string;
   stepCount: number;
+  createdBy?: string;
   deliverySchedules: DeliverySchedule[];
 }
 

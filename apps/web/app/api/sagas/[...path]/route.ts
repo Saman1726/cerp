@@ -307,6 +307,37 @@ export async function PUT(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const sagaPath = proxyPath(request);
+    const body = await request.json();
+    const headers = getBackendHeaders(request);
+
+    const res = await fetch(`${WORKFLOW_SERVICE_URL}${sagaPath}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(body),
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => undefined);
+      return NextResponse.json(
+        { message: data?.message ?? res.statusText },
+        { status: res.status },
+      );
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const sagaPath = proxyPath(request);

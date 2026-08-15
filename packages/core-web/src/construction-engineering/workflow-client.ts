@@ -256,6 +256,19 @@ export async function updateOrganisationWorkflowConfig(
 }
 
 /**
+ * Get workflows assigned to or created by a user.
+ * Used by the "My Workflows" page to show CE workflows alongside sagas.
+ */
+export async function listWorkflowsByAccessMode(
+  accessMode: 'created' | 'assigned',
+  userId?: string,
+): Promise<Workflow[]> {
+  const params = new URLSearchParams({ accessMode });
+  if (userId) params.set('userId', userId);
+  return workflowFetch<Workflow[]>(`/api/workflows?${params.toString()}`);
+}
+
+/**
  * Get all available template codes for an organisation.
  */
 export async function getAvailableTemplateCodes(): Promise<string[]> {

@@ -23,4 +23,15 @@ public interface WorkflowStepRepository extends JpaRepository<WorkflowStep, UUID
     long countByWorkflowId(UUID workflowId);
 
     long countByWorkflowIdAndStatus(UUID workflowId, WorkflowStep.StepStatus status);
+
+    /**
+     * Find all steps assigned to a specific user.
+     */
+    List<WorkflowStep> findByAssigneeUserId(UUID assigneeUserId);
+
+    /**
+     * Find all steps assigned to a specific user, ordered by workflow and step order.
+     */
+    @Query("SELECT s FROM WorkflowStep s WHERE s.assigneeUserId = :assigneeUserId AND s.workflow.deleted = false ORDER BY s.workflow.id, s.stepOrder")
+    List<WorkflowStep> findByAssigneeUserIdWithWorkflow(@Param("assigneeUserId") UUID assigneeUserId);
 }

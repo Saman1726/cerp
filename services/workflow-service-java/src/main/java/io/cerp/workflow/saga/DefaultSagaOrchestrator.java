@@ -655,13 +655,28 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
     // --- Entity/State conversion ---
 
     private SagaEntity toEntity(SagaState state) {
-        // Extract userId and projectId from state data if available
+        // Extract userId, createdBy, assignedTo, partyIds, and projectId from state data if available
         String userId = null;
+        String createdBy = null;
+        String assignedTo = null;
+        String partyIds = null;
         String projectId = null;
         if (state.getData() != null) {
             Object userIdObj = state.getData().get("userId");
             if (userIdObj instanceof String s) {
                 userId = s;
+            }
+            Object createdByObj = state.getData().get("createdBy");
+            if (createdByObj instanceof String s) {
+                createdBy = s;
+            }
+            Object assignedToObj = state.getData().get("assignedTo");
+            if (assignedToObj instanceof String s) {
+                assignedTo = s;
+            }
+            Object partyIdsObj = state.getData().get("partyIds");
+            if (partyIdsObj instanceof String s) {
+                partyIds = s;
             }
             Object projectIdObj = state.getData().get("projectId");
             if (projectIdObj != null) {
@@ -683,6 +698,9 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             state.getLastError() != null ? serializeError(state.getLastError()) : null,
             dataJson,
             userId,
+            createdBy,
+            assignedTo,
+            partyIds,
             projectId,
             LocalDateTime.now(),
             LocalDateTime.now());
@@ -707,6 +725,13 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         // Store sagaType in data for frontend access
         if (!data.containsKey("sagaType")) {
             data.put("sagaType", entity.getSagaType());
+        }
+        // Populate createdBy and assignedTo from entity fields into data map
+        if (entity.getCreatedBy() != null && !data.containsKey("createdBy")) {
+            data.put("createdBy", entity.getCreatedBy());
+        }
+        if (entity.getAssignedTo() != null && !data.containsKey("assignedTo")) {
+            data.put("assignedTo", entity.getAssignedTo());
         }
 
         // Convert String id (saga identifier) back to UUID for SagaState

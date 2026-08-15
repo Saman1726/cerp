@@ -1,9 +1,11 @@
 package io.cerp.workflow.controller;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -22,7 +24,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.repository.SagaAttachmentEntity;
+import io.cerp.workflow.repository.SagaEntity;
 import io.cerp.workflow.repository.SagaNoteEntity;
+import io.cerp.workflow.repository.SagaRepository;
 import io.cerp.workflow.saga.DefaultSagaOrchestrator;
 import io.cerp.workflow.saga.SagaContext;
 import io.cerp.workflow.saga.SagaError;
@@ -49,10 +53,12 @@ public class SagaController {
 
     private final DefaultSagaOrchestrator orchestrator;
     private final IdentityPermissionClient permissionClient;
+    private final SagaRepository sagaRepository;
 
-    public SagaController(DefaultSagaOrchestrator orchestrator, IdentityPermissionClient permissionClient) {
+    public SagaController(DefaultSagaOrchestrator orchestrator, IdentityPermissionClient permissionClient, SagaRepository sagaRepository) {
         this.orchestrator = orchestrator;
         this.permissionClient = permissionClient;
+        this.sagaRepository = sagaRepository;
     }
 
     /**
@@ -74,7 +80,10 @@ public class SagaController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> startSaga(
             @RequestBody StartSagaRequest request,
-            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles,
+            @RequestParam(value = "createdBy", required = false) String createdBy,
+            @RequestParam(value = "assignedTo", required = false) String assignedTo,
+            @RequestParam(value = "partyIds", required = false) String partyIds) {
         // Extract userId from request data for access control
         String userIdStr = null;
         if (request.data() != null) {
@@ -149,6 +158,28 @@ public class SagaController {
         }
         responseData.put("status", sagaStatus);
         responseData.put("createdAt", java.time.Instant.now().toString());
+
+        // Update the saga entity with creator, assignee, and party access
+        if (initialState != null) {
+            String sagaEntityId = startedId.toString();
+            Optional<SagaEntity> sagaOpt = sagaRepository.findById(sagaEntityId);
+            if (sagaOpt.isPresent()) {
+                SagaEntity sagaEntity = sagaOpt.get();
+                if (createdBy != null && !createdBy.isEmpty()) {
+                    sagaEntity.setCreatedBy(createdBy);
+                } else if (userIdStr != null && !userIdStr.isEmpty()) {
+                    sagaEntity.setCreatedBy(userIdStr);
+                }
+                if (assignedTo != null && !assignedTo.isEmpty()) {
+                    sagaEntity.setAssignedTo(assignedTo);
+                }
+                if (partyIds != null && !partyIds.isEmpty()) {
+                    sagaEntity.setPartyIds(partyIds);
+                }
+                sagaEntity.setUpdatedAt(LocalDateTime.now());
+                sagaRepository.save(sagaEntity);
+            }
+        }
 
         // Return 200 OK if saga already existed (idempotent), 201 CREATED if new
         HttpStatus httpStatus = sagaStatus.equals("RUNNING") && initialState != null && 
@@ -366,6 +397,8 @@ public class SagaController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String accessMode,
+            @RequestParam(required = false) String vendorId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(defaultValue = "updatedAt") String sortBy,
@@ -389,11 +422,55 @@ public class SagaController {
                     // Get projects the user has access to
                     List<UUID> accessibleProjectIds = permissionClient.getAccessibleProjects(userUuid);
 
-                    // If user has no project access, return empty list
-                    if (accessibleProjectIds.isEmpty()) {
-                        allSagas = List.of();
-                    } else {
-                        // Filter sagas to only those belonging to accessible projects
+                    // Skip project-based access control when vendorId is explicitly provided
+                    // (e.g., vendor-specific views like My Workflows for vendors)
+                    if (vendorId != null && !vendorId.isEmpty()) {
+                        // No project-based filtering for vendor-specific requests
+                        // VendorId filtering is applied later, after access control
+                    } else if (accessMode == null || accessMode.isEmpty()) {
+                        // Default behavior: show all project-accessible sagas
+                        if (accessibleProjectIds.isEmpty()) {
+                            allSagas = List.of();
+                        } else {
+                            final List<UUID> accessibleProjects = accessibleProjectIds;
+                            allSagas = allSagas.stream()
+                                .filter(s -> {
+                                    Object projectIdObj = s.getData().get("projectId");
+                                    if (projectIdObj == null) {
+                                        return false;
+                                    }
+                                    try {
+                                        UUID projectId = UUID.fromString(projectIdObj.toString());
+                                        return accessibleProjects.contains(projectId);
+                                    } catch (IllegalArgumentException e) {
+                                        return false;
+                                    }
+                                })
+                                .collect(Collectors.toList());
+                        }
+                    } else if ("created".equals(accessMode)) {
+                        // Show only sagas created by this user
+                        allSagas = allSagas.stream()
+                            .filter(s -> {
+                                Object createdByObj = s.getData().get("createdBy");
+                                if (createdByObj == null) {
+                                    // Fall back to userId field for legacy sagas
+                                    Object userIdObj = s.getData().get("userId");
+                                    return userIdObj != null && userIdObj.toString().equals(userId);
+                                }
+                                return createdByObj.toString().equals(userId);
+                            })
+                            .collect(Collectors.toList());
+                    } else if ("assigned".equals(accessMode)) {
+                        // Show only sagas assigned to this user
+                        allSagas = allSagas.stream()
+                            .filter(s -> {
+                                Object assignedToObj = s.getData().get("assignedTo");
+                                return assignedToObj != null && assignedToObj.toString().equals(userId);
+                            })
+                            .collect(Collectors.toList());
+                    } else if ("project".equals(accessMode) && !accessibleProjectIds.isEmpty()) {
+                        // Show only sagas belonging to accessible projects
                         final List<UUID> accessibleProjects = accessibleProjectIds;
                         allSagas = allSagas.stream()
                             .filter(s -> {
@@ -409,12 +486,44 @@ public class SagaController {
                                 }
                             })
                             .collect(Collectors.toList());
+                    } else {
+                        // Default: show all project-accessible sagas
+                        if (accessibleProjectIds.isEmpty()) {
+                            allSagas = List.of();
+                        } else {
+                            final List<UUID> accessibleProjects = accessibleProjectIds;
+                            allSagas = allSagas.stream()
+                                .filter(s -> {
+                                    Object projectIdObj = s.getData().get("projectId");
+                                    if (projectIdObj == null) {
+                                        return false;
+                                    }
+                                    try {
+                                        UUID projectId = UUID.fromString(projectIdObj.toString());
+                                        return accessibleProjects.contains(projectId);
+                                    } catch (IllegalArgumentException e) {
+                                        return false;
+                                    }
+                                })
+                                .collect(Collectors.toList());
+                        }
                     }
                 }
                 // If admin/manager, show all sagas (no filtering)
             } catch (Exception e) {
                 // If userId is invalid, skip access control (fail open)
             }
+        }
+
+        // Apply vendorId filter if provided
+        if (vendorId != null && !vendorId.isEmpty()) {
+            final String vendorFilter = vendorId;
+            allSagas = allSagas.stream()
+                .filter(s -> {
+                    Object vendorIdObj = s.getData().get("vendorId");
+                    return vendorIdObj != null && vendorIdObj.toString().equals(vendorFilter);
+                })
+                .collect(Collectors.toList());
         }
 
         // Apply filters

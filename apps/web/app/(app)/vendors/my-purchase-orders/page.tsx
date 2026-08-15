@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileText,
@@ -17,13 +18,15 @@ import {
   Layers,
   Calendar,
   Hash,
+  User,
+  Users,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@cerp/core-web/components/ui/card';
 import { Badge } from '@cerp/core-web/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@cerp/core-web/components/ui/table';
 import { Button } from '@cerp/core-web/components/ui/button';
 import { PageHeader } from '@cerp/core-web/shell';
-import { DeliveryScheduleForm } from '@cerp/core-web/procurement';
+import { DeliveryScheduleForm, DeliverySagaActionButtons, DeliverySagaDetailDialog } from '@cerp/core-web/procurement';
 import type { VendorPurchaseOrder, DeliverySchedule } from '@cerp/shared-types';
 
 function statusBadge(status: string): 'default' | 'success' | 'destructive' | 'secondary' | 'outline' {
@@ -61,6 +64,9 @@ export default function MyPurchaseOrdersPage() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [deliveryFormOpen, setDeliveryFormOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<VendorPurchaseOrder | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedDeliverySagaId, setSelectedDeliverySagaId] = useState<string | null>(null);
+  const [selectedDeliverySaga, setSelectedDeliverySaga] = useState<DeliverySchedule | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +99,12 @@ export default function MyPurchaseOrdersPage() {
   const handleAddDelivery = (order: VendorPurchaseOrder) => {
     setSelectedOrder(order);
     setDeliveryFormOpen(true);
+  };
+
+  const handleViewDeliveryDetails = (schedule: DeliverySchedule) => {
+    setSelectedDeliverySagaId(schedule.deliverySagaId ?? null);
+    setSelectedDeliverySaga(schedule);
+    setDetailDialogOpen(true);
   };
 
   return (
@@ -191,7 +203,7 @@ export default function MyPurchaseOrdersPage() {
                   const isExpanded = expandedRow === order.sagaId;
                   const deliveries = (order.deliverySchedules as DeliverySchedule[]) ?? [];
                   return (
-                    <>
+                    <React.Fragment key={order.sagaId}>
                       <TableRow
                         key={order.sagaId}
                         className="hover:bg-muted/50 cursor-pointer"
@@ -255,10 +267,11 @@ export default function MyPurchaseOrdersPage() {
                                   </Button>
                                 </div>
                               </div>
-                              <div className="grid grid-cols-4 gap-4 text-sm">
+                              <div className="grid grid-cols-5 gap-4 text-sm">
                                 <div><p className="text-muted-foreground flex items-center gap-1.5"><Hash className="h-3.5 w-3.5" /> Material</p><p className="font-medium mt-0.5">{order.materialId || '—'}</p></div>
                                 <div><p className="text-muted-foreground flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /> Step</p><p className="font-medium mt-0.5 flex items-center gap-1.5">{stepIcon(order.currentStep)} {order.currentStep}</p></div>
                                 <div><p className="text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" /> Created</p><p className="font-medium mt-0.5">{new Date(order.createdAt).toLocaleDateString()}</p></div>
+                                <div><p className="text-muted-foreground flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> Created By</p><p className="font-medium mt-0.5">{order.createdBy ? order.createdBy.slice(0, 12) : '—'}</p></div>
                                 <div><p className="text-muted-foreground flex items-center gap-1.5"><Truck className="h-3.5 w-3.5" /> Deliveries</p><p className="font-medium mt-0.5">{deliveries.length} scheduled · {order.deliveredQuantity ?? 0}/{order.quantity} qty</p></div>
                               </div>
                               {deliveries.length > 0 && (
@@ -270,19 +283,59 @@ export default function MyPurchaseOrdersPage() {
                                         <TableRow className="bg-muted/50">
                                           <TableHead className="text-xs">Date</TableHead>
                                           <TableHead className="text-xs">Qty</TableHead>
+                                          <TableHead className="text-xs">Progress</TableHead>
+                                          <TableHead className="text-xs">Assigned To</TableHead>
+                                          <TableHead className="text-xs">Party IDs</TableHead>
                                           <TableHead className="text-xs">Status</TableHead>
-                                          <TableHead className="text-xs">Action</TableHead>
+                                          <TableHead className="text-xs">Actions</TableHead>
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
-                                        {deliveries.map((d) => (
-                                          <TableRow key={d.deliverySagaId ?? d.id} className="hover:bg-transparent">
-                                            <TableCell className="text-xs py-1.5">{d.scheduledDate ? new Date(d.scheduledDate).toLocaleDateString() : '—'}</TableCell>
-                                            <TableCell className="text-xs py-1.5">{d.quantity}</TableCell>
-                                            <TableCell className="text-xs py-1.5"><Badge variant={d.status === 'COMPLETED' ? 'success' : d.status === 'FAILED' ? 'destructive' : 'secondary'} className="text-[10px]">{d.status}</Badge></TableCell>
-                                            <TableCell className="text-xs py-1.5">{d.deliverySagaId && <Button size="sm" variant="ghost" className="text-xs h-5 px-1.5" onClick={() => router.push(`/workflows/saga/${d.deliverySagaId}`)}>View</Button>}</TableCell>
-                                          </TableRow>
-                                        ))}
+                                        {deliveries.map((d) => {
+                                          const totalQty = d.totalQuantity || d.quantity || 0;
+                                          const pct = totalQty > 0 ? Math.round((d.deliveryPercentage || (d.status === 'COMPLETED' ? 100 : 0))) : 0;
+                                          const assigned = d.assignedTo ? d.assignedTo.slice(0, 12) : '—';
+                                          const parties = d.partyIds ? d.partyIds.slice(0, 20) : '—';
+                                          return (
+                                            <TableRow key={d.deliverySagaId ?? d.id} className="hover:bg-transparent">
+                                              <TableCell className="text-xs py-1.5">{d.scheduledDate ? new Date(d.scheduledDate).toLocaleDateString() : '—'}</TableCell>
+                                              <TableCell className="text-xs py-1.5">{d.quantity}{totalQty > 0 && totalQty !== d.quantity ? ` / ${totalQty}` : ''}</TableCell>
+                                              <TableCell className="text-xs py-1.5">
+                                                <div className="flex items-center gap-1">
+                                                  <div className="w-10 h-1.5 bg-muted rounded-full overflow-hidden">
+                                                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                                                  </div>
+                                                  <span className="text-[10px]">{pct}%</span>
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className="text-xs py-1.5">{assigned}</TableCell>
+                                              <TableCell className="text-xs py-1.5">
+                                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                  <Users className="h-2.5 w-2.5" />
+                                                  {parties}
+                                                </div>
+                                              </TableCell>
+                                              <TableCell className="text-xs py-1.5">
+                                                <Badge variant={d.status === 'COMPLETED' ? 'success' : d.status === 'FAILED' ? 'destructive' : 'secondary'} className="text-[10px]">{d.status}</Badge>
+                                              </TableCell>
+                                              <TableCell className="text-xs py-1.5">
+                                                <div className="flex items-center gap-1">
+                                                  {d.deliverySagaId && (
+                                                    <DeliverySagaActionButtons
+                                                      sagaId={d.deliverySagaId}
+                                                      currentStep={d.currentStep}
+                                                      status={d.status}
+                                                      onStepCompleted={refreshOrders}
+                                                    />
+                                                  )}
+                                                  <Button size="sm" variant="ghost" className="text-xs h-5 px-1.5" onClick={() => handleViewDeliveryDetails(d)} title="View Details">
+                                                    <Eye className="h-3 w-3" />
+                                                  </Button>
+                                                </div>
+                                              </TableCell>
+                                            </TableRow>
+                                          );
+                                        })}
                                       </TableBody>
                                     </Table>
                                   </div>
@@ -292,7 +345,7 @@ export default function MyPurchaseOrdersPage() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </TableBody>
@@ -310,6 +363,20 @@ export default function MyPurchaseOrdersPage() {
           vendorId={selectedOrder.vendorId}
           availableQuantity={(selectedOrder.quantity ?? 0) - (selectedOrder.deliveredQuantity ?? 0)}
           onSuccess={refreshOrders}
+        />
+      )}
+
+      {/* Delivery Saga Detail Dialog */}
+      {selectedDeliverySagaId && selectedDeliverySaga && (
+        <DeliverySagaDetailDialog
+          sagaId={selectedDeliverySagaId}
+          deliverySaga={selectedDeliverySaga}
+          open={detailDialogOpen}
+          onOpenChange={(open) => {
+            setDetailDialogOpen(open);
+            if (!open) { setSelectedDeliverySagaId(null); setSelectedDeliverySaga(null); }
+          }}
+          onRefresh={refreshOrders}
         />
       )}
     </div>

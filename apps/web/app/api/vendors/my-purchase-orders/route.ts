@@ -123,7 +123,9 @@ export async function GET(request: NextRequest) {
       });
       const deliveredQty = linkedDeliveries.reduce((sum, d) => {
         const dData = (d.data ?? {}) as Record<string, unknown>;
-        return sum + (Number(dData.quantity) || 0);
+        const isCompleted =
+          dData.deliveryStatus === 'COMPLETED' || dData.status === 'COMPLETED' || dData.status === 'Closed';
+        return isCompleted ? sum + (Number(dData.quantity) || 0) : sum;
       }, 0);
       const completedDeliveries = linkedDeliveries.filter((d) => {
         const dData = (d.data ?? {}) as Record<string, unknown>;
@@ -143,6 +145,7 @@ export async function GET(request: NextRequest) {
         createdAt: String(saga.createdAt ?? ''),
         updatedAt: String(saga.updatedAt ?? ''),
         stepCount: steps.length,
+        createdBy: String(saga.createdBy ?? data.createdBy ?? ''),
         deliverySchedules: linkedDeliveries.map((d) => {
           const dData = (d.data ?? {}) as Record<string, unknown>;
           return {
@@ -153,6 +156,12 @@ export async function GET(request: NextRequest) {
               dData.deliveryStatus || dData.status || 'SCHEDULED',
             ),
             createdAt: String(d.createdAt ?? ''),
+            assignedTo: String(d.assignedTo ?? dData.assignedTo ?? ''),
+            partyIds: String(d.partyIds ?? dData.partyIds ?? ''),
+            currentStep: String(dData.currentStep ?? dData.sagaStep ?? ''),
+            description: String(dData.description ?? ''),
+            deliveryPercentage: Number(dData.deliveryPercentage ?? 0),
+            totalQuantity: Number(dData.totalQuantity ?? dData.quantity ?? 0),
           };
         }),
         pendingDeliveryCount: linkedDeliveries.length - completedDeliveries,

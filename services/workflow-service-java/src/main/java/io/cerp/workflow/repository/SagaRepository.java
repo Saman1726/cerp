@@ -61,9 +61,38 @@ public interface SagaRepository extends JpaRepository<SagaEntity, String> {
         List<Object[]> countSagasByTypeForTenant(@Param("tenantId") String tenantId);
 
         /**
-         * Find sagas by user_id.
+         * Find sagas by user_id (legacy field).
          */
         List<SagaEntity> findByUserId(String userId);
+
+        /**
+         * Find sagas created by a specific user.
+         */
+        List<SagaEntity> findByCreatedBy(String createdBy);
+
+        /**
+         * Find sagas assigned to a specific user.
+         */
+        List<SagaEntity> findByAssignedTo(String assignedTo);
+
+        /**
+         * Find sagas created by or assigned to a user.
+         */
+        List<SagaEntity> findByCreatedByOrAssignedTo(String createdBy, String assignedTo);
+
+        /**
+         * Find sagas where partyIds JSON array contains the given party ID.
+         */
+        @Query("SELECT s FROM SagaEntity s WHERE s.partyIds LIKE %:partyId% AND s.deleted = false")
+        List<SagaEntity> findByPartyIdsContaining(@Param("partyId") String partyId);
+
+        /**
+         * Find sagas where user is creator, assignee, or party member.
+         */
+        @Query("SELECT s FROM SagaEntity s WHERE " +
+                "(s.createdBy = :userId OR s.assignedTo = :userId OR s.partyIds LIKE %:partyId%) AND s.deleted = false")
+        List<SagaEntity> findByUserAccess(@Param("userId") String userId,
+                                           @Param("partyId") String partyId);
 
         /**
          * Find sagas by project_id.

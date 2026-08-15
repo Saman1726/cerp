@@ -39,6 +39,8 @@ export const workflowApi = {
     if (query.status) params.set('status', query.status);
     if (query.tenantId) params.set('tenantId', query.tenantId);
     if (query.vendorId) params.set('vendorId', query.vendorId);
+    if (query.userId) params.set('userId', query.userId);
+    if (query.accessMode) params.set('accessMode', query.accessMode);
     if (query.aggregateId) params.set('aggregateId', query.aggregateId);
     if (query.page) params.set('page', String(query.page));
     if (query.pageSize) params.set('pageSize', String(query.pageSize));
