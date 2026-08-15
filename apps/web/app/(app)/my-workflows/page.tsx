@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@cerp/core-web/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@cerp/core-web/components/ui/card';
@@ -11,7 +11,7 @@ import { workflowApi, SAGA_TYPE_LABELS, SagaDetailDialog } from '@cerp/core-web/
 import { listWorkflowsByAccessMode } from '@cerp/core-web/construction-engineering';
 import type { Saga, SagaQuery } from '@cerp/core-web/workflow';
 import type { Workflow } from '@cerp/shared-types';
-import { UserPlus, UserCheck, Loader2, AlertCircle } from 'lucide-react';
+import { UserPlus, UserCheck, AlertCircle } from 'lucide-react';
 
 const PAGE_SIZE = 100;
 
@@ -30,26 +30,6 @@ interface UnifiedWorkflowItem {
   updatedAt: string;
   detailsUrl: string;
 }
-
-const statusColors: Record<string, 'default' | 'success' | 'destructive' | 'secondary' | 'outline'> = {
-  COMPLETED: 'success',
-  COMPENSATED: 'success',
-  FAILED: 'destructive',
-  ABORTED: 'destructive',
-  RUNNING: 'default',
-  IN_PROGRESS: 'default',
-  PAUSED: 'secondary',
-  REQUIRES_MANUAL_INTERVENTION: 'secondary',
-  PLANNED: 'outline',
-  ACTIVE: 'default',
-  APPROVED: 'success',
-  REJECTED: 'destructive',
-  CANCELLED: 'destructive',
-};
-
-const getStatusColor = (status: string): 'default' | 'success' | 'destructive' | 'secondary' | 'outline' => {
-  return statusColors[status] ?? 'outline';
-};
 
 const getStatusLabel = (source: WorkflowSource, status: string): string => {
   if (source === 'saga') {
@@ -90,8 +70,6 @@ export default function MyWorkflowsPage() {
   const router = useRouter();
   const pathname = usePathname();
   const activeTab = searchParams.get('tab') || 'created';
-  const createdItemsRef = useRef<UnifiedWorkflowItem[]>([]);
-  const assignedItemsRef = useRef<UnifiedWorkflowItem[]>([]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedSagaId, setSelectedSagaId] = useState<string | null>(null);
@@ -175,13 +153,13 @@ export default function MyWorkflowsPage() {
       }));
 
       // Sort all items by updatedAt descending
-      createdItemsRef.current = [...createdSagaItems, ...createdCEItems]
+      const sortedCreated = [...createdSagaItems, ...createdCEItems]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      assignedItemsRef.current = [...assignedSagaItems, ...assignedCEItems]
+      const sortedAssigned = [...assignedSagaItems, ...assignedCEItems]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-      setCreatedItems(createdItemsRef.current);
-      setAssignedItems(assignedItemsRef.current);
+      setCreatedItems(sortedCreated);
+      setAssignedItems(sortedAssigned);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load workflows');
     } finally {
@@ -189,7 +167,10 @@ export default function MyWorkflowsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchAllWorkflows(); }, [fetchAllWorkflows]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchAllWorkflows();
+  }, [fetchAllWorkflows]);
 
   useEffect(() => {
     const currentTab = searchParams.get('tab') || 'created';
@@ -239,7 +220,7 @@ export default function MyWorkflowsPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <UserPlus className="h-4 w-4" /> Created by Me{' '}
-                <Badge variant="secondary">{createdItemsRef.current.length}</Badge>
+                <Badge variant="secondary">{createdItems.length}</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -250,7 +231,7 @@ export default function MyWorkflowsPage() {
               )}
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading workflows...</div>
-              ) : createdItemsRef.current.length === 0 ? (
+              ) : createdItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p className="text-lg font-medium">No workflows created</p>
                   <p className="text-sm mt-1">Workflows you create will appear here</p>
@@ -269,7 +250,7 @@ export default function MyWorkflowsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {createdItemsRef.current.map((item) => (
+                    {createdItems.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>{getSourceBadge(item.source)}</TableCell>
                         <TableCell className="font-mono text-xs">{item.id.slice(0, 8)}...</TableCell>
@@ -300,7 +281,7 @@ export default function MyWorkflowsPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <UserCheck className="h-4 w-4" /> Assigned to Me{' '}
-                <Badge variant="secondary">{assignedItemsRef.current.length}</Badge>
+                <Badge variant="secondary">{assignedItems.length}</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -311,7 +292,7 @@ export default function MyWorkflowsPage() {
               )}
               {loading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading workflows...</div>
-              ) : assignedItemsRef.current.length === 0 ? (
+              ) : assignedItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <p className="text-lg font-medium">No workflows assigned</p>
                   <p className="text-sm mt-1">Workflows assigned to you will appear here</p>
@@ -331,7 +312,7 @@ export default function MyWorkflowsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {assignedItemsRef.current.map((item) => (
+                    {assignedItems.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>{getSourceBadge(item.source)}</TableCell>
                         <TableCell className="font-mono text-xs">{item.id.slice(0, 8)}...</TableCell>

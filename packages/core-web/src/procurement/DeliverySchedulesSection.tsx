@@ -31,7 +31,6 @@ export function DeliverySchedulesSection({ procurementSagaId }: DeliverySchedule
   const [deliveries, setDeliveries] = useState<Array<{
     deliverySagaId: string; scheduledDate: string; quantity: number; status: string; createdAt: string;
   }>>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,8 +59,6 @@ export function DeliverySchedulesSection({ procurementSagaId }: DeliverySchedule
         );
       } catch {
         // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };

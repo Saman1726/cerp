@@ -163,15 +163,6 @@ export function ProcurementSagaForm({ tenantId, saga, onSuccess, onCancel, onVie
     return effectiveStep === 'ApproveRequest' || effectiveStep === 'IssuePurchaseOrder';
   };
 
-  // Check if a bidding saga exists and is in a terminal state (COMPLETED or ABORTED/FAILED)
-  const hasCompletedBidding = (s: Saga | null | undefined): boolean => {
-    if (!s) return false;
-    return relatedBiddingSagas.some(
-      (biddingSaga) =>
-        biddingSaga.status === 'COMPLETED' || biddingSaga.status === 'FAILED' || biddingSaga.status === 'COMPENSATED'
-    );
-  };
-
   // Check if bidding is in progress
   const hasInProgressBidding = (s: Saga | null | undefined): boolean => {
     if (!s) return false;

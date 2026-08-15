@@ -83,6 +83,7 @@ export function SagaPage({ vendorId, accessMode }: { vendorId?: string; accessMo
 
   // Sync vendorId prop into filters
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters((prev) => {
       if (prev.vendorId !== vendorId) {
         return { ...prev, vendorId: vendorId ?? undefined, page: 1 };

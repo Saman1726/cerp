@@ -58,11 +58,6 @@ function safeNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function safeStr(v: unknown): string | null {
-  if (v == null) return null;
-  return String(v);
-}
-
 function extractProcurementData(saga: SagaType) {
   const d = saga.data ?? {};
   return {
@@ -151,6 +146,7 @@ export function SagaDetailDialog({ sagaId, open, onOpenChange, onRefresh }: Saga
   }, [sagaId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) fetchSaga();
   }, [open, fetchSaga]);
 

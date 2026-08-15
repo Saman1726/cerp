@@ -10,7 +10,7 @@ import { SagaRowActions } from './SagaRowActions';
 import { useSagaAttachmentSync } from './saga-attachments';
 import { workflowApi } from './api';
 import type { Saga, SagaEvent, SagaDetailTabId, ExecuteSagaStepRequest } from './types';
-import { SAGA_DETAIL_TABS, getSagaProjectId, PROCUREMENT_SAGA_STEPS } from './types';
+import { SAGA_DETAIL_TABS, getSagaProjectId } from './types';
 import { ProcurementActions } from './ProcurementActions';
 
 interface SagaDetailPageProps {

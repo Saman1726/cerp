@@ -26,7 +26,10 @@ export function DeliveryScheduleForm({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (open) setError(null); }, [open]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) setError(null);
+  }, [open]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setLoading(true); setError(null);
     const qty = Number(formData.quantity);
