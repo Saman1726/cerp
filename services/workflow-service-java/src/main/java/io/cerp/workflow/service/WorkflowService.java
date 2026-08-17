@@ -1,9 +1,11 @@
 package io.cerp.workflow.service;
 
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import io.cerp.workflow.config.KafkaEventPublisher;
+import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.domain.Workflow;
 import io.cerp.workflow.domain.WorkflowNote;
 import io.cerp.workflow.domain.WorkflowStep;
@@ -21,7 +24,9 @@ import io.cerp.workflow.domain.WorkflowTemplateStep;
 import io.cerp.workflow.repository.WorkflowNoteRepository;
 import io.cerp.workflow.repository.WorkflowRepository;
 import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
+import io.cerp.workflow.repository.WorkflowStepRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.state.StateMachineEngine;
 import io.cerp.workflow.state.WorkflowStateMachines;
 import io.cerp.workflow.state.WorkflowStateStore;
@@ -40,26 +45,32 @@ public class WorkflowService {
 
     private final WorkflowRepository workflowRepository;
     private final WorkflowTemplateRepository templateRepository;
+    private final WorkflowStepRepository workflowStepRepository;
     private final StateMachineEngine stateMachineEngine;
     private final WorkflowStateStore workflowStateStore;
     private final WorkflowStepStateStore workflowStepStateStore;
     private final WorkflowNoteRepository workflowNoteRepository;
     private final WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
+    private final IdentityPermissionClient identityPermissionClient;
 
     public WorkflowService(WorkflowRepository workflowRepository,
             WorkflowTemplateRepository templateRepository,
+            WorkflowStepRepository workflowStepRepository,
             StateMachineEngine stateMachineEngine,
             WorkflowStateStore workflowStateStore,
             WorkflowStepStateStore workflowStepStateStore,
             WorkflowNoteRepository workflowNoteRepository,
-            WorkflowStepAttachmentRepository workflowStepAttachmentRepository) {
+            WorkflowStepAttachmentRepository workflowStepAttachmentRepository,
+            IdentityPermissionClient identityPermissionClient) {
         this.workflowRepository = workflowRepository;
         this.templateRepository = templateRepository;
+        this.workflowStepRepository = workflowStepRepository;
         this.stateMachineEngine = stateMachineEngine;
         this.workflowStateStore = workflowStateStore;
         this.workflowStepStateStore = workflowStepStateStore;
         this.workflowNoteRepository = workflowNoteRepository;
         this.workflowStepAttachmentRepository = workflowStepAttachmentRepository;
+        this.identityPermissionClient = identityPermissionClient;
     }
 
     private void transition(String aggregateType, UUID aggregateId, String transitionCode,
@@ -509,6 +520,75 @@ public class WorkflowService {
     }
 
     // ── Helpers ──
+
+    /**
+     * Assign a user to a workflow step by email.
+     * Resolves the user via the identity service and stores userId, email, and name.
+     */
+    @Transactional
+    public WorkflowStep assignStep(UUID workflowId, UUID stepId, String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("email is required");
+        }
+
+        Workflow workflow = getById(workflowId);
+        WorkflowStep step = findStepById(workflowId, stepId);
+
+        // Resolve user via identity service
+        IdentityPermissionClient.UserByIdEmail user = identityPermissionClient.resolveUserByEmail(email);
+        if (user == null) {
+            throw new IllegalArgumentException("User not found for email: " + email);
+        }
+
+        step.setAssigneeUserId(user.userId());
+        step.setAssigneeEmail(user.email());
+        step.setAssigneeName(user.name());
+        return workflowStepRepository.save(step);
+    }
+
+    /**
+     * List workflows where a user is the creator.
+     */
+    public List<Workflow> listByAccessCreated(String userId) {
+        String tenantId = getTenantIdFromContext();
+        if (tenantId == null || userId == null) {
+            return List.of();
+        }
+        return workflowRepository.findByTenantIdAndCreatedBy(tenantId, userId);
+    }
+
+    /**
+     * List workflows where a user has at least one assigned step.
+     */
+    @Transactional(readOnly = true)
+    public List<Workflow> listByAccessAssigned(String userId) {
+        String tenantId = getTenantIdFromContext();
+        if (tenantId == null) {
+            return List.of();
+        }
+
+        UUID userUuid;
+        try {
+            userUuid = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            return List.of();
+        }
+        List<WorkflowStep> ws = workflowStepRepository.findByAssigneeUserId(userUuid);
+        Set<Workflow> workflows = new HashSet<>();
+        ws.forEach(step -> workflows.add(step.getWorkflow()));
+
+        return workflows.stream()
+            .filter(w -> tenantId.equals(w.getTenantId()))
+            .toList();
+    }
+
+    /**
+     * Extract the tenant ID from TenantContext.
+     */
+    private String getTenantIdFromContext() {
+        UUID tenantId = TenantContext.getCurrentTenantId();
+        return tenantId != null ? tenantId.toString() : null;
+    }
 
     private WorkflowStep findStepById(UUID workflowId, UUID stepId) {
         return workflowRepository.findByIdWithSteps(workflowId)

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getBackendHeaders, extractSessionUser } from './utils';
+import { getBackendHeaders, extractSessionUser, resolveUserLookup } from './utils';
 
 // Map Java WorkflowStatus to frontend WorkflowStatus
 function mapWorkflowStatus(status: string): string {
@@ -58,7 +58,9 @@ function transformStep(
     order: (javaStep.stepOrder as number | undefined) ?? 0,
     status: mapStepStatus(String(javaStep.status ?? '')),
     assignedTo: javaStep.assigneeUserId ? String(javaStep.assigneeUserId) : null,
-    assignedToName: null,
+    assignedToName: (javaStep.assigneeName as string | undefined) ?? null,
+    assigneeEmail: (javaStep.assigneeEmail as string | undefined) ?? null,
+    assigneeName: (javaStep.assigneeName as string | undefined) ?? null,
     requiresEvidence: false,
     requiresApproval: false,
     evidenceUrls,
@@ -124,6 +126,65 @@ export async function GET(request: NextRequest) {
     const templateCode = searchParams.get('templateCode');
     const projectId = searchParams.get('projectId');
     const subprojectId = searchParams.get('subprojectId');
+    const accessMode = searchParams.get('accessMode');
+    const userId = searchParams.get('userId');
+
+    // Handle accessMode via server-side /my-workflows endpoint (tenant-scoped)
+    if (accessMode && (accessMode === 'created' || accessMode === 'assigned')) {
+      const myUrl = new URL('/api/v1/workflows/my-workflows', WORKFLOW_SERVICE_URL);
+      myUrl.searchParams.set('accessMode', accessMode);
+
+      const headers: Record<string, string> = {};
+      const { tenantId, userId } = await extractSessionUser();
+      headers['X-Tenant-Id'] = tenantId;
+      if (userId) {
+        // Pass userId in Authorization header using the same base64 format as the Java backend expects
+        const tokenPayload = JSON.stringify({ userId });
+        const base64Token = Buffer.from(tokenPayload).toString('base64url');
+        headers['Authorization'] = `Bearer ${base64Token}`;
+      }
+
+      const res = await fetch(myUrl.toString(), {
+        headers,
+        cache: 'no-store',
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => undefined);
+        return NextResponse.json(
+          { message: body?.message ?? res.statusText },
+          { status: res.status },
+        );
+      }
+
+      const javaWorkflows = (await res.json()) as Record<string, unknown>[];
+      const workflows = javaWorkflows.map(transformWorkflow);
+
+      // Batch-resolve assignee/approver names for filtered workflows
+      const allSteps = workflows.flatMap((w: Record<string, unknown>) =>
+        ((w.steps as Record<string, unknown>[]) ?? []) as Record<string, any>[]
+      );
+      const userIds = allSteps.flatMap((s: Record<string, any>) => [
+        s.assignedTo,
+        s.approverId,
+      ]);
+      const userLookup = await resolveUserLookup(userIds);
+      for (const w of workflows) {
+        const wSteps = (w.steps as Record<string, unknown>[]) ?? [];
+        for (const rawS of wSteps) {
+          const s = rawS as Record<string, any>;
+          if (s.assignedTo && userLookup[s.assignedTo]) {
+            const assignedUser = userLookup[s.assignedTo]!;
+            s.assignedToName = assignedUser.email;
+          }
+          if (s.approverId && userLookup[s.approverId]) {
+            const approverUser = userLookup[s.approverId]!;
+            s.approverName = approverUser.email;
+          }
+        }
+      }
+      return NextResponse.json(workflows);
+    }
 
     const url = new URL('/api/v1/workflows', WORKFLOW_SERVICE_URL);
     if (templateCode) url.searchParams.set('templateCode', templateCode);
@@ -157,6 +218,33 @@ export async function GET(request: NextRequest) {
 
     const javaWorkflows = (await res.json()) as Record<string, unknown>[];
     const workflows = javaWorkflows.map(transformWorkflow);
+
+    // Batch-resolve assignee/approver names from identity service (fallback for old data)
+    const allSteps = workflows.flatMap((w: Record<string, unknown>) =>
+      ((w.steps as Record<string, unknown>[]) ?? []) as Record<string, any>[]
+    );
+    const userIds = allSteps.flatMap((s: Record<string, any>) => [
+      s.assignedTo,
+      s.approverId,
+    ]);
+    const userLookup = await resolveUserLookup(userIds);
+    for (const w of workflows) {
+      const wSteps = (w.steps as Record<string, unknown>[]) ?? [];
+      for (const rawS of wSteps) {
+        const s = rawS as Record<string, any>;
+        if (s.assignedTo && userLookup[s.assignedTo]) {
+          const assignedUser = userLookup[s.assignedTo]!;
+          // Populate missing assignee fields for backwards compatibility
+          if (!s.assigneeEmail) s.assigneeEmail = assignedUser.email;
+          if (!s.assigneeName) s.assigneeName = assignedUser.name;
+          if (!s.assignedToName) s.assignedToName = assignedUser.name;
+        }
+        if (s.approverId && userLookup[s.approverId]) {
+          const approverUser = userLookup[s.approverId]!;
+          s.approverName = approverUser.name;
+        }
+      }
+    }
     return NextResponse.json(workflows);
   } catch (error) {
     return NextResponse.json(

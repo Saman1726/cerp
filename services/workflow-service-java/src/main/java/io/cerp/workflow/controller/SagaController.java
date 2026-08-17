@@ -1,13 +1,18 @@
 package io.cerp.workflow.controller;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -143,6 +148,16 @@ public class SagaController {
             request.sagaType(),
             getTenantIdFromContext(),
             initialData);
+
+        // Set createdBy and assignedTo on the context so they are in the initial in-memory cache
+        if (createdBy != null && !createdBy.isEmpty()) {
+            context.setCreatedBy(createdBy);
+        } else if (userIdStr != null && !userIdStr.isEmpty()) {
+            context.setCreatedBy(userIdStr);
+        }
+        if (assignedTo != null && !assignedTo.isEmpty()) {
+            context.setAssignedTo(assignedTo);
+        }
 
         UUID startedId = orchestrator.startSaga(request.sagaType(), context);
 
@@ -403,113 +418,57 @@ public class SagaController {
             @RequestParam(defaultValue = "25") int pageSize,
             @RequestParam(defaultValue = "updatedAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortOrder,
-            @RequestHeader(value = "X-User-Roles", required = false) String userRoles) {
+            @RequestHeader(value = "X-User-Roles", required = false) String userRoles,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
 
-        // Get all sagas from the orchestrator and filter in memory
-        List<SagaState> allSagas = new ArrayList<>(orchestrator.getActiveSagas());
+        // Extract userId from JWT if not passed as query param
+        String effectiveUserId = extractUserIdFromJwt(authHeader, userId);
 
-        // Apply role-based access control if userId is provided
-        if (userId != null && !userId.isEmpty()) {
+        List<SagaState> allSagas = new ArrayList<>();
+
+        // Apply role-based access control using DB queries (not in-memory filtering)
+        if (effectiveUserId != null && !effectiveUserId.isEmpty()) {
             try {
-                UUID userUuid = UUID.fromString(userId);
+                UUID userUuid = UUID.fromString(effectiveUserId);
 
                 // Check if user is tenant admin/manager — trust header roles first,
                 // fall back to identity service for requests without role headers.
                 boolean isAdminOrManager = hasAdminOrManagerRole(userRoles)
                         || permissionClient.isTenantAdminOrManager(userUuid);
 
-                if (!isAdminOrManager) {
+                // if (!isAdminOrManager) {
                     // Get projects the user has access to
                     List<UUID> accessibleProjectIds = permissionClient.getAccessibleProjects(userUuid);
+                    List<String> projectIdStrs = accessibleProjectIds.stream()
+                        .map(UUID::toString)
+                        .toList();
 
-                    // Skip project-based access control when vendorId is explicitly provided
-                    // (e.g., vendor-specific views like My Workflows for vendors)
                     if (vendorId != null && !vendorId.isEmpty()) {
                         // No project-based filtering for vendor-specific requests
-                        // VendorId filtering is applied later, after access control
+                        allSagas = new ArrayList<>(orchestrator.getActiveSagas());
                     } else if (accessMode == null || accessMode.isEmpty()) {
-                        // Default behavior: show all project-accessible sagas
-                        if (accessibleProjectIds.isEmpty()) {
-                            allSagas = List.of();
-                        } else {
-                            final List<UUID> accessibleProjects = accessibleProjectIds;
-                            allSagas = allSagas.stream()
-                                .filter(s -> {
-                                    Object projectIdObj = s.getData().get("projectId");
-                                    if (projectIdObj == null) {
-                                        return false;
-                                    }
-                                    try {
-                                        UUID projectId = UUID.fromString(projectIdObj.toString());
-                                        return accessibleProjects.contains(projectId);
-                                    } catch (IllegalArgumentException e) {
-                                        return false;
-                                    }
-                                })
-                                .collect(Collectors.toList());
-                        }
+                        // Default: combined access using DB queries
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, null, projectIdStrs);
                     } else if ("created".equals(accessMode)) {
-                        // Show only sagas created by this user
-                        allSagas = allSagas.stream()
-                            .filter(s -> {
-                                Object createdByObj = s.getData().get("createdBy");
-                                if (createdByObj == null) {
-                                    // Fall back to userId field for legacy sagas
-                                    Object userIdObj = s.getData().get("userId");
-                                    return userIdObj != null && userIdObj.toString().equals(userId);
-                                }
-                                return createdByObj.toString().equals(userId);
-                            })
-                            .collect(Collectors.toList());
+                        // DB query: sagas created by this user
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, "created", projectIdStrs);
                     } else if ("assigned".equals(accessMode)) {
-                        // Show only sagas assigned to this user
-                        allSagas = allSagas.stream()
-                            .filter(s -> {
-                                Object assignedToObj = s.getData().get("assignedTo");
-                                return assignedToObj != null && assignedToObj.toString().equals(userId);
-                            })
-                            .collect(Collectors.toList());
-                    } else if ("project".equals(accessMode) && !accessibleProjectIds.isEmpty()) {
-                        // Show only sagas belonging to accessible projects
-                        final List<UUID> accessibleProjects = accessibleProjectIds;
-                        allSagas = allSagas.stream()
-                            .filter(s -> {
-                                Object projectIdObj = s.getData().get("projectId");
-                                if (projectIdObj == null) {
-                                    return false;
-                                }
-                                try {
-                                    UUID projectId = UUID.fromString(projectIdObj.toString());
-                                    return accessibleProjects.contains(projectId);
-                                } catch (IllegalArgumentException e) {
-                                    return false;
-                                }
-                            })
-                            .collect(Collectors.toList());
+                        // DB query: sagas assigned to this user
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, "assigned", projectIdStrs);
+                    } else if ("member".equals(accessMode)) {
+                        // DB query: sagas where user is creator OR assignee
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, "member", projectIdStrs);
+                    } else if ("project".equals(accessMode) && projectIdStrs != null && !projectIdStrs.isEmpty()) {
+                        // DB query: sagas belonging to accessible projects
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, "project", projectIdStrs);
                     } else {
-                        // Default: show all project-accessible sagas
-                        if (accessibleProjectIds.isEmpty()) {
-                            allSagas = List.of();
-                        } else {
-                            final List<UUID> accessibleProjects = accessibleProjectIds;
-                            allSagas = allSagas.stream()
-                                .filter(s -> {
-                                    Object projectIdObj = s.getData().get("projectId");
-                                    if (projectIdObj == null) {
-                                        return false;
-                                    }
-                                    try {
-                                        UUID projectId = UUID.fromString(projectIdObj.toString());
-                                        return accessibleProjects.contains(projectId);
-                                    } catch (IllegalArgumentException e) {
-                                        return false;
-                                    }
-                                })
-                                .collect(Collectors.toList());
-                        }
+                        // Default: combined access via DB queries
+                        allSagas = orchestrator.listSagasByAccess(effectiveUserId, null, projectIdStrs);
                     }
-                }
-                // If admin/manager, show all sagas (no filtering)
+                // } else {
+                //     // Admin/manager — show all active sagas (no project-based filtering)
+                //     allSagas = new ArrayList<>(orchestrator.getActiveSagas());
+                // }
             } catch (Exception e) {
                 // If userId is invalid, skip access control (fail open)
             }
@@ -1008,5 +967,34 @@ public class SagaController {
             if ("admin".equalsIgnoreCase(r) || "manager".equalsIgnoreCase(r)) return true;
         }
         return false;
+    }
+
+    /**
+     * Extract the internal_user_id claim from the Authorization Bearer JWT token.
+     * Falls back to the userId request param if JWT decoding fails or no token is present.
+     */
+    private String extractUserIdFromJwt(String authHeader, String fallbackUserId) {
+        // Priority 1: JWT "internal_user_id" claim (Keycloak custom claim)
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            try {
+                String[] parts = token.split("\\.");
+                if (parts.length == 3) {
+                    String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+                    com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+                    com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
+                    if (internalUserId != null && internalUserId.isTextual()) {
+                        return internalUserId.asText();
+                    }
+                }
+            } catch (Exception e) {
+                // JWT decode failed -- fall through to next priority
+            }
+        }
+        // Priority 2: fallback userId from query param / forwarded value
+        if (fallbackUserId != null && !fallbackUserId.isBlank()) {
+            return fallbackUserId;
+        }
+        return null;
     }
 }

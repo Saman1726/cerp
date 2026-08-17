@@ -44,6 +44,11 @@ public class WorkflowGenerationRequest {
      */
     private Map<String, Object> workflowParameters;
 
+    /**
+     * User ID of the person who created the subproject (for workflow createdBy audit).
+     */
+    private String createdBy;
+
     // ── Constructors ──
 
     public WorkflowGenerationRequest() {
@@ -123,5 +128,16 @@ public class WorkflowGenerationRequest {
 
     public void setConstructionPhase(String constructionPhase) {
         this.constructionPhase = constructionPhase;
+    }
+
+    /**
+     * User ID of the person who created the subproject (for workflow createdBy audit).
+     */
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
     }
 }

@@ -272,8 +272,14 @@ export interface WorkflowInstanceStep {
   type: WorkflowStepType;
   order: number;
   status: WorkflowStepStatus;
+  /** User ID of the assignee (from backend's assigneeUserId). */
   assignedTo: string | null;
+  /** Display name of the assignee (from backend's assigneeName). */
   assignedToName: string | null;
+  /** Email of the user assigned to this step. */
+  assigneeEmail: string | null;
+  /** Display name of the user assigned to this step. */
+  assigneeName: string | null;
   requiresEvidence: boolean;
   requiresApproval: boolean;
   evidenceUrls: string[];
@@ -368,8 +374,8 @@ export interface WorkflowCreateRequest {
 }
 
 export interface WorkflowInstanceStepUpdateRequest {
-  status: WorkflowStepStatus;
-  assignedTo?: string;
+  email?: string;
+  status?: WorkflowStepStatus;
   evidenceUrls?: string[];
   approvalNotes?: string;
 }

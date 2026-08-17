@@ -13,6 +13,10 @@ public interface ConstructionSiteRepository extends JpaRepository<ConstructionSi
 
     List<ConstructionSite> findByTenantId(String tenantId);
 
+    List<ConstructionSite> findByCreatedBy(String createdBy);
+
+    List<ConstructionSite> findByTenantIdAndCreatedBy(String tenantId, String createdBy);
+
     /**
      * Counts a creator's Construction Sites for quota enforcement - quota is per-creator, not per-tenant, since many users can share a tenant (see the shared default
      * tenant introduced alongside this).

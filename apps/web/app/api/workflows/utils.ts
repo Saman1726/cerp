@@ -70,10 +70,10 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
-async function resolveUserIdByEmail(email: string): Promise<string | null> {
+export async function resolveUserIdByEmail(email: string): Promise<string | null> {
   try {
     const res = await fetch(
-      `${IDENTITY_SERVICE_URL}/api/v1/users?email=${encodeURIComponent(email)}`,
+      `${IDENTITY_SERVICE_URL}/users?email=${encodeURIComponent(email)}`,
       { cache: 'no-store' },
     );
     if (!res.ok) return null;
@@ -82,6 +82,43 @@ async function resolveUserIdByEmail(email: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function resolveUserById(userId: string): Promise<{ id: string; email: string; name: string } | null> {
+  try {
+    const res = await fetch(
+      `${IDENTITY_SERVICE_URL}/users/${encodeURIComponent(userId)}`,
+      { cache: 'no-store' },
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as Record<string, unknown>;
+    return {
+      id: String(data.id ?? userId),
+      email: String(data.email ?? ''),
+      name: String(data.name ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveUserLookup(
+  userIds: string[],
+): Promise<Record<string, { id: string; email: string; name: string }>> {
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  const results = await Promise.allSettled(
+    uniqueIds.map(id => resolveUserById(id)),
+  );
+  const lookup: Record<string, { id: string; email: string; name: string }> = {};
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled' && result.value) {
+      const id = uniqueIds[i];
+      if (id) {
+        lookup[id] = result.value;
+      }
+    }
+  });
+  return lookup;
 }
 
 /**

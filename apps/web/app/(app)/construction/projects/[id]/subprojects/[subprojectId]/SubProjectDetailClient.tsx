@@ -27,6 +27,8 @@ import { Modal } from '@cerp/core-web/components/ui/modal';
 import { Input } from '@cerp/core-web/components/ui/input';
 import { Label } from '@cerp/core-web/components/ui/label';
 import { StepRowActions, useAttachmentSync } from '@cerp/core-web/workflow';
+import { updateWorkflowStep } from '@cerp/core-web/construction-engineering';
+import { Loader2 } from 'lucide-react';
 
 // ── Workflow type helpers ──
 
@@ -208,6 +210,8 @@ export default function SubProjectDetailClient({
   const [currentStep, setCurrentStep] = useState<WorkflowInstanceStep | null>(null);
   const [evidenceUrls, setEvidenceUrls] = useState('');
   const [approvalNotes, setApprovalNotes] = useState('');
+  const [assignValues, setAssignValues] = useState<Record<string, string>>({});
+  const [assignLoading, setAssignLoading] = useState<string | null>(null);
 
   // Owned once here (not per step row): the upload queue is one shared IndexedDB store across
   // every step on the page, so a single background-sync listener must drain it, not one per row.
@@ -546,6 +550,27 @@ export default function SubProjectDetailClient({
     }
   };
 
+  const handleAssignStep = async (workflowId: string, stepId: string) => {
+    const userId = assignValues[stepId]?.trim();
+    if (!userId || !workflowId) return;
+    setAssignLoading(stepId);
+    try {
+      await updateWorkflowStep(workflowId, stepId, {
+        email: userId,
+      });
+      setAssignValues((prev) => {
+        const next = { ...prev };
+        delete next[stepId];
+        return next;
+      });
+      fetchWorkflowDetail(workflowId);
+    } catch {
+      alert('Failed to assign step');
+    } finally {
+      setAssignLoading(null);
+    }
+  };
+
   const getWorkflowProgress = (workflow: Workflow): number => {
     if (workflow.totalSteps === 0) return 0;
     return Math.round((workflow.completedSteps / workflow.totalSteps) * 100);
@@ -856,8 +881,43 @@ export default function SubProjectDetailClient({
                             {formatStepStatus(step.status)}
                           </Badge>
                         </td>
-                        <td className="py-3 pr-4 text-muted-foreground">
-                          {step.assignedToName ?? '—'}
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-1.5">
+                            {(step.assigneeName || step.assigneeEmail || step.assignedToName) ? (
+                              <span className="text-sm">
+                                {step.assigneeName && step.assigneeEmail
+                                  ? `${step.assigneeName} (${step.assigneeEmail})`
+                                  : step.assigneeName ?? step.assignedToName ?? step.assigneeEmail}
+                              </span>
+                            ) : (
+                              <>
+                                <Input
+                                  placeholder="User ID"
+                                  value={assignValues[step.id] ?? ''}
+                                  onChange={(e) =>
+                                    setAssignValues((prev) => ({ ...prev, [step.id]: e.target.value }))
+                                  }
+                                  className="h-7 w-28 px-2 text-xs"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleAssignStep(selectedWorkflowId, step.id);
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-1.5 text-[11px]"
+                                  disabled={!assignValues[step.id]?.trim() || assignLoading === step.id}
+                                  onClick={() => handleAssignStep(selectedWorkflowId, step.id)}
+                                >
+                                  {assignLoading === step.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    'Assign'
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 pr-4 text-muted-foreground">
                           {step.dueAt ? new Date(step.dueAt).toLocaleDateString() : '—'}

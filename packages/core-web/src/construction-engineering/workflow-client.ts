@@ -256,8 +256,19 @@ export async function updateOrganisationWorkflowConfig(
 }
 
 /**
- * Get workflows assigned to or created by a user.
- * Used by the "My Workflows" page to show CE workflows alongside sagas.
+ * Get workflows where the current user is the creator or has an assigned step.
+ * Uses server-side tenant scoping for security.
+ */
+export async function getMyWorkflows(
+  accessMode: 'created' | 'assigned',
+): Promise<Workflow[]> {
+  const params = new URLSearchParams({ accessMode });
+  return workflowFetch<Workflow[]>(`/api/workflows?${params.toString()}`);
+}
+
+/**
+ * Get workflows assigned to or created by a user (legacy alias).
+ * @deprecated Use getMyWorkflows instead.
  */
 export async function listWorkflowsByAccessMode(
   accessMode: 'created' | 'assigned',

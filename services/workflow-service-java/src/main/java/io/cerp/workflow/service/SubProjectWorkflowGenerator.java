@@ -87,6 +87,7 @@ public class SubProjectWorkflowGenerator {
         String buildingType = request.getBuildingType();
         List<String> phaseTypes = request.getPhaseTypes();
         Map<String, Object> workflowParameters = request.getWorkflowParameters();
+        String createdBy = request.getCreatedBy();
         String constructionPhase = request.getConstructionPhase();
 
         List<GeneratedWorkflowDetail> generatedWorkflows = new ArrayList<>();
@@ -121,9 +122,18 @@ public class SubProjectWorkflowGenerator {
                     template.getCode(), constructionPhase,
                     "Workflow already exists for this template"));
             } else {
+                // Include createdBy in workflow parameters for auto-generated workflows
+                Map<String, Object> enrichedParams = new java.util.HashMap<>();
+                if (workflowParameters != null) {
+                    enrichedParams.putAll(workflowParameters);
+                }
+                if (createdBy != null && !createdBy.isBlank()) {
+                    enrichedParams.put("createdBy", createdBy);
+                }
+
                 Workflow generated = createWorkflowFromTemplate(
                     tenantId, projectId, subprojectId, template,
-                    constructionPhase, buildingType, workflowParameters);
+                    constructionPhase, buildingType, enrichedParams);
 
                 // Generate workflow steps from template
                 generateWorkflowSteps(generated, template);
@@ -171,7 +181,7 @@ public class SubProjectWorkflowGenerator {
     @Transactional
     public WorkflowGenerationResponse generateWorkflowsOnSubprojectCreation(
             String tenantId, UUID orgId, UUID subprojectId, UUID projectId,
-            String buildingType, String constructionPhase) {
+            String buildingType, String constructionPhase, String createdBy) {
 
         log.info("Auto-generation triggered for subproject {} (tenant: {}, org: {})",
             subprojectId, tenantId, orgId);
@@ -197,6 +207,7 @@ public class SubProjectWorkflowGenerator {
         request.setProjectId(projectId);
         request.setBuildingType(buildingType);
         request.setConstructionPhase(constructionPhase);
+        request.setCreatedBy(createdBy);
 
         return generateWorkflows(request);
     }

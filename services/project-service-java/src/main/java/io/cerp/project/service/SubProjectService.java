@@ -214,7 +214,8 @@ public class SubProjectService {
                 "subprojectId", saved.getId().toString(),
                 "projectId", saved.getProjectId().toString(),
                 "buildingType", buildingType,
-                "constructionPhase", saved.getConstructionPhase() != null ? saved.getConstructionPhase().name() : null);
+                "constructionPhase", saved.getConstructionPhase() != null ? saved.getConstructionPhase().name() : null,
+                "createdBy", saved.getCreatedBy());
 
             kafkaTemplate.send("project.subproject.created", saved.getId().toString(), event);
             log.info("Published subproject created event for subproject: {}", saved.getId());

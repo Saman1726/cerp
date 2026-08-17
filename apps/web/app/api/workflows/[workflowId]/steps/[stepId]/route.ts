@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getAuthHeaders } from '../../../utils';
+import { getAuthHeaders, resolveUserIdByEmail } from '../../../utils';
 
 export async function PATCH(
   request: NextRequest,
@@ -10,6 +10,23 @@ export async function PATCH(
     const { workflowId, stepId } = await params;
     const body = await request.json();
     const url = `${WORKFLOW_SERVICE_URL}/api/v1/workflows/${workflowId}/steps/${stepId}`;
+
+    // Resolve assignee: if it looks like an email, look up the UUID via identity service
+    const assigneeInput = body?.assigneeUserId ?? body?.assignedTo;
+    if (assigneeInput && typeof assigneeInput === 'string') {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(assigneeInput)) {
+        const resolvedId = await resolveUserIdByEmail(assigneeInput);
+        if (!resolvedId) {
+          return NextResponse.json(
+            { message: `User not found with email: ${assigneeInput}` },
+            { status: 400 }
+          );
+        }
+        body.assigneeUserId = resolvedId;
+        body.assignedTo = resolvedId;
+      }
+    }
 
     const res = await fetch(url, {
       method: 'PATCH',

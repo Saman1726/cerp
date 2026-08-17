@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import org.hibernate.annotations.Formula;
 
@@ -54,10 +55,17 @@ public class WorkflowStep {
     private StepStatus status = StepStatus.NOT_STARTED;
 
     @Column(name = "assignee_user_id")
+    @JsonProperty("assignedTo")
     private UUID assigneeUserId;
 
     @Column(name = "assignee_role", length = 64)
     private String assigneeRole;
+
+    @Column(name = "assignee_email", length = 255)
+    private String assigneeEmail;
+
+    @Column(name = "assignee_name", length = 255)
+    private String assigneeName;
 
     @Column(name = "due_at")
     private LocalDateTime dueAt;
@@ -244,6 +252,22 @@ public class WorkflowStep {
 
     public void setAssigneeRole(String assigneeRole) {
         this.assigneeRole = assigneeRole;
+    }
+
+    public String getAssigneeEmail() {
+        return assigneeEmail;
+    }
+
+    public void setAssigneeEmail(String assigneeEmail) {
+        this.assigneeEmail = assigneeEmail;
+    }
+
+    public String getAssigneeName() {
+        return assigneeName;
+    }
+
+    public void setAssigneeName(String assigneeName) {
+        this.assigneeName = assigneeName;
     }
 
     public LocalDateTime getDueAt() {

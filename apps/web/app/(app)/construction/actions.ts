@@ -14,12 +14,12 @@ import type {
 
 // ── Project Actions ──
 
-export async function createProjectActionWrapper(formData: FormData): Promise<void> {
+export async function createProjectActionWrapper(formData: FormData): Promise<{ error?: string }> {
   const result = await createProjectActionCore(formData);
   if (result.error) {
     console.error('Failed to create project:', result.error);
-    throw new Error(result.error);
   }
+  return result;
 }
 
 // Default organization ID for development/testing when no specific org is provided.
@@ -154,12 +154,12 @@ export async function getProjectAssignedUsers(projectId: string): Promise<Projec
 
 // ── SubProject Actions ──
 
-export async function createSubProjectActionWrapper(formData: FormData): Promise<void> {
+export async function createSubProjectActionWrapper(formData: FormData): Promise<{ error?: string }> {
   const result = await createSubProjectActionCore(formData);
   if (result.error) {
     console.error('Failed to create subProject:', result.error);
-    throw new Error(result.error);
   }
+  return result;
 }
 
 async function createSubProjectActionCore(formData: FormData): Promise<{ error?: string; subProjectId?: string }> {

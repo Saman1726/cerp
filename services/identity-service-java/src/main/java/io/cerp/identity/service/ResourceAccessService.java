@@ -90,9 +90,7 @@ public class ResourceAccessService {
      */
     public List<UUID> getAccessibleResourceIds(UUID userId, ResourceType resourceType) {
         // If admin/manager, return all resource IDs (caller should provide this list)
-        if (isTenantAdminOrManager(userId)) {
-            return List.of(); // Signal to caller that user has full access
-        }
+        
 
         return resourceMembershipRepo.findResourceIdsByUserIdAndType(userId, resourceType);
     }

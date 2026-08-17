@@ -31,6 +31,7 @@ import io.cerp.workflow.repository.WorkflowRepository;
 import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
 import io.cerp.workflow.repository.WorkflowStepRepository;
 import io.cerp.workflow.repository.WorkflowTemplateRepository;
+import io.cerp.workflow.security.IdentityPermissionClient;
 import io.cerp.workflow.state.StateMachineEngine;
 import io.cerp.workflow.state.WorkflowStateMachines;
 import io.cerp.workflow.state.WorkflowStateStore;
@@ -50,6 +51,7 @@ class WorkflowServiceTest {
     private WorkflowStepRepository workflowStepRepository;
     private WorkflowNoteRepository workflowNoteRepository;
     private WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
+    private IdentityPermissionClient identityPermissionClient;
     private WorkflowService service;
 
     @BeforeEach
@@ -62,8 +64,10 @@ class WorkflowServiceTest {
         StateMachineEngine stateMachineEngine = new StateMachineEngine(WorkflowStateMachines.allMachines());
         WorkflowStateStore workflowStateStore = new WorkflowStateStore(workflowRepository);
         WorkflowStepStateStore workflowStepStateStore = new WorkflowStepStateStore(workflowStepRepository);
-        service = new WorkflowService(workflowRepository, templateRepository, stateMachineEngine,
-            workflowStateStore, workflowStepStateStore, workflowNoteRepository, workflowStepAttachmentRepository);
+        identityPermissionClient = mock(IdentityPermissionClient.class);
+        service = new WorkflowService(workflowRepository, templateRepository, workflowStepRepository,
+            stateMachineEngine, workflowStateStore, workflowStepStateStore, workflowNoteRepository,
+            workflowStepAttachmentRepository, identityPermissionClient);
         when(workflowRepository.save(any(Workflow.class))).thenAnswer(inv -> inv.getArgument(0));
         when(workflowStepRepository.save(any(WorkflowStep.class))).thenAnswer(inv -> inv.getArgument(0));
         when(workflowNoteRepository.save(any(WorkflowNote.class))).thenAnswer(inv -> inv.getArgument(0));

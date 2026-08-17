@@ -52,8 +52,8 @@ public class WorkflowEventListener {
     }
 
     private void processSubprojectCreatedEvent(SubprojectCreatedEvent event) {
-        log.info("Received subproject created event: subprojectId={}, tenantId={}, orgId={}",
-            event.subprojectId(), event.tenantId(), event.orgId());
+        log.info("Received subproject created event: subprojectId={}, tenantId={}, orgId={}, createdBy={}",
+            event.subprojectId(), event.tenantId(), event.orgId(), event.createdBy());
 
         try {
             var response = subProjectWorkflowGenerator.generateWorkflowsOnSubprojectCreation(
@@ -62,7 +62,8 @@ public class WorkflowEventListener {
                 event.subprojectId(),
                 event.projectId(),
                 event.buildingType(),
-                event.constructionPhase());
+                event.constructionPhase(),
+                event.createdBy());
 
             log.info("Workflow generation completed for subproject {}: {} generated, {} skipped",
                 event.subprojectId(), response.getGeneratedCount(), response.getSkippedCount());
@@ -83,6 +84,7 @@ public class WorkflowEventListener {
             UUID subprojectId,
             UUID projectId,
             String buildingType,
-            String constructionPhase) {
+            String constructionPhase,
+            String createdBy) {
     }
 }

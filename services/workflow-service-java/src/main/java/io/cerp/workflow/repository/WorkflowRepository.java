@@ -99,10 +99,18 @@ public interface WorkflowRepository extends JpaRepository<Workflow, UUID> {
         List<Workflow> findByCreatedBy(String createdBy);
 
         /**
-         * Find all workflows where user is creator or has an assigned step.
+         * Find workflows created by a specific user within a tenant.
          */
-        @Query("SELECT DISTINCT w FROM Workflow w LEFT JOIN w.steps s WHERE " +
-                "(w.createdBy = :createdBy) OR (s.assigneeUserId = :assigneeUserId) AND w.deleted = false")
-        List<Workflow> findByUserAccess(@Param("createdBy") String createdBy,
-                                         @Param("assigneeUserId") UUID assigneeUserId);
+        List<Workflow> findByTenantIdAndCreatedBy(String tenantId, String createdBy);
+
+        /**
+         * Find all workflows within a tenant where user is creator or has an assigned step.
+         */
+        @Query("SELECT DISTINCT w FROM Workflow w JOIN w.steps s WHERE " +
+                "((w.createdBy = :createdBy) OR (s.assigneeUserId = :assigneeUserId)) " +
+                "AND w.tenantId = :tenantId AND w.deleted = false")
+        List<Workflow> findByUserAccessTenantScoped(
+                @Param("tenantId") String tenantId,
+                @Param("createdBy") String createdBy,
+                @Param("assigneeUserId") UUID assigneeUserId);
 }

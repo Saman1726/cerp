@@ -49,24 +49,28 @@ public class ConstructionSiteController {
     }
 
     /**
-     * List all construction sites for the tenant.
+     * List all construction sites for the tenant, filtered by creator.
      */
     @GetMapping
     public ResponseEntity<List<ConstructionSiteResponse>> list(
-            @RequestHeader("X-Tenant-Id") String tenantId) {
-        log.debug("Listing construction sites for tenant: {}", tenantId);
-        List<ConstructionSiteResponse> sites = constructionSiteService.findAll(tenantId);
+            @RequestHeader("X-Tenant-Id") String tenantId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        log.debug("Listing construction sites for tenant: {} (user: {})", tenantId, userId);
+        List<ConstructionSiteResponse> sites = constructionSiteService.findAll(tenantId, userId);
         return ResponseEntity.ok(sites);
     }
 
     /**
-     * Get a single construction site by ID.
+     * Get a single construction site by ID. Only the creator can access.
      */
     @GetMapping("/{id}")
     public ResponseEntity<ConstructionSiteResponse> getById(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @PathVariable UUID id) {
-        ConstructionSiteResponse site = constructionSiteService.findById(tenantId, id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        ConstructionSiteResponse site = constructionSiteService.findById(tenantId, userId, id);
         return ResponseEntity.ok(site);
     }
 
@@ -84,68 +88,78 @@ public class ConstructionSiteController {
     }
 
     /**
-     * Update a construction site.
+     * Update a construction site. Only the creator can update.
      */
     @PutMapping("/{id}")
     public ResponseEntity<ConstructionSiteResponse> update(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID id,
-            @Valid @RequestBody ConstructionSiteCreateRequest request) {
-        ConstructionSiteResponse updated = constructionSiteService.update(tenantId, id, request);
+            @Valid @RequestBody ConstructionSiteCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        ConstructionSiteResponse updated = constructionSiteService.update(tenantId, userId, id, request);
         return ResponseEntity.ok(updated);
     }
 
     /**
-     * Delete a construction site.
+     * Delete a construction site. Only the creator can delete.
      */
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(
             @RequestHeader("X-Tenant-Id") String tenantId,
-            @PathVariable UUID id) {
-        constructionSiteService.delete(tenantId, id);
+            @PathVariable UUID id,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        constructionSiteService.delete(tenantId, userId, id);
     }
 
     /**
-     * Add a building to a construction site.
+     * Add a building to a construction site. Only the site creator can modify.
      */
     @PostMapping("/{siteId}/buildings")
     @ResponseStatus(HttpStatus.CREATED)
     public ResponseEntity<BuildingResponse> addBuilding(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID siteId,
-            @Valid @RequestBody BuildingCreateRequest request) {
-        BuildingResponse created = constructionSiteService.addBuilding(tenantId, siteId, request);
+            @Valid @RequestBody BuildingCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        BuildingResponse created = constructionSiteService.addBuilding(tenantId, userId, siteId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /**
-     * Update a building.
+     * Update a building. Only the site creator can modify.
      */
     @PutMapping("/{siteId}/buildings/{buildingId}")
     public ResponseEntity<BuildingResponse> updateBuilding(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
-            @Valid @RequestBody BuildingCreateRequest request) {
-        BuildingResponse updated = constructionSiteService.updateBuilding(tenantId, siteId, buildingId, request);
+            @Valid @RequestBody BuildingCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        BuildingResponse updated = constructionSiteService.updateBuilding(tenantId, userId, siteId, buildingId, request);
         return ResponseEntity.ok(updated);
     }
 
     /**
-     * Delete a building.
+     * Delete a building. Only the site creator can delete.
      */
     @DeleteMapping("/{siteId}/buildings/{buildingId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteBuilding(
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID siteId,
-            @PathVariable UUID buildingId) {
-        constructionSiteService.deleteBuilding(tenantId, siteId, buildingId);
+            @PathVariable UUID buildingId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        constructionSiteService.deleteBuilding(tenantId, userId, siteId, buildingId);
     }
 
     /**
-     * Add a floor to a building.
+     * Add a floor to a building. Only the site creator can modify.
      */
     @PostMapping("/{siteId}/buildings/{buildingId}/floors")
     @ResponseStatus(HttpStatus.CREATED)
@@ -153,13 +167,15 @@ public class ConstructionSiteController {
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
-            @Valid @RequestBody FloorCreateRequest request) {
-        FloorResponse created = constructionSiteService.addFloor(tenantId, siteId, buildingId, request);
+            @Valid @RequestBody FloorCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        FloorResponse created = constructionSiteService.addFloor(tenantId, userId, siteId, buildingId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /**
-     * Update a floor.
+     * Update a floor. Only the site creator can modify.
      */
     @PutMapping("/{siteId}/buildings/{buildingId}/floors/{floorId}")
     public ResponseEntity<FloorResponse> updateFloor(
@@ -167,13 +183,15 @@ public class ConstructionSiteController {
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
             @PathVariable UUID floorId,
-            @Valid @RequestBody FloorCreateRequest request) {
-        FloorResponse updated = constructionSiteService.updateFloor(tenantId, siteId, buildingId, floorId, request);
+            @Valid @RequestBody FloorCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        FloorResponse updated = constructionSiteService.updateFloor(tenantId, userId, siteId, buildingId, floorId, request);
         return ResponseEntity.ok(updated);
     }
 
     /**
-     * Delete a floor.
+     * Delete a floor. Only the site creator can delete.
      */
     @DeleteMapping("/{siteId}/buildings/{buildingId}/floors/{floorId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -181,12 +199,14 @@ public class ConstructionSiteController {
             @RequestHeader("X-Tenant-Id") String tenantId,
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
-            @PathVariable UUID floorId) {
-        constructionSiteService.deleteFloor(tenantId, siteId, buildingId, floorId);
+            @PathVariable UUID floorId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        constructionSiteService.deleteFloor(tenantId, userId, siteId, buildingId, floorId);
     }
 
     /**
-     * Add a unit to a floor.
+     * Add a unit to a floor. Only the site creator can modify.
      */
     @PostMapping("/{siteId}/buildings/{buildingId}/floors/{floorId}/units")
     @ResponseStatus(HttpStatus.CREATED)
@@ -195,13 +215,15 @@ public class ConstructionSiteController {
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
             @PathVariable UUID floorId,
-            @Valid @RequestBody UnitCreateRequest request) {
-        UnitResponse created = constructionSiteService.addUnit(tenantId, siteId, buildingId, floorId, request);
+            @Valid @RequestBody UnitCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        UnitResponse created = constructionSiteService.addUnit(tenantId, userId, siteId, buildingId, floorId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     /**
-     * Update a unit.
+     * Update a unit. Only the site creator can modify.
      */
     @PutMapping("/{siteId}/buildings/{buildingId}/floors/{floorId}/units/{unitId}")
     public ResponseEntity<UnitResponse> updateUnit(
@@ -210,13 +232,15 @@ public class ConstructionSiteController {
             @PathVariable UUID buildingId,
             @PathVariable UUID floorId,
             @PathVariable UUID unitId,
-            @Valid @RequestBody UnitCreateRequest request) {
-        UnitResponse updated = constructionSiteService.updateUnit(tenantId, siteId, buildingId, floorId, unitId, request);
+            @Valid @RequestBody UnitCreateRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        UnitResponse updated = constructionSiteService.updateUnit(tenantId, userId, siteId, buildingId, floorId, unitId, request);
         return ResponseEntity.ok(updated);
     }
 
     /**
-     * Delete a unit.
+     * Delete a unit. Only the site creator can delete.
      */
     @DeleteMapping("/{siteId}/buildings/{buildingId}/floors/{floorId}/units/{unitId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -225,7 +249,9 @@ public class ConstructionSiteController {
             @PathVariable UUID siteId,
             @PathVariable UUID buildingId,
             @PathVariable UUID floorId,
-            @PathVariable UUID unitId) {
-        constructionSiteService.deleteUnit(tenantId, siteId, buildingId, floorId, unitId);
+            @PathVariable UUID unitId,
+            @AuthenticationPrincipal Jwt jwt) {
+        String userId = RequestIdentity.creatorId(jwt).toString();
+        constructionSiteService.deleteUnit(tenantId, userId, siteId, buildingId, floorId, unitId);
     }
 }

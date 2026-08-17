@@ -136,8 +136,10 @@ services:
       WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5006"
     ports:
       - '8095:8085'
+      - '5006:5006'
 
   workflow-service-java:
     build:

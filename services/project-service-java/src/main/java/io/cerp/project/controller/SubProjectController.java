@@ -151,11 +151,13 @@ public class SubProjectController {
     public ResponseEntity<SubProjectResponse> createSubProject(
             @PathVariable("projectId") UUID projectId,
             @RequestBody SubProjectCreateRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Tenant-Id", required = false) String tenantId,
             @RequestHeader(value = "X-Org-Id", required = false) String orgIdHeader,
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
 
         UUID orgId = orgIdHeader != null ? UUID.fromString(orgIdHeader) : null;
+        String userIdFromHeader = extractUserIdFromHeader(authorization);
 
         if (orgId == null) {
             // Try to get orgId from the Project
@@ -163,8 +165,39 @@ public class SubProjectController {
             orgId = projectResponse.orgId();
         }
 
-        SubProjectResponse created = subProjectService.createSubProject(projectId, request, tenantId, orgId, userId);
+        SubProjectResponse created = subProjectService.createSubProject(projectId, request, tenantId, orgId, userIdFromHeader);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * Extract userId from the Authorization Bearer JWT token payload.
+     * Checks claims in priority order: internal_user_id (Keycloak custom), sub, userId.
+     * Falls back to null if no valid claim is found.
+     */
+    private String extractUserIdFromHeader(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authorizationHeader.substring(7);
+        try {
+            // String[] parts = token.split("\\.");
+            // if (parts.length == 3) {
+                String payload = new String(java.util.Base64.getUrlDecoder().decode(token), java.nio.charset.StandardCharsets.UTF_8);
+                com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+                // Priority 1: Keycloak custom claim
+                com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
+                if (internalUserId != null && internalUserId.isTextual()) return internalUserId.asText();
+                // Priority 2: standard JWT sub claim
+                com.fasterxml.jackson.databind.JsonNode sub = root.get("sub");
+                if (sub != null && sub.isTextual()) return sub.asText();
+                // Priority 3: legacy userId claim
+                com.fasterxml.jackson.databind.JsonNode userId = root.get("userId");
+                if (userId != null && userId.isTextual()) return userId.asText();
+            // }
+        } catch (Exception e) {
+            // log.warn("Failed to extract userId from Authorization header", e);
+        }
+        return null;
     }
 
     /**

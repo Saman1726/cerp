@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getBackendHeaders } from '../../utils';
+import { getBackendHeaders, resolveUserLookup } from '../../utils';
 
 // Map Java WorkflowStatus to frontend WorkflowStatus
 function mapWorkflowStatus(status: string): string {
@@ -71,7 +71,9 @@ function transformStep(
     assignedTo: getField(javaStep, 'assigneeUserId', 'assignee_user_id')
       ? String(getField(javaStep, 'assigneeUserId', 'assignee_user_id')!)
       : null,
-    assignedToName: null,
+    assignedToName: (getField(javaStep, 'assigneeName', 'assignee_name') as string | undefined) ?? null,
+    assigneeEmail: (getField(javaStep, 'assigneeEmail', 'assignee_email') as string | undefined) ?? null,
+    assigneeName: (getField(javaStep, 'assigneeName', 'assignee_name') as string | undefined) ?? null,
     requiresEvidence: false,
     requiresApproval: false,
     evidenceUrls,
@@ -270,6 +272,33 @@ export async function GET(
       const wfSteps = workflowStepsMap[wfId] ?? [];
       return transformWorkflowWithSteps(wf, wfSteps);
     });
+
+    // Batch-resolve assignee/approver names from identity service (fallback for old data)
+    const allSteps = workflows.flatMap((w: Record<string, unknown>) =>
+      ((w.steps as Record<string, unknown>[]) ?? []) as Record<string, any>[]
+    );
+    const userIds = allSteps.flatMap((s: Record<string, any>) => [
+      s.assignedTo,
+      s.approverId,
+    ]);
+    const userLookup = await resolveUserLookup(userIds);
+    for (const w of workflows) {
+      const wSteps = (w.steps as Record<string, unknown>[]) ?? [];
+      for (const rawS of wSteps) {
+        const s = rawS as Record<string, any>;
+        if (s.assignedTo && userLookup[s.assignedTo]) {
+          const assignedUser = userLookup[s.assignedTo]!;
+          // Populate missing assignee fields for backwards compatibility
+          if (!s.assigneeEmail) s.assigneeEmail = assignedUser.email;
+          if (!s.assigneeName) s.assigneeName = assignedUser.name;
+          if (!s.assignedToName) s.assignedToName = assignedUser.name;
+        }
+        if (s.approverId && userLookup[s.approverId]) {
+          const approverUser = userLookup[s.approverId]!;
+          s.approverName = approverUser.name;
+        }
+      }
+    }
 
     return NextResponse.json({
       workflows,

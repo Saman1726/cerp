@@ -12,6 +12,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,6 +71,8 @@ import io.cerp.workflow.service.WorkflowService;
 @RequestMapping("/api/v1/workflows")
 public class WorkflowController {
 
+    private static final Logger log = LoggerFactory.getLogger(WorkflowController.class);
+
     private final WorkflowService workflowService;
     private final WorkflowNoteRepository workflowNoteRepository;
     private final WorkflowStepAttachmentRepository workflowStepAttachmentRepository;
@@ -87,17 +92,24 @@ public class WorkflowController {
      *
      * <p>
      * This is the primary POST /api/workflows endpoint. It instantiates a workflow from a template for a given project/sub-project.
+     * The createdBy user is extracted automatically from the Authorization Bearer JWT header.
      * </p>
      *
      * @param request
-     *            the instantiation request containing tenantId, projectId, subprojectId, templateId, and userId
+     *            the instantiation request containing tenantId, projectId, subprojectId, and templateId
+     * @param authHeader
+     *            the Authorization Bearer JWT header from which createdBy is extracted
      * @return the created Workflow instance
      */
     @PostMapping
-    public ResponseEntity<Workflow> createWorkflow(@Valid @RequestBody InstantiateRequest request) {
+    public ResponseEntity<Workflow> createWorkflow(
+            @Valid @RequestBody InstantiateRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String userId = extractUserIdFromHeader(authHeader);
         Workflow created = workflowService.instantiate(
             request.tenantId(), request.projectId(),
-            request.subprojectId(), request.templateId(), request.userId());
+            request.subprojectId(), request.templateId(),
+            UUID.fromString(userId));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -106,11 +118,15 @@ public class WorkflowController {
      *
      * @param request
      *            the instantiation request
+     * @param authHeader
+     *            the Authorization Bearer JWT header from which createdBy is extracted
      * @return the created Workflow instance
      */
     @PostMapping("/instantiate")
-    public ResponseEntity<Workflow> instantiate(@Valid @RequestBody InstantiateRequest request) {
-        return createWorkflow(request);
+    public ResponseEntity<Workflow> instantiate(
+            @Valid @RequestBody InstantiateRequest request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return createWorkflow(request, authHeader);
     }
 
     @GetMapping
@@ -128,6 +144,38 @@ public class WorkflowController {
             return ResponseEntity.ok(workflowService.listByProject(tenantId, projectId));
         }
         return ResponseEntity.ok(workflowService.listAll(tenantId));
+    }
+
+    /**
+     * List workflows by access mode:
+     * - created: workflows where the user is the creator
+     * - assigned: workflows where the user has at least one assigned step
+     */
+    @Transactional(readOnly = true)
+    @GetMapping(params = {"accessMode", "userId"})
+    public ResponseEntity<List<Workflow>> listByAccessMode(
+            @RequestParam String accessMode,
+            @RequestParam String userId) {
+        if ("created".equals(accessMode)) {
+            return ResponseEntity.ok(workflowService.listByAccessCreated(userId));
+        } else if ("assigned".equals(accessMode)) {
+            return ResponseEntity.ok(workflowService.listByAccessAssigned(userId));
+        }
+        return ResponseEntity.badRequest().body(List.of());
+    }
+
+    /**
+     * Assign a user to a workflow step by email.
+     * The backend resolves userId, email, and name from the identity service.
+     */
+    @Transactional
+    @PatchMapping("/{workflowId}/steps/{stepId}")
+    public ResponseEntity<WorkflowStep> assignStep(
+            @PathVariable String workflowId,
+            @PathVariable String stepId,
+            @Valid @RequestBody StepAssignRequest request) {
+        return ResponseEntity.ok(workflowService.assignStep(
+            UUID.fromString(workflowId), UUID.fromString(stepId), request.email()));
     }
 
     /**
@@ -408,14 +456,86 @@ public class WorkflowController {
         return tenantId != null ? tenantId.toString() : null;
     }
 
+    /**
+     * Extract userId from the Authorization Bearer JWT token payload.
+     * Checks claims in priority order: internal_user_id (Keycloak custom), sub, userId.
+     * Falls back to null if no valid claim is found.
+     */
+    private String extractUserIdFromHeader(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authorizationHeader.substring(7);
+        try {
+            // String[] parts = token.split("\\.");
+            // if (parts.length == 1) {
+                String payload = new String(java.util.Base64.getUrlDecoder().decode(token), java.nio.charset.StandardCharsets.UTF_8);
+                com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+                // Priority 1: Keycloak custom claim
+                com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
+                if (internalUserId != null && internalUserId.isTextual()) return internalUserId.asText();
+                // Priority 2: standard JWT sub claim
+                com.fasterxml.jackson.databind.JsonNode sub = root.get("sub");
+                if (sub != null && sub.isTextual()) return sub.asText();
+                // Priority 3: legacy userId claim
+                com.fasterxml.jackson.databind.JsonNode userId = root.get("userId");
+                if (userId != null && userId.isTextual()) return userId.asText();
+            // }
+        } catch (Exception e) {
+            log.warn("Failed to extract userId from Authorization header", e);
+        }
+        return null;
+    }
+
+    /**
+     * List workflows where the current user is creator or has an assigned step,
+     * scoped to the current tenant.
+     */
+    @GetMapping("/my-workflows")
+    public ResponseEntity<?> listMyWorkflows(
+            @RequestParam String accessMode,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String headerTenantId) {
+
+        String userId = extractUserIdFromHeader(authorization);
+        String tenantId = getTenantIdFromContext();
+        if (tenantId == null && headerTenantId != null && !headerTenantId.isEmpty()) {
+            TenantContext.set(UUID.fromString(headerTenantId));
+        }
+
+        // Return empty list if no user identity
+        if (userId == null) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        try {
+            if ("created".equals(accessMode)) {
+                return ResponseEntity.ok(workflowService.listByAccessCreated(userId));
+            }
+            if ("assigned".equals(accessMode)) {
+                return ResponseEntity.ok(workflowService.listByAccessAssigned(userId));
+            }
+            return ResponseEntity.badRequest().body(Map.of("message", "Invalid accessMode: " + accessMode));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    // ── Exception Handlers ──
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(Map.of("message", ex.getMessage()));
+    }
+
     // ── DTOs ──
 
     public record InstantiateRequest(
             @NotBlank String tenantId,
             UUID projectId,
             UUID subprojectId,
-            UUID templateId,
-            UUID userId) {
+            UUID templateId) {
     }
 
     public record UpdateWorkflowRequest(
@@ -457,5 +577,9 @@ public class WorkflowController {
     }
 
     public record DeleteAttachmentResponse(String objectKey) {
+    }
+
+    public record StepAssignRequest(
+            @NotBlank String email) {
     }
 }

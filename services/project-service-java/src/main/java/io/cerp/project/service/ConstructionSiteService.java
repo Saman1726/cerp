@@ -55,23 +55,28 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Get all construction sites for a tenant.
+     * Get all construction sites for a tenant, filtered by the creator (per-user privacy).
+     * Each user can only see their own construction sites.
      */
-    public List<ConstructionSiteResponse> findAll(String tenantId) {
-        return constructionSiteRepository.findByTenantId(tenantId).stream()
+    public List<ConstructionSiteResponse> findAll(String tenantId, String userId) {
+        return constructionSiteRepository.findByTenantIdAndCreatedBy(tenantId, userId).stream()
             .map(this::toResponse)
             .toList();
     }
 
     /**
-     * Get a single construction site by ID.
+     * Get a single construction site by ID. Only the creator can access it.
      */
-    public ConstructionSiteResponse findById(String tenantId, UUID id) {
+    public ConstructionSiteResponse findById(String tenantId, String userId, UUID id) {
         ConstructionSite site = constructionSiteRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the creator can view this site");
         }
 
         return toResponse(site);
@@ -103,15 +108,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Update a construction site.
+     * Update a construction site. Only the creator can update.
      */
     @Transactional
-    public ConstructionSiteResponse update(String tenantId, UUID id, ConstructionSiteCreateRequest request) {
+    public ConstructionSiteResponse update(String tenantId, String userId, UUID id, ConstructionSiteCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the creator can update this site");
         }
 
         site.setName(request.name());
@@ -121,10 +130,10 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Delete a construction site.
+     * Delete a construction site. Only the creator can delete.
      */
     @Transactional
-    public void delete(String tenantId, UUID id) {
+    public void delete(String tenantId, String userId, UUID id) {
         ConstructionSite site = constructionSiteRepository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
@@ -132,20 +141,27 @@ public class ConstructionSiteService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
         }
 
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the creator can delete this site");
+        }
+
         constructionSiteRepository.delete(site);
     }
 
     /**
-     * Add a building to a construction site. Quota is checked against the SITE's creator (whoever's plan the site itself already counts against), not the acting
-     * caller - consistent with "the resource owner's plan governs it" used throughout this design (see Project.primaryOwnerId).
+     * Add a building to a construction site. Only the site creator can modify its structure.
      */
     @Transactional
-    public BuildingResponse addBuilding(String tenantId, UUID siteId, BuildingCreateRequest request) {
+    public BuildingResponse addBuilding(String tenantId, String userId, UUID siteId, BuildingCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can add buildings");
         }
 
         enforceBuildingQuota(site);
@@ -172,15 +188,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Update a building.
+     * Update a building. Only the site creator can modify.
      */
     @Transactional
-    public BuildingResponse updateBuilding(String tenantId, UUID siteId, UUID buildingId, BuildingCreateRequest request) {
+    public BuildingResponse updateBuilding(String tenantId, String userId, UUID siteId, UUID buildingId, BuildingCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can modify buildings");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -196,15 +216,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Delete a building from a construction site.
+     * Delete a building from a construction site. Only the site creator can delete.
      */
     @Transactional
-    public void deleteBuilding(String tenantId, UUID siteId, UUID buildingId) {
+    public void deleteBuilding(String tenantId, String userId, UUID siteId, UUID buildingId) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can delete buildings");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -218,15 +242,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Add a floor to a building.
+     * Add a floor to a building. Only the site creator can modify.
      */
     @Transactional
-    public FloorResponse addFloor(String tenantId, UUID siteId, UUID buildingId, FloorCreateRequest request) {
+    public FloorResponse addFloor(String tenantId, String userId, UUID siteId, UUID buildingId, FloorCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can add floors");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -251,15 +279,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Update a floor.
+     * Update a floor. Only the site creator can modify.
      */
     @Transactional
-    public FloorResponse updateFloor(String tenantId, UUID siteId, UUID buildingId, UUID floorId, FloorCreateRequest request) {
+    public FloorResponse updateFloor(String tenantId, String userId, UUID siteId, UUID buildingId, UUID floorId, FloorCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can modify floors");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -292,15 +324,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Delete a floor from a building.
+     * Delete a floor from a building. Only the site creator can delete.
      */
     @Transactional
-    public void deleteFloor(String tenantId, UUID siteId, UUID buildingId, UUID floorId) {
+    public void deleteFloor(String tenantId, String userId, UUID siteId, UUID buildingId, UUID floorId) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can delete floors");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -321,15 +357,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Add a unit to a floor.
+     * Add a unit to a floor. Only the site creator can modify.
      */
     @Transactional
-    public UnitResponse addUnit(String tenantId, UUID siteId, UUID buildingId, UUID floorId, UnitCreateRequest request) {
+    public UnitResponse addUnit(String tenantId, String userId, UUID siteId, UUID buildingId, UUID floorId, UnitCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can add units");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -364,15 +404,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Update a unit.
+     * Update a unit. Only the site creator can modify.
      */
     @Transactional
-    public UnitResponse updateUnit(String tenantId, UUID siteId, UUID buildingId, UUID floorId, UUID unitId, UnitCreateRequest request) {
+    public UnitResponse updateUnit(String tenantId, String userId, UUID siteId, UUID buildingId, UUID floorId, UUID unitId, UnitCreateRequest request) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can modify units");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -417,15 +461,19 @@ public class ConstructionSiteService {
     }
 
     /**
-     * Delete a unit from a floor.
+     * Delete a unit from a floor. Only the site creator can delete.
      */
     @Transactional
-    public void deleteUnit(String tenantId, UUID siteId, UUID buildingId, UUID floorId, UUID unitId) {
+    public void deleteUnit(String tenantId, String userId, UUID siteId, UUID buildingId, UUID floorId, UUID unitId) {
         ConstructionSite site = constructionSiteRepository.findById(siteId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Construction site not found"));
 
         if (!site.getTenantId().equals(tenantId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+
+        if (!site.getCreatedBy().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied — only the site creator can delete units");
         }
 
         Building building = buildingRepository.findById(buildingId)
@@ -468,6 +516,7 @@ public class ConstructionSiteService {
             site.getAddress(),
             buildingResponses,
             site.getCreatedAt(),
-            site.getUpdatedAt());
+            site.getUpdatedAt(),
+            site.getCreatedBy());
     }
 }

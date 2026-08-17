@@ -7,8 +7,8 @@ import { ProjectList } from './ProjectList';
 export interface ConstructionEngineeringPageBodyClientProps {
   projects: Project[];
   constructionSites: import('@cerp/shared-types').ConstructionSite[];
-  createProjectAction: (formData: FormData) => Promise<void>;
-  createSubProjectAction: (formData: FormData) => Promise<void>;
+  createProjectAction: (formData: FormData) => Promise<{ error?: string }>;
+  createSubProjectAction: (formData: FormData) => Promise<{ error?: string }>;
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   currentUserEmail?: string;

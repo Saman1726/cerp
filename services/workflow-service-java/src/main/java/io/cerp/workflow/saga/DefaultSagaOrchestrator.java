@@ -96,6 +96,15 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
             initialData.putAll(context.getData());
         }
 
+        // Ensure createdBy and assignedTo are explicitly set in initial data
+        // These values come from the controller which extracts them from request params
+        if (context.getCreatedBy() != null) {
+            initialData.put("createdBy", context.getCreatedBy());
+        }
+        if (context.getAssignedTo() != null) {
+            initialData.put("assignedTo", context.getAssignedTo());
+        }
+
         SagaState state = new SagaState(
             sagaId,
             sagaType,
@@ -564,6 +573,50 @@ public class DefaultSagaOrchestrator implements SagaOrchestrator {
         }
 
         return decorateWithCounts(result);
+    }
+
+    @Override
+    public List<SagaState> listSagasByAccess(String userId, String accessMode, List<String> projectIds) {
+        List<SagaEntity> entities;
+
+        if ("created".equals(accessMode)) {
+            // Query only sagas created by this user
+            entities = sagaRepository.findByCreatedBy(userId);
+        } else if ("assigned".equals(accessMode)) {
+            // Query only sagas assigned to this user
+            entities = sagaRepository.findByAssignedTo(userId);
+        } else if ("member".equals(accessMode)) {
+            // Query sagas where user is creator OR assignee (combined access)
+            entities = sagaRepository.findByCreatedByOrAssignedTo(userId, userId);
+        } else if ("project".equals(accessMode) && projectIds != null && !projectIds.isEmpty()) {
+            // Query sagas belonging to specific projects
+            entities = projectIds.stream()
+                .flatMap(pid -> sagaRepository.findByProjectIdAndDeletedFalse(pid).stream())
+                .collect(java.util.stream.Collectors.toList());
+        } else {
+            // Default: combined access (creator, assignee, or project member)
+            // First get creator + assignee sagas
+            entities = sagaRepository.findByCreatedByOrAssignedTo(userId, userId);
+            // Then add project-member sagas if projectIds available
+            if (projectIds != null && !projectIds.isEmpty()) {
+                List<SagaEntity> projectSagas = projectIds.stream()
+                    .flatMap(pid -> sagaRepository.findByProjectIdAndDeletedFalse(pid).stream())
+                    .collect(java.util.stream.Collectors.toList());
+                // Deduplicate by saga ID
+                entities.addAll(projectSagas.stream()
+                    .filter(e -> entities.stream().noneMatch(existing -> existing.getId().equals(e.getId())))
+                    .toList());
+            }
+        }
+
+        // Convert entities to states (from cache or DB)
+        return entities.stream()
+            .map(entity -> {
+                UUID sagaUuid = UUID.fromString(entity.getId());
+                return getSagaState(sagaUuid);
+            })
+            .filter(state -> state != null)
+            .collect(java.util.stream.Collectors.toList());
     }
 
     /**

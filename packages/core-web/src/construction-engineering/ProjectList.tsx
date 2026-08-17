@@ -147,8 +147,8 @@ function RoleDropdown({ value, onChange, size }: { value: ProjectUserRole; onCha
 export interface ProjectListProps {
   projects: Project[];
   constructionSites: ConstructionSite[];
-  createProjectAction: (formData: FormData) => Promise<void>;
-  createSubProjectAction: (formData: FormData) => Promise<void>;
+  createProjectAction: (formData: FormData) => Promise<{ error?: string }>;
+  createSubProjectAction: (formData: FormData) => Promise<{ error?: string }>;
   deleteProjectAction: (projectId: string) => Promise<void>;
   deleteSubProjectAction: (formData: FormData) => Promise<void>;
   /** Assign users with roles: [{ userId, role }] */
@@ -281,7 +281,11 @@ function DetailContent({ detail, constructionSites }: { detail: DetailState; con
         <DetailFieldGrid>
           <DetailField label="Type" value={STEP_TYPE_LABELS[step.type]} />
           <DetailField label="Status" value={step.status.replace(/_/g, ' ')} />
-          <DetailField label="Assigned To" value={step.assignedToName ?? undefined} />
+          <DetailField label="Assigned To" value={
+            step.assigneeName && step.assigneeEmail
+              ? `${step.assigneeName} (${step.assigneeEmail})`
+              : step.assigneeEmail ?? step.assigneeName ?? step.assignedToName ?? undefined
+          } />
           <DetailField label="Due Date" value={formatDate(step.dueAt)} />
         </DetailFieldGrid>
       );
@@ -312,7 +316,9 @@ export function ProjectList({
   getAssignedUsersAction,
 }: ProjectListProps) {
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
   const [createSubProjectOpen, setCreateSubProjectOpen] = useState<string | null>(null);
+  const [createSubProjectError, setCreateSubProjectError] = useState<string | null>(null);
   const [assignUsersOpen, setAssignUsersOpen] = useState<string | null>(null);
   const [assignedUsersDetail, setAssignedUsersDetail] = useState<ProjectAssignedUser[]>([]);
   const [loadingAssignedUsers, setLoadingAssignedUsers] = useState(false);
@@ -703,14 +709,19 @@ export function ProjectList({
       </DetailPopup>
 
       {/* Create Project Modal */}
-      <Modal open={createProjectOpen} onClose={() => setCreateProjectOpen(false)} title="Create project">
+      <Modal open={createProjectOpen} onClose={() => { setCreateProjectOpen(false); setCreateProjectError(null); }} title="Create project">
         <form
           onSubmit={async (e) => {
             e.preventDefault();
             const form = e.currentTarget;
             const formData = new FormData(form);
             formData.set('constructionSiteId', selectedConSiteId);
-            await createProjectAction(formData);
+            setCreateProjectError(null);
+            const result = await createProjectAction(formData);
+            if (result.error) {
+              setCreateProjectError(result.error);
+              return;
+            }
             setCreateProjectOpen(false);
             window.location.reload();
           }}
@@ -835,6 +846,9 @@ export function ProjectList({
             </div>
           </div>
           <div className="shrink-0 pt-2">
+            {createProjectError && (
+              <p className="mb-2 text-sm text-destructive">{createProjectError}</p>
+            )}
             <Button type="submit" className="w-full">Create Project</Button>
           </div>
         </form>
@@ -1021,6 +1035,7 @@ export function ProjectList({
         onClose={() => {
           setCreateSubProjectOpen(null);
           setSelectedBuildingId('');
+          setCreateSubProjectError(null);
         }}
         title="Create subproject"
       >
@@ -1035,7 +1050,12 @@ export function ProjectList({
                 alert('Please select a building');
                 return;
               }
-              await createSubProjectAction(formData);
+              setCreateSubProjectError(null);
+              const result = await createSubProjectAction(formData);
+              if (result.error) {
+                setCreateSubProjectError(result.error);
+                return;
+              }
               setCreateSubProjectOpen(null);
               setSelectedBuildingId('');
               setSubProjectProjectId('');
@@ -1149,7 +1169,10 @@ export function ProjectList({
               </div>
             </div>
             <div className="shrink-0 pt-2">
-              <Button type="submit" className="w-full" disabled={!(() => {
+            {createSubProjectError && (
+              <p className="mb-2 text-sm text-destructive">{createSubProjectError}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={!(() => {
                 const project = projects.find((p) => p.id === subProjectProjectId);
                 const constructionSiteId = project?.constructionSiteId || '';
                 const selectedSite = constructionSites.find(

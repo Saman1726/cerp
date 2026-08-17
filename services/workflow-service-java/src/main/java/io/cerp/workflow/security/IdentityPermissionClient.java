@@ -117,24 +117,40 @@ public class IdentityPermissionClient {
 
     /**
      * Resolve a user's UUID from their email address.
-     * Used to convert legacy email-based sub claims in JWT tokens to proper UUIDs.
      * Returns null if not found or if the identity service is unavailable.
      */
     public UUID resolveUserIdByEmail(String email) {
+        return resolveUserByEmail(email) != null ? resolveUserByEmail(email).userId : null;
+    }
+
+    /**
+     * Resolve a user's id, email and name from their email address via the identity service.
+     * Returns null if not found or if the identity service is unavailable.
+     */
+    public UserByIdEmail resolveUserByEmail(String email) {
         try {
             Map<String, Object> response = restClientNoRetry.get()
-                .uri("/api/v1/users?email={email}", email)
+                .uri("/users?email={email}", email)
                 .retrieve()
                 .body(new ParameterizedTypeReference<Map<String, Object>>() {});
-            if (response != null && response.get("id") instanceof String idStr) {
-                return UUID.fromString(idStr);
+            if (response == null) return null;
+            String idStr = response.get("id") instanceof String s ? s : null;
+            String name = response.get("name") instanceof String s ? s : null;
+            String emailField = response.get("email") instanceof String s ? s : email;
+            if (idStr != null) {
+                return new UserByIdEmail(UUID.fromString(idStr), emailField, name);
             }
             log.warn("No id field in identity service response for email: {}", email);
         } catch (Exception e) {
-            log.warn("Failed to resolve userId by email {}: {}", email, e.getMessage());
+            log.warn("Failed to resolve user by email {}: {}", email, e.getMessage());
         }
         return null;
     }
+
+    /**
+     * Simple DTO for user lookup result (id, email, name).
+     */
+    public record UserByIdEmail(UUID userId, String email, String name) {}
 
     /**
      * Return all userIds that are members of the given tenant.

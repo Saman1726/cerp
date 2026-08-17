@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getBackendHeaders } from '../utils';
+import { getBackendHeaders, resolveUserLookup } from '../utils';
 
 // Map Java WorkflowStatus to frontend WorkflowStatus
 function mapWorkflowStatus(status: string): string {
@@ -124,7 +124,7 @@ export async function GET(
         order: (step.stepOrder as number | undefined) ?? (step.order as number | undefined) ?? 0,
         status: mapStepStatus(String(step.status ?? '')),
         assignedTo: step.assigneeUserId ? String(step.assigneeUserId) : null,
-        assignedToName: null,
+        assignedToName: (step.assigneeName as string | undefined) ?? null,
         requiresEvidence: false,
         requiresApproval: false,
         evidenceUrls,
@@ -149,6 +149,27 @@ export async function GET(
         (note.createdBy as string | undefined) ?? (note.createdByUser as string | undefined) ?? '',
       createdAt: note.createdAt,
     }));
+
+    // Batch-resolve assignee/approver names from identity service (fallback for old data)
+    const userIds = transformedSteps.flatMap((s: Record<string, any>) => [
+      s.assignedTo,
+      s.approverId,
+    ]);
+    const userLookup = await resolveUserLookup(userIds);
+    for (const rawS of transformedSteps) {
+      const s = rawS as Record<string, any>;
+      if (s.assignedTo && userLookup[s.assignedTo]) {
+        const assignedUser = userLookup[s.assignedTo]!;
+        // Populate missing assignee fields for backwards compatibility
+        if (!s.assigneeEmail) s.assigneeEmail = assignedUser.email;
+        if (!s.assigneeName) s.assigneeName = assignedUser.name;
+        if (!s.assignedToName) s.assignedToName = assignedUser.name;
+      }
+      if (s.approverId && userLookup[s.approverId]) {
+        const approverUser = userLookup[s.approverId]!;
+        s.approverName = approverUser.name;
+      }
+    }
 
     return NextResponse.json({
       workflow: transformedWorkflow,

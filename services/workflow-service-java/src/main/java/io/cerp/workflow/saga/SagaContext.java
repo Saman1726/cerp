@@ -126,6 +126,36 @@ public class SagaContext {
     }
 
     /**
+     * Get the saga creator's user ID.
+     */
+    public String getCreatedBy() {
+        Object createdBy = data.get("createdBy");
+        return createdBy != null ? createdBy.toString() : null;
+    }
+
+    /**
+     * Set the saga creator's user ID.
+     */
+    public void setCreatedBy(String createdBy) {
+        data.put("createdBy", createdBy);
+    }
+
+    /**
+     * Get the assigned user ID.
+     */
+    public String getAssignedTo() {
+        Object assignedTo = data.get("assignedTo");
+        return assignedTo != null ? assignedTo.toString() : null;
+    }
+
+    /**
+     * Set the assigned user ID.
+     */
+    public void setAssignedTo(String assignedTo) {
+        data.put("assignedTo", assignedTo);
+    }
+
+    /**
      * Get the aggregate ID for the saga (defaults to sagaId).
      */
     public UUID getAggregateId() {

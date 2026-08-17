@@ -78,6 +78,46 @@ export const workflowApi = {
     return apiClient.put<Record<string, unknown>, Record<string, unknown>>(`${SAGA_API_BASE}/${sagaId}`, data);
   },
 
+  // ── Workflow (CE) ──
+
+  /**
+   * Get a CE Workflow detail (workflow + steps + notes) by ID.
+   */
+  getWorkflow: async (workflowId: string): Promise<{ workflow: Record<string, unknown>; steps: Record<string, unknown>[]; notes: Record<string, unknown>[] }> => {
+    return apiClient.get<{ workflow: Record<string, unknown>; steps: Record<string, unknown>[]; notes: Record<string, unknown>[] }>(`${WORKFLOW_API_BASE}/${workflowId}`);
+  },
+
+  /**
+   * List workflows with optional filters.
+   */
+  listWorkflows: async (filters: { projectId?: string; subprojectId?: string } = {}): Promise<Record<string, unknown>[]> => {
+    const params = new URLSearchParams();
+    if (filters.projectId) params.set('projectId', filters.projectId);
+    if (filters.subprojectId) params.set('subprojectId', filters.subprojectId);
+    const query = params.toString();
+    return apiClient.get<Record<string, unknown>[]>(`${WORKFLOW_API_BASE}${query ? '?' + query : ''}`);
+  },
+
+  /**
+   * List workflows by access mode: 'created' or 'assigned' for a specific user.
+   */
+  listWorkflowsByAccessMode: async (accessMode: 'created' | 'assigned', userId: string): Promise<Record<string, unknown>[]> => {
+    const params = new URLSearchParams();
+    params.set('accessMode', accessMode);
+    params.set('userId', userId);
+    return apiClient.get<Record<string, unknown>[]>(`${WORKFLOW_API_BASE}?${params}`);
+  },
+
+  /**
+   * Update a workflow step (e.g. assign a user to a step).
+   */
+  updateWorkflowStep: async (workflowId: string, stepId: string, body: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    return apiClient.patch<Record<string, unknown>, Record<string, unknown>>(
+      `${WORKFLOW_API_BASE}/${workflowId}/steps/${stepId}`,
+      body,
+    );
+  },
+
   // ── Saga Actions ──
 
   /**

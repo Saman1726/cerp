@@ -139,4 +139,17 @@ public interface SagaOrchestrator {
      * @return the updated saga context
      */
     SagaContext updateSagaData(UUID sagaId, Map<String, Object> newData);
+
+    /**
+     * List saga states by access mode, using direct repository queries instead of in-memory filtering.
+     *
+     * @param userId
+     *            the user ID for access control filtering
+     * @param accessMode
+     *            the access mode ("created", "assigned", "member", "project", or null for combined)
+     * @param projectIds
+     *            project IDs to filter by (used when accessMode is "project" or default for non-admin users)
+     * @return list of saga states matching the access criteria
+     */
+    List<SagaState> listSagasByAccess(String userId, String accessMode, List<String> projectIds);
 }

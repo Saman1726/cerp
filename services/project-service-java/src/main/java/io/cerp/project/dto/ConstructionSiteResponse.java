@@ -13,5 +13,6 @@ public record ConstructionSiteResponse(
         String address,
         List<BuildingResponse> buildings,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        String createdBy) {
 }

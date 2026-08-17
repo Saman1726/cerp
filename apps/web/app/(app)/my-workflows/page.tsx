@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@cerp/core-web/compone
 import { Badge } from '@cerp/core-web/components/ui/badge';
 import { Button } from '@cerp/core-web/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@cerp/core-web/components/ui/table';
-import { workflowApi, SAGA_TYPE_LABELS, SagaDetailDialog } from '@cerp/core-web/workflow';
+import { workflowApi, SAGA_TYPE_LABELS, SagaDetailDialog, WorkflowDetailDialog } from '@cerp/core-web/workflow';
 import { listWorkflowsByAccessMode } from '@cerp/core-web/construction-engineering';
 import type { Saga, SagaQuery } from '@cerp/core-web/workflow';
 import type { Workflow } from '@cerp/shared-types';
@@ -72,7 +72,8 @@ export default function MyWorkflowsPage() {
   const activeTab = searchParams.get('tab') || 'created';
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedSagaId, setSelectedSagaId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<WorkflowSource | null>(null);
 
   const [createdItems, setCreatedItems] = useState<UnifiedWorkflowItem[]>([]);
   const [assignedItems, setAssignedItems] = useState<UnifiedWorkflowItem[]>([]);
@@ -263,7 +264,7 @@ export default function MyWorkflowsPage() {
                         <TableCell className="text-sm text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(item.updatedAt).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => { setSelectedSagaId(item.id); setDialogOpen(true); }}>
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedId(item.id); setSelectedSource(item.source); setDialogOpen(true); }}>
                             View Details
                           </Button>
                         </TableCell>
@@ -328,7 +329,7 @@ export default function MyWorkflowsPage() {
                         <TableCell className="text-sm text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{new Date(item.updatedAt).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={() => { setSelectedSagaId(item.id); setDialogOpen(true); }}>
+                          <Button variant="ghost" size="sm" onClick={() => { setSelectedId(item.id); setSelectedSource(item.source); setDialogOpen(true); }}>
                             View Details
                           </Button>
                         </TableCell>
@@ -342,9 +343,17 @@ export default function MyWorkflowsPage() {
         </TabsContent>
       </Tabs>
 
-      {selectedSagaId && (
+      {selectedId && selectedSource === 'saga' && (
         <SagaDetailDialog
-          sagaId={selectedSagaId}
+          sagaId={selectedId}
+          open={dialogOpen}
+          onOpenChange={(open) => { if (!open) setDialogOpen(false); }}
+          onRefresh={() => void fetchAllWorkflows()}
+        />
+      )}
+      {selectedId && selectedSource === 'ce' && (
+        <WorkflowDetailDialog
+          workflowId={selectedId}
           open={dialogOpen}
           onOpenChange={(open) => { if (!open) setDialogOpen(false); }}
           onRefresh={() => void fetchAllWorkflows()}

@@ -9,9 +9,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.cerp.workflow.domain.Workflow;
 import io.cerp.workflow.dto.WorkflowGenerationRequest;
@@ -105,6 +108,7 @@ public class WorkflowGenerationController {
      *
      * <p>
      * This endpoint is designed to be called from the project-service when a new subproject is created. It respects the organisation's auto-generation setting.
+     * </p>
      *
      * @param tenantId
      *            the tenant ID
@@ -118,6 +122,8 @@ public class WorkflowGenerationController {
      *            the building type
      * @param constructionPhase
      *            the construction Phase
+     * @param authHeader
+     *            the Authorization Bearer JWT header from which createdBy is extracted
      * @return response with generated workflow details
      */
     @PostMapping("/{tenantId}/workflows/auto-generate")
@@ -127,14 +133,43 @@ public class WorkflowGenerationController {
             @RequestParam UUID subprojectId,
             @RequestParam UUID projectId,
             @RequestParam String buildingType,
-            @RequestParam String constructionPhase) {
+            @RequestParam String constructionPhase,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
 
+        String createdBy = extractUserIdFromHeader(authHeader);
         WorkflowGenerationResponse response = subProjectWorkflowGenerator
-            .generateWorkflowsOnSubprojectCreation(tenantId, orgId, subprojectId, projectId, buildingType, constructionPhase);
+            .generateWorkflowsOnSubprojectCreation(tenantId, orgId, subprojectId, projectId, buildingType, constructionPhase, createdBy);
 
         if (response.getGeneratedCount() > 0) {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
         }
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Extract userId from the Authorization Bearer JWT token payload.
+     * Checks claims in priority order: internal_user_id (Keycloak custom), sub, userId.
+     */
+    private String extractUserIdFromHeader(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = authorizationHeader.substring(7);
+        try {
+            String[] parts = token.split("\\.");
+            if (parts.length == 3) {
+                String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+                com.fasterxml.jackson.databind.JsonNode root = new ObjectMapper().readTree(payload);
+                com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
+                if (internalUserId != null && internalUserId.isTextual()) return internalUserId.asText();
+                com.fasterxml.jackson.databind.JsonNode sub = root.get("sub");
+                if (sub != null && sub.isTextual()) return sub.asText();
+                com.fasterxml.jackson.databind.JsonNode userId = root.get("userId");
+                if (userId != null && userId.isTextual()) return userId.asText();
+            }
+        } catch (Exception e) {
+            // JWT decode failed — fall through to null
+        }
+        return null;
     }
 }

@@ -3,6 +3,7 @@ export * from './types';
 export * from './SagaPage';
 export * from './SagaDetailPage';
 export * from './SagaDetailDialog';
+export * from './WorkflowDetailDialog';
 export * from './TemplatesPage';
 export * from './WorkflowDiagramViewer';
 export * from './SagaStatusBadge';

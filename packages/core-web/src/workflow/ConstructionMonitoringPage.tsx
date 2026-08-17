@@ -488,7 +488,9 @@ export function ConstructionMonitoringPage() {
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
-                      {step.assignedToName ?? '—'}
+                      {step.assigneeName && step.assigneeEmail
+                        ? `${step.assigneeName} (${step.assigneeEmail})`
+                        : step.assigneeEmail ?? step.assigneeName ?? step.assignedToName ?? '—'}
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {step.dueAt ? new Date(step.dueAt).toLocaleDateString() : '—'}
