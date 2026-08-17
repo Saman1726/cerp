@@ -188,6 +188,18 @@ export async function extractSessionUser(): Promise<{
   return { userId: resolved, tenantId, roles };
 }
 
+/** Step shape after transformStep — supports both reads and in-place mutations. */
+export interface WorkflowStepData {
+  id: unknown;
+  workflowId: unknown;
+  assignedTo: string | null | undefined;
+  assigneeEmail: string | null | undefined;
+  assigneeName: string | null | undefined;
+  assignedToName: string | null | undefined;
+  approverId: string | null | undefined;
+  approverName: string | null | undefined;
+}
+
 /** Raw shape workflow-service actually returns for a WorkflowNote (`workflow` is @JsonIgnore'd; `stepId` is a derived getter, not the full step entity). */
 interface BackendWorkflowNote {
   id: string;

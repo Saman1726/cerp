@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { WORKFLOW_SERVICE_URL } from '@cerp/core-web/lib/env';
-import { getBackendHeaders, resolveUserLookup } from '../utils';
+import { getBackendHeaders, resolveUserLookup, type WorkflowStepData } from '../utils';
 
 // Map Java WorkflowStatus to frontend WorkflowStatus
 function mapWorkflowStatus(status: string): string {
@@ -151,13 +151,13 @@ export async function GET(
     }));
 
     // Batch-resolve assignee/approver names from identity service (fallback for old data)
-    const userIds = transformedSteps.flatMap((s: Record<string, any>) => [
+    const userIds = transformedSteps.flatMap((s: WorkflowStepData) => [
       s.assignedTo,
       s.approverId,
     ]);
     const userLookup = await resolveUserLookup(userIds);
     for (const rawS of transformedSteps) {
-      const s = rawS as Record<string, any>;
+      const s = rawS as WorkflowStepData;
       if (s.assignedTo && userLookup[s.assignedTo]) {
         const assignedUser = userLookup[s.assignedTo]!;
         // Populate missing assignee fields for backwards compatibility
