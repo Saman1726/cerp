@@ -125,6 +125,8 @@ export async function GET(
         status: mapStepStatus(String(step.status ?? '')),
         assignedTo: step.assigneeUserId ? String(step.assigneeUserId) : null,
         assignedToName: (step.assigneeName as string | undefined) ?? null,
+        assigneeEmail: (step.assigneeEmail as string | undefined) ?? null,
+        assigneeName: (step.assigneeName as string | undefined) ?? null,
         requiresEvidence: false,
         requiresApproval: false,
         evidenceUrls,
@@ -154,7 +156,7 @@ export async function GET(
     const userIds = transformedSteps.flatMap((s: WorkflowStepData) => [
       s.assignedTo,
       s.approverId,
-    ]);
+    ]).filter((id): id is string => id != null) as string[];
     const userLookup = await resolveUserLookup(userIds);
     for (const rawS of transformedSteps) {
       const s = rawS as WorkflowStepData;

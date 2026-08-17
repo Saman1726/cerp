@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
       const userIds = allSteps.flatMap((s: WorkflowStepData) => [
         s.assignedTo,
         s.approverId,
-      ]);
+      ]).filter((id): id is string => id != null) as string[];
       const userLookup = await resolveUserLookup(userIds);
       for (const w of workflows) {
         const wSteps = (w.steps as WorkflowStepData[]) ?? [];
@@ -225,7 +225,7 @@ export async function GET(request: NextRequest) {
     const userIds = allSteps.flatMap((s: WorkflowStepData) => [
       s.assignedTo,
       s.approverId,
-    ]);
+    ]).filter((id): id is string => id != null) as string[];
     const userLookup = await resolveUserLookup(userIds);
     for (const w of workflows) {
       const wSteps = (w.steps as WorkflowStepData[]) ?? [];
