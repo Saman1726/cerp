@@ -12,6 +12,20 @@ function mapTemplateStatus(status: string): string {
   return mapping[status] ?? status;
 }
 
+// Extract assignee role names from the Java API's assigneeRoleEntities array,
+// preserving the order defined by roleOrder.
+function extractAssigneeRoles(step: Record<string, unknown>): string[] {
+  const entities = step['assigneeRoleEntities'];
+  if (!Array.isArray(entities) || entities.length === 0) {
+    return [];
+  }
+  return entities
+    .sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
+      ((a['roleOrder'] as number) ?? 0) - ((b['roleOrder'] as number) ?? 0)
+    )
+    .map((e: Record<string, unknown>) => e['roleName'] as string);
+}
+
 // Helper to get a field from a record, checking both camelCase and snake_case
 function getField(obj: Record<string, unknown>, camelCase: string, snakeCase: string): unknown {
   return obj[camelCase] ?? obj[snakeCase];
@@ -26,7 +40,7 @@ function transformTemplate(javaTemplate: Record<string, unknown>, javaSteps: Rec
       code: getField(step, 'code', 'code'),
       name: getField(step, 'name', 'name'),
       description: (getField(step, 'description', 'description') as string | undefined) ?? (getField(step, 'notes', 'notes') as string | undefined) ?? null,
-      type: 'TASK' as const,
+      type: (getField(step, 'type', 'step_type') as string) ?? 'TASK',
       order: getField(step, 'order', 'step_order') !== undefined && getField(step, 'order', 'step_order') !== null
         ? Number(getField(step, 'order', 'step_order'))
         : 0,
@@ -37,6 +51,8 @@ function transformTemplate(javaTemplate: Record<string, unknown>, javaSteps: Rec
       slaHours: getField(step, 'slaHours', 'sla_hours') as number | undefined,
       checklists: getField(step, 'checklists', 'checklists') as unknown[] | undefined,
       gatingCondition: getField(step, 'gatingCondition', 'gating_condition') as string | undefined,
+      assigneeRoles: extractAssigneeRoles(step),
+      primaryAssigneeRole: (getField(step, 'primaryAssigneeRole', 'primary_assignee_role') as string | undefined) ?? null,
       createdAt: (getField(step, 'createdAt', 'created_at') as string | undefined) ?? new Date().toISOString(),
       updatedAt: (getField(step, 'updatedAt', 'updated_at') as string | undefined) ?? new Date().toISOString(),
     };
@@ -93,17 +109,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: 'Empty response from workflow service' }, { status: 502 });
     }
 
-    let data: unknown[];
+    let data: unknown[] = [];
+
     try {
       data = JSON.parse(rawData);
     } catch (parseError) {
-      console.error('[API workflows/templates] JSON parse error:', parseError);
-      return NextResponse.json({ message: 'Invalid JSON response from workflow service' }, { status: 502 });
+      console.error('[API workflows/templates] Failed to parse JSON:', parseError);
+      console.warn('[API workflows/templates] Raw response snippet:', rawData.substring(0, 500));
+      data = [];
     }
 
     if (!Array.isArray(data)) {
-      console.error('[API workflows/templates] Response is not an array:', typeof data);
-      return NextResponse.json({ message: 'Expected array response from workflow service' }, { status: 502 });
+      console.warn('[API workflows/templates] Response is not an array, returning empty array');
+      data = [];
     }
 
     console.log('[API workflows/templates] Templates count:', data.length);

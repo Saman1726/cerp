@@ -29,6 +29,8 @@ interface UnifiedWorkflowItem {
   createdAt: string;
   updatedAt: string;
   detailsUrl: string;
+  /** CE workflows only: subproject IDs for attachment uploads. */
+  subProjectIds?: string[];
 }
 
 const getStatusLabel = (source: WorkflowSource, status: string): string => {
@@ -139,6 +141,7 @@ export default function MyWorkflowsPage() {
         createdAt: wf.createdAt,
         updatedAt: wf.updatedAt,
         detailsUrl: `/workflows/workflow/${wf.id}`,
+        subProjectIds: wf.subprojectIds,
       }));
 
       const assignedCEItems: UnifiedWorkflowItem[] = (assignedCE || []).map((wf: Workflow) => ({
@@ -151,6 +154,7 @@ export default function MyWorkflowsPage() {
         createdAt: wf.createdAt,
         updatedAt: wf.updatedAt,
         detailsUrl: `/workflows/workflow/${wf.id}`,
+        subProjectIds: wf.subprojectIds,
       }));
 
       // Sort all items by updatedAt descending
@@ -357,6 +361,7 @@ export default function MyWorkflowsPage() {
           open={dialogOpen}
           onOpenChange={(open) => { if (!open) setDialogOpen(false); }}
           onRefresh={() => void fetchAllWorkflows()}
+          subProjectId={[...createdItems, ...assignedItems].find((i) => i.id === selectedId)?.subProjectIds?.[0]}
         />
       )}
     </div>

@@ -122,7 +122,7 @@ const statusOptions: SubProjectStatus[] = [
   'CANCELLED',
 ];
 
-type TabKey = 'overview' | 'workflows' | 'templates';
+type TabKey = 'overview' | 'workflows';
 
 export default function SubProjectDetailClient({
   subProject,
@@ -352,13 +352,33 @@ export default function SubProjectDetailClient({
       return;
     }
     try {
+      const selectedTemplate = templates.find((t) => t.code === selectedTemplateCode);
+      if (!selectedTemplate) {
+        alert('Selected template not found');
+        return;
+      }
+
+      // Read tenant ID from cookies, falling back to 'default'
+      const cookieMap: Record<string, string> = {};
+      if (typeof document !== 'undefined') {
+        document.cookie.split(';').forEach((cookie) => {
+          const sepIndex = cookie.indexOf('=');
+          if (sepIndex === -1) return;
+          const key = cookie.slice(0, sepIndex).trim();
+          const value = cookie.slice(sepIndex + 1);
+          if (key) cookieMap[key] = value;
+        });
+      }
+      const tenantId = cookieMap['x-tenant-id'] || 'default';
+
       const res = await fetch('/api/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          templateCode: selectedTemplateCode,
+          tenantId,
+          projectId,
           subprojectId,
-          phaseType: templates.find((t) => t.code === selectedTemplateCode)?.phaseType ?? '',
+          templateId: selectedTemplate.id,
         }),
       });
       if (!res.ok) throw new Error('Failed to create workflow');
@@ -1192,146 +1212,6 @@ export default function SubProjectDetailClient({
     );
   };
 
-  const renderTemplatesTab = () => (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-muted-foreground">
-          Workflow Templates ({templates.length})
-        </h3>
-      </div>
-
-      {templatesLoading ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">Loading templates...</p>
-      ) : templates.length === 0 ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">No templates available.</p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {templates.map((template) => {
-            const templateSteps =
-              (template as WorkflowTemplate & { steps?: WorkflowTemplateStep[] }).steps ?? [];
-            return (
-              <div key={template.id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{template.name}</span>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        {template.code}
-                      </Badge>
-                      <Badge variant="secondary">
-                        {formatPhaseType(
-                          (template as { status?: string | undefined }).status ?? null,
-                        )}
-                      </Badge>
-                    </div>
-                    {template.description && (
-                      <p className="mt-1 text-xs text-muted-foreground">{template.description}</p>
-                    )}
-                    <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span>{formatPhaseType(template.phaseType)}</span>
-                      <span>·</span>
-                      <span>{templateSteps.length} steps</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTemplateCode(template.code);
-                        fetchTemplateDetail(template.code);
-                      }}
-                    >
-                      View Steps
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTemplateCode(template.code);
-                        setCreateWorkflowModalOpen(true);
-                      }}
-                    >
-                      Use for Subproject
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Show first few steps inline */}
-                {templateSteps.length > 0 && templateSteps.length <= 5 && (
-                  <div className="mt-3 flex flex-col gap-1">
-                    {templateSteps
-                      .sort((a, b) => a.order - b.order)
-                      .map((step: WorkflowTemplateStep) => (
-                        <div key={step.id} className="flex items-center gap-2 text-xs">
-                          <span>{STEP_TYPE_ICONS[step.type]}</span>
-                          <span className="text-muted-foreground">{step.order}.</span>
-                          <span>{step.name}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {STEP_TYPE_LABELS[step.type]}
-                          </Badge>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Template detail modal */}
-      {templateDetail && (
-        <Modal
-          open={!!templateDetail}
-          onClose={() => setTemplateDetail(null)}
-          title={`Template: ${templateDetail.template.name}`}
-        >
-          <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto">
-            <div>
-              <p className="text-sm text-muted-foreground">{templateDetail.template.description}</p>
-              <div className="mt-2 flex gap-2">
-                <Badge variant="outline">{templateDetail.template.code}</Badge>
-                <Badge variant="secondary">
-                  {formatPhaseType(templateDetail.template.phaseType)}
-                </Badge>
-              </div>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium">Steps ({templateDetail.steps?.length ?? 0})</h4>
-              <div className="mt-2 flex flex-col gap-2">
-                {(templateDetail.steps ?? [])
-                  .sort((a, b) => a.order - b.order)
-                  .map((step: WorkflowTemplateStep) => (
-                    <div key={step.id} className="rounded-md border p-3">
-                      <div className="flex items-center gap-2">
-                        <span>{STEP_TYPE_ICONS[step.type]}</span>
-                        <span className="font-medium">{step.name}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {STEP_TYPE_LABELS[step.type]}
-                        </Badge>
-                      </div>
-                      {step.description && (
-                        <p className="mt-1 text-xs text-muted-foreground">{step.description}</p>
-                      )}
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {step.requiresEvidence && (
-                          <Badge variant="secondary">Requires Evidence</Badge>
-                        )}
-                        {step.requiresApproval && (
-                          <Badge variant="secondary">Requires Approval</Badge>
-                        )}
-                        {step.slaHours && <span>SLA: {step.slaHours}h</span>}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -1374,7 +1254,6 @@ export default function SubProjectDetailClient({
           {[
             { key: 'overview' as TabKey, label: 'Overview' },
             { key: 'workflows' as TabKey, label: `Workflows (${workflows.length})` },
-            { key: 'templates' as TabKey, label: `Templates (${templates.length})` },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1394,8 +1273,6 @@ export default function SubProjectDetailClient({
       {/* Tab content */}
       {activeTab === 'overview' && renderOverviewTab()}
       {activeTab === 'workflows' && renderWorkflowsTab()}
-      {activeTab === 'templates' && renderTemplatesTab()}
-
       {/* Create Workflow Modal */}
       <Modal
         open={createWorkflowModalOpen}

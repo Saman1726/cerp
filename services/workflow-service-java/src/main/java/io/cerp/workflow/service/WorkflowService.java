@@ -115,7 +115,7 @@ public class WorkflowService {
             template.getVersion(), workflowCode, workflowName);
         workflow.setCreatedBy(userId.toString());
         workflow.setStatus(Workflow.WorkflowStatus.PLANNED);
-
+        workflowRepository.save(workflow);
         // Create step instances from template steps
         for (WorkflowTemplateStep templateStep : template.getSteps()) {
             WorkflowStep step = new WorkflowStep(
@@ -132,7 +132,8 @@ public class WorkflowService {
                     .plus(templateStep.getDueOffsetDays(), ChronoUnit.DAYS));
             }
 
-            workflow.addStep(step);
+            step.setWorkflow(workflow);
+            workflowStepRepository.save(step);
         }
 
         // Set next step

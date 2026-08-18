@@ -35,6 +35,7 @@ import io.cerp.workflow.domain.WorkflowStepAttachment;
 import io.cerp.workflow.config.TenantContext;
 import io.cerp.workflow.repository.WorkflowNoteRepository;
 import io.cerp.workflow.repository.WorkflowStepAttachmentRepository;
+import io.cerp.workflow.service.TenantService;
 import io.cerp.workflow.service.WorkflowService;
 
 /**
@@ -104,10 +105,19 @@ public class WorkflowController {
     @PostMapping
     public ResponseEntity<Workflow> createWorkflow(
             @Valid @RequestBody InstantiateRequest request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String headerTenantId) {
         String userId = extractUserIdFromHeader(authHeader);
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(null);
+        }
+        String tenantId = TenantService.getInstance().getTenantIdByCodeStr(headerTenantId == null ? "default":headerTenantId);
+        if (tenantId == null && headerTenantId != null && !headerTenantId.isEmpty()) {
+            TenantContext.set(UUID.fromString(headerTenantId));
+            tenantId = headerTenantId;
+        }
         Workflow created = workflowService.instantiate(
-            request.tenantId(), request.projectId(),
+            tenantId, request.projectId(),
             request.subprojectId(), request.templateId(),
             UUID.fromString(userId));
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
@@ -125,8 +135,9 @@ public class WorkflowController {
     @PostMapping("/instantiate")
     public ResponseEntity<Workflow> instantiate(
             @Valid @RequestBody InstantiateRequest request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        return createWorkflow(request, authHeader);
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Tenant-Id", required = false) String headerTenantId) {
+        return createWorkflow(request, authHeader, headerTenantId);
     }
 
     @GetMapping
@@ -467,20 +478,22 @@ public class WorkflowController {
         }
         String token = authorizationHeader.substring(7);
         try {
-            // String[] parts = token.split("\\.");
-            // if (parts.length == 1) {
-                String payload = new String(java.util.Base64.getUrlDecoder().decode(token), java.nio.charset.StandardCharsets.UTF_8);
-                com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
-                // Priority 1: Keycloak custom claim
-                com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
-                if (internalUserId != null && internalUserId.isTextual()) return internalUserId.asText();
-                // Priority 2: standard JWT sub claim
-                com.fasterxml.jackson.databind.JsonNode sub = root.get("sub");
-                if (sub != null && sub.isTextual()) return sub.asText();
-                // Priority 3: legacy userId claim
-                com.fasterxml.jackson.databind.JsonNode userId = root.get("userId");
-                if (userId != null && userId.isTextual()) return userId.asText();
-            // }
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) {
+                return null;
+            }
+            // JWT format: header.payload.signature — decode only the payload (index 1)
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+            com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+            // Priority 1: Keycloak custom claim
+            com.fasterxml.jackson.databind.JsonNode internalUserId = root.get("internal_user_id");
+            if (internalUserId != null && internalUserId.isTextual()) return internalUserId.asText();
+            // Priority 2: standard JWT sub claim
+            com.fasterxml.jackson.databind.JsonNode sub = root.get("sub");
+            if (sub != null && sub.isTextual()) return sub.asText();
+            // Priority 3: legacy userId claim
+            com.fasterxml.jackson.databind.JsonNode userId = root.get("userId");
+            if (userId != null && userId.isTextual()) return userId.asText();
         } catch (Exception e) {
             log.warn("Failed to extract userId from Authorization header", e);
         }
@@ -532,7 +545,7 @@ public class WorkflowController {
     // ── DTOs ──
 
     public record InstantiateRequest(
-            @NotBlank String tenantId,
+            String tenantId,
             UUID projectId,
             UUID subprojectId,
             UUID templateId) {

@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckCircle, Clock, AlertCircle, X, FileText, Loader2 } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, X, FileText, Loader2, Play, CheckSquare, AlertTriangle } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/modal/dialog';
 import { Button } from '../components/ui/button';
 import { workflowApi } from './api';
 import { updateWorkflowStep } from '../construction-engineering/workflow-client';
-import type { WorkflowNote } from '@cerp/shared-types';
+import type { WorkflowNote, WorkflowInstanceStep } from '@cerp/shared-types';
+import { StepRowActions } from './StepRowActions';
+import { processQueue } from './step-attachments';
 
 type WorkflowDetailTabId = 'overview' | 'steps' | 'notes' | 'actions';
 
@@ -58,9 +60,15 @@ export interface WorkflowDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRefresh?: () => void;
+  /** Project ID for attachment uploads (photos/documents). */
+  projectId?: string;
+  /** Sub-project ID for attachment uploads. */
+  subProjectId?: string;
 }
 
-export function WorkflowDetailDialog({ workflowId, open, onOpenChange, onRefresh }: WorkflowDetailDialogProps) {
+export function WorkflowDetailDialog({
+  workflowId, open, onOpenChange, onRefresh, projectId, subProjectId,
+}: WorkflowDetailDialogProps) {
   const [workflow, setWorkflow] = useState<Record<string, unknown> | null>(null);
   const [steps, setSteps] = useState<Record<string, unknown>[]>([]);
   const [notes, setNotes] = useState<WorkflowNote[]>([]);
@@ -178,6 +186,96 @@ export function WorkflowDetailDialog({ workflowId, open, onOpenChange, onRefresh
     }
   }, [workflowId, assignValues, refetch, onRefresh]);
 
+  // ── Step-level actions ──
+
+  const handleStartStep = useCallback(async (stepId: string) => {
+    setActionLoading(`start:${stepId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to start step');
+      }
+      await refetch();
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start step');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [workflowId, refetch, onRefresh]);
+
+  const handleCompleteStep = useCallback(async (stepId: string) => {
+    setActionLoading(`complete:${stepId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to complete step');
+      }
+      await refetch();
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete step');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [workflowId, refetch, onRefresh]);
+
+  const handleApproveStep = useCallback(async (stepId: string) => {
+    setActionLoading(`approve:${stepId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to approve step');
+      }
+      await refetch();
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve step');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [workflowId, refetch, onRefresh]);
+
+  const handleRejectStep = useCallback(async (stepId: string) => {
+    setActionLoading(`reject:${stepId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/workflows/${workflowId}/steps/${stepId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? 'Failed to reject step');
+      }
+      await refetch();
+      onRefresh?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject step');
+    } finally {
+      setActionLoading(null);
+    }
+  }, [workflowId, refetch, onRefresh]);
+
   const wfStatus = (workflow?.status as string) ?? '';
   const currentStepId = (workflow?.currentStepId as string) ?? null;
   const terminal = isTerminal(wfStatus);
@@ -263,6 +361,82 @@ export function WorkflowDetailDialog({ workflowId, open, onOpenChange, onRefresh
                     {assignLoading === stepIdStr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Assign'}
                   </button>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {step.status === 'PENDING' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-xs"
+                    disabled={actionLoading === `start:${stepIdStr}`}
+                    onClick={() => handleStartStep(stepIdStr)}
+                  >
+                    {actionLoading === `start:${stepIdStr}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    Start
+                  </Button>
+                )}
+                {step.status === 'IN_PROGRESS' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-xs"
+                    disabled={actionLoading === `complete:${stepIdStr}`}
+                    onClick={() => handleCompleteStep(stepIdStr)}
+                  >
+                    {actionLoading === `complete:${stepIdStr}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckSquare className="h-3 w-3" />}
+                    Complete
+                  </Button>
+                )}
+                {step.status === 'COMPLETED' && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 gap-1 text-xs"
+                      disabled={actionLoading === `approve:${stepIdStr}`}
+                      onClick={() => handleApproveStep(stepIdStr)}
+                    >
+                      {actionLoading === `approve:${stepIdStr}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 text-xs"
+                      disabled={actionLoading === `reject:${stepIdStr}`}
+                      onClick={() => handleRejectStep(stepIdStr)}
+                    >
+                      {actionLoading === `reject:${stepIdStr}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlertTriangle className="h-3 w-3" />}
+                      Reject
+                    </Button>
+                  </>
+                )}
+                {step.status === 'REJECTED' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 text-xs"
+                    disabled={actionLoading === `start:${stepIdStr}`}
+                    onClick={() => handleStartStep(stepIdStr)}
+                  >
+                    {actionLoading === `start:${stepIdStr}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    Restart
+                  </Button>
+                )}
+                {step.status === 'APPROVED' && (
+                  <span className="text-xs text-muted-foreground">Approved</span>
+                )}
+                {step.status === 'BLOCKED' && (
+                  <span className="text-xs text-muted-foreground">Blocked</span>
+                )}
+                <StepRowActions
+                  workflowId={workflowId}
+                  projectId={projectId}
+                  subProjectId={subProjectId}
+                  step={step as unknown as WorkflowInstanceStep}
+                  onStepUpdated={() => { void refetch(); onRefresh?.(); }}
+                  onAttachmentQueued={() => { try { processQueue(); } catch { /* queue drain is best-effort */ } }}
+                />
               </div>
             </div>
           );

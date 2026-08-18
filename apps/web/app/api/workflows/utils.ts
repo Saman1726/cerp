@@ -17,6 +17,7 @@ export function getAuthHeaders(request: NextRequest): HeadersInit {
   const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
   if (sessionCookie) {
     headers['Cookie'] = `${SESSION_COOKIE}=${sessionCookie}`;
+    headers['Authorization'] = `Bearer ${sessionCookie}`;
   }
 
   return headers;
@@ -43,6 +44,7 @@ export function getBackendHeaders(request: NextRequest): HeadersInit {
   const sessionCookie = request.cookies.get(SESSION_COOKIE)?.value;
   if (sessionCookie) {
     headers['Cookie'] = `${SESSION_COOKIE}=${sessionCookie}`;
+    headers['Authorization'] = `Bearer ${sessionCookie}`;
   }
 
   // Forward tenant ID from URL query param or header

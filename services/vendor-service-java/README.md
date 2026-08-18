@@ -31,6 +31,48 @@ Vendor Service does not know anything about tenders or bids — that domain belo
 - Resolving user identity via `identity-service-java` when a JWT's `sub` claim is an email rather than a UUID.
 - Enforcing tenant isolation on vendor-owned tables via PostgreSQL Row-Level Security, driven by a request-scoped `TenantContext`.
 
+## Construction Vendor Taxonomy
+
+The service ships with a predefined construction category taxonomy (`category_groups` / `category_definitions`), seeded via Flyway migration and exposed read-only. The taxonomy is organized into **8 major vendor groups**, each with subcategories, reflecting how vendors are classified and matched to tenders.
+
+### Major Vendor Groups
+
+| # | Vendor Group | Subcategories (examples) |
+|---|---|---|
+| 1 | **Construction Trades** | Site Preparation & Earthworks, Demolition, Foundations, Concrete & Reinforced Concrete, Masonry, Structural Steel, Timber Structures, Roofing, Waterproofing, Facade, Windows & Glazing, Doors & Gates, Drywall & Partitions, Ceilings, Screed, Flooring, Tiling, Painting & Decorating, Landscaping |
+| 2 | **MEP / Building Services** | Electrical, Lighting, Plumbing, Sanitary, Heating, Cooling / Air Conditioning, Ventilation, Refrigeration, Fire Protection, Building Automation, Smart Building, Solar / PV, Energy Systems |
+| 3 | **Civil & Infrastructure** | Roads, Bridges, Tunnels, Utilities, Water & Sewer, Drainage, Rail, Traffic Systems, Infrastructure Construction |
+| 4 | **Materials & Products** | Concrete & Cement, Steel, Timber, Bricks & Blocks, Insulation, Drywall, Roofing Materials, Facade Materials, Glass, Tiles, Flooring, Paint & Coatings, Construction Chemicals, Fasteners & Hardware, Electrical / MEP Materials |
+| 5 | **Machinery & Equipment** | Excavators, Loaders, Cranes, Forklifts, Concrete Equipment, Compaction Equipment, Generators, Compressors, Scaffolding, Site Equipment, Equipment Rental |
+| 6 | **Professional & Engineering Services** | Architecture, Structural Engineering, Civil Engineering, MEP Engineering, Geotechnical Engineering, Surveying, Quantity Surveying, Cost Consulting, Project Management, Construction Management, Site Supervision, Inspection & Testing, Certification |
+| 7 | **Specialized Systems** | Elevators & Escalators, Access Control, CCTV & Security, Fire Alarm, Building Management Systems, Parking Systems, Acoustic Systems, Solar, EV Charging, Renewable Energy |
+| 8 | **Site & Temporary Services** | Site Containers, Temporary Electricity, Temporary Water, Site Security, Site Facilities, Waste Management, Cleaning, Logistics, Transportation, Material Handling |
+
+### Recommended Data Model
+
+Each vendor entity in the system captures the following dimensions:
+
+- **Company** — legal entity name and details
+- **Vendor Types** — `Contractor`, `Subcontractor`, `Manufacturer`, `Distributor`, `Supplier`, `Rental Company`, `Consultant`
+- **Categories** — which taxonomy group(s) the company operates in
+- **Capabilities** — specific trades/services the company can perform
+- **Products** — materials/products the company supplies
+- **Services** — professional or project services offered
+- **Certifications** — compliance and quality certifications
+- **Regions** — geographic areas of operation
+- **Project Types** — types of projects the vendor has experience with
+- **Experience** — track record and portfolio
+
+### Key Design Principle
+
+> **Keep these taxonomies separate:**
+>
+> 1. **Vendor Category** — What area the company operates in.
+> 2. **Capability / Trade** — What the company can actually do.
+> 3. **Product / Material** — What the company can supply.
+>
+> This separation enables accurate tender-to-vendor matching and future AI-driven procurement recommendations.
+
 ## Architecture
 
 ```

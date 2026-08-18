@@ -165,6 +165,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service-java:8090
       VENDOR_SERVICE_URL: http://vendor-service-java:8085
       NOTIFICATION_SERVICE_URL: http://notification-service-java:8091
+      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5005"
     ports:
       - '8089:8089'
       - '5005:5005'

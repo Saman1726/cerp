@@ -256,9 +256,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const headers = getBackendHeaders(request);
     const res = await fetch(`${WORKFLOW_SERVICE_URL}/api/v1/workflows`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       cache: 'no-store',
     });
