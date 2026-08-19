@@ -1,10 +1,10 @@
 -- Catalog Service: Initial Schema (Phase 2 foundations)
--- Schema: supply
+-- Schema: catalog
 
-CREATE SCHEMA IF NOT EXISTS supply;
+CREATE SCHEMA IF NOT EXISTS catalog;
 
 -- Catalog items master table
-CREATE TABLE IF NOT EXISTS supply.catalog_items (
+CREATE TABLE IF NOT EXISTS catalog.catalog_items (
     id UUID PRIMARY KEY,
     tenant_id UUID NOT NULL,
     sku TEXT NOT NULL,
@@ -17,14 +17,14 @@ CREATE TABLE IF NOT EXISTS supply.catalog_items (
 );
 
 -- Helpful indexes
-CREATE INDEX IF NOT EXISTS idx_catalog_items_tenant_id ON supply.catalog_items (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_items_tenant_id ON catalog.catalog_items (tenant_id);
 
-CREATE INDEX IF NOT EXISTS idx_catalog_items_sku ON supply.catalog_items (sku);
+CREATE INDEX IF NOT EXISTS idx_catalog_items_sku ON catalog.catalog_items (sku);
 
 -- Catalog prices for items (history-friendly)
-CREATE TABLE IF NOT EXISTS supply.catalog_prices (
+CREATE TABLE IF NOT EXISTS catalog.catalog_prices (
     id UUID PRIMARY KEY,
-    item_id UUID NOT NULL REFERENCES supply.catalog_items (id) ON DELETE CASCADE,
+    item_id UUID NOT NULL REFERENCES catalog.catalog_items (id) ON DELETE CASCADE,
     currency CHAR(3) NOT NULL,
     amount NUMERIC(19, 2) NOT NULL,
     valid_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -32,9 +32,9 @@ CREATE TABLE IF NOT EXISTS supply.catalog_prices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id ON supply.catalog_prices (item_id);
+CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id ON catalog.catalog_prices (item_id);
 
-CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id_valid_from ON supply.catalog_prices (item_id, valid_from DESC);
+CREATE INDEX IF NOT EXISTS idx_catalog_prices_item_id_valid_from ON catalog.catalog_prices (item_id, valid_from DESC);
 
 -- Note on RLS:
 -- Phase 2 requires tenant isolation via RLS keyed by tenant_id.

@@ -15,10 +15,20 @@ interface VendorRegistrationRequest {
     contactName?: string;
     phone?: string;
     website?: string;
-    categories?: string[];
+    vendorTypes?: string[];
+    categoryGroupIds?: string[];
+    capabilityIds?: string[];
+    projectTypes?: string[];
+    yearsInBusiness?: number;
+    description?: string;
+    logoUrl?: string;
+    registrationNumber?: string;
+    regions?: string[];
     address?: string;
     city?: string;
     country?: string;
+    /** @deprecated Use capabilityIds instead */
+    categories?: string[];
   };
 }
 
@@ -153,17 +163,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       // Step 4: Create the vendor record
       const vendorPayload = {
+        email,
+        password,
         legalName: vendorData.legalName,
         contactName: vendorData.contactName,
         phone: vendorData.phone,
         website: vendorData.website,
-        categories: vendorData.categories || [],
+        vendorTypes: vendorData.vendorTypes || [],
+        categoryGroupIds: vendorData.categoryGroupIds || [],
+        capabilityIds: vendorData.capabilityIds || [],
+        projectTypes: vendorData.projectTypes || [],
+        yearsInBusiness: vendorData.yearsInBusiness,
+        description: vendorData.description,
+        logoUrl: vendorData.logoUrl,
+        registrationNumber: vendorData.registrationNumber,
+        regions: vendorData.regions || [],
         address: vendorData.address,
         city: vendorData.city,
         country: vendorData.country,
+        region: null,
+        tenantName: null,
         status: 'pending',
         userId: user.id,
         tenantId: DEFAULT_TENANT_ID,
+        categories: vendorData.categories || [],
       };
 
       const vendorRes = await fetch(`${VENDOR_SERVICE_URL}/vendors`, {
@@ -185,18 +208,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       const vendor: CreateVendorResponse = await vendorRes.json();
 
-      // Step 5: Update the membership scopes with the vendor ID
-      const membershipsRes = await fetch(`${IDENTITY_SERVICE_URL}/memberships`, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      // Step 5: Fetch the membership we just created and update its scopes with the vendor ID
+      const membershipsRes = await fetch(
+        `${IDENTITY_SERVICE_URL}/memberships?tenantId=${DEFAULT_TENANT_ID}&userId=${user.id}`,
+        { headers: { 'Content-Type': 'application/json' } },
+      );
 
       let membershipId: { id: string; scopes: Record<string, unknown> } | null = null;
       if (membershipsRes.ok) {
-        const memberships: CreateMembershipResponse[] = await membershipsRes.json();
-        const found = memberships.find((m: CreateMembershipResponse) => m.tenantId === DEFAULT_TENANT_ID && m.userId === user.id);
-        if (found?.id) {
-          membershipId = { id: found.id, scopes: found.scopes || {} };
-        }
+        const membership: CreateMembershipResponse = await membershipsRes.json();
+        membershipId = { id: membership.id, scopes: membership.scopes || {} };
       }
 
       if (membershipId) {

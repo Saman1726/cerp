@@ -3,6 +3,7 @@ package io.cerp.vendor.config;
 import io.cerp.vendor.security.TenantRequestFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -17,16 +18,27 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 public class SecurityConfig {
 
     @Bean
-    public org.springframework.security.oauth2.jwt.JwtDecoder jwtDecoderProduction(
-            @Value("${OAUTH_ISSUER_URI:http://keycloak:8081/realms/master}") String issuerUri) {
-        // Production decoder for Keycloak-signed RS256 JWTs
-        // Only used when DevJwtDecoder is not active (i.e., DEV_MODE is not true)
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(issuerUri + "/protocol/openid-connect/certs").build();
-        return decoder;
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name = "DEV_MODE", havingValue = "true", matchIfMissing = false)
+    @org.springframework.core.annotation.Order(Ordered.HIGHEST_PRECEDENCE)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, TenantRequestFilter tenantRequestFilter) throws Exception {
+        http
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                // In dev mode, allow all requests (no JWT required)
+                .requestMatchers("/**").permitAll())
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+
+        tenantRequestFilter.setExcludePatterns(java.util.List.of("/**"));
+
+        http.addFilterAfter(tenantRequestFilter, BearerTokenAuthenticationFilter.class);
+
+        return http.build();
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, TenantRequestFilter tenantRequestFilter) throws Exception {
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+    @org.springframework.core.annotation.Order(Ordered.HIGHEST_PRECEDENCE)
+    public SecurityFilterChain productionSecurityFilterChain(HttpSecurity http, TenantRequestFilter tenantRequestFilter) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth

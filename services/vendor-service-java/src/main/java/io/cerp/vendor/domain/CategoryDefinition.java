@@ -7,16 +7,17 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "category_definitions", schema = "supply")
+@Table(name = "category_definitions", schema = "vendor")
 public class CategoryDefinition {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    private UUID id;
 
     @Column(name = "group_id")
-    private String groupId;
+    private UUID groupId;
 
     @Column(nullable = false, unique = true)
     private String code;
@@ -45,19 +46,19 @@ public class CategoryDefinition {
     @Column(name = "group_name", insertable = false, updatable = false)
     private String groupName;
 
-    public String getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(String id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
-    public String getGroupId() {
+    public UUID getGroupId() {
         return groupId;
     }
 
-    public void setGroupId(String groupId) {
+    public void setGroupId(UUID groupId) {
         this.groupId = groupId;
     }
 

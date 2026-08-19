@@ -79,6 +79,14 @@ public class MembershipController {
         throw new BadRequestException("Provide tenantId and userId for single membership, or one of tenantId/userId to list");
     }
 
+    @PatchMapping("/{id}")
+    public MembershipResponse updateScopes(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
+        Membership updated = membershipService.updateScopes(id, body);
+        return toResponse(updated);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id) {

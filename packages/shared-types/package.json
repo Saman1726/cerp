@@ -9,6 +9,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./vendor": {
+      "types": "./src/vendor.ts",
+      "default": "./src/vendor.ts"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

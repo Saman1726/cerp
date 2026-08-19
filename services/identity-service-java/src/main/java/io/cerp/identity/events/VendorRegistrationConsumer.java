@@ -99,9 +99,19 @@ public class VendorRegistrationConsumer {
         private String address;
         private String city;
         private String country;
-        private String region;
         private String tenantName;
         private List<String> categories;
+        private String region;
+        private List<String> vendorTypes;
+        private List<UUID> categoryGroupIds;
+        private List<UUID> capabilityIds;
+        private List<String> projectTypes;
+        private Integer yearsInBusiness;
+        private String description;
+        private String logoUrl;
+        private String registrationNumber;
+        private List<String> regions;
+        private OffsetDateTime timestamp;
 
         public UUID getVendorId() {
             return vendorId;
@@ -205,6 +215,86 @@ public class VendorRegistrationConsumer {
 
         public void setCategories(List<String> categories) {
             this.categories = categories;
+        }
+
+        public List<String> getVendorTypes() {
+            return vendorTypes;
+        }
+
+        public void setVendorTypes(List<String> vendorTypes) {
+            this.vendorTypes = vendorTypes;
+        }
+
+        public List<UUID> getCategoryGroupIds() {
+            return categoryGroupIds;
+        }
+
+        public void setCategoryGroupIds(List<UUID> categoryGroupIds) {
+            this.categoryGroupIds = categoryGroupIds;
+        }
+
+        public List<UUID> getCapabilityIds() {
+            return capabilityIds;
+        }
+
+        public void setCapabilityIds(List<UUID> capabilityIds) {
+            this.capabilityIds = capabilityIds;
+        }
+
+        public List<String> getProjectTypes() {
+            return projectTypes;
+        }
+
+        public void setProjectTypes(List<String> projectTypes) {
+            this.projectTypes = projectTypes;
+        }
+
+        public Integer getYearsInBusiness() {
+            return yearsInBusiness;
+        }
+
+        public void setYearsInBusiness(Integer yearsInBusiness) {
+            this.yearsInBusiness = yearsInBusiness;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public void setDescription(String description) {
+            this.description = description;
+        }
+
+        public String getLogoUrl() {
+            return logoUrl;
+        }
+
+        public void setLogoUrl(String logoUrl) {
+            this.logoUrl = logoUrl;
+        }
+
+        public String getRegistrationNumber() {
+            return registrationNumber;
+        }
+
+        public void setRegistrationNumber(String registrationNumber) {
+            this.registrationNumber = registrationNumber;
+        }
+
+        public List<String> getRegions() {
+            return regions;
+        }
+
+        public void setRegions(List<String> regions) {
+            this.regions = regions;
+        }
+
+        public OffsetDateTime getTimestamp() {
+            return timestamp;
+        }
+
+        public void setTimestamp(OffsetDateTime timestamp) {
+            this.timestamp = timestamp;
         }
     }
 }

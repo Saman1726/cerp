@@ -25,7 +25,7 @@ Vendor Service does not know anything about tenders or bids — that domain belo
 - Self-service vendor profile read/update, scoped to the caller's own tenant (`/vendors/profile`).
 - Admin-style vendor status lifecycle (`pending` → `approved`/`rejected`) via `PATCH /vendors/{id}`.
 - Vendor directory/marketplace listing and lookup, largely open (not tenant-scoped) so any tenant can discover vendors.
-- Predefined construction category taxonomy (`category_groups` / `category_definitions`), seeded via migration, exposed read-only.
+- Predefined construction category taxonomy (`category_groups` / `category_definitions`): 8 major vendor groups, ~100 subcategories, seeded via `V005__vendor_taxonomy_8_groups.sql`, exposed read-only.
 - Per-user vendor favorites (bookmarking vendors across tenants), with Kafka-based propagation of favorite create/remove events.
 - Publishing/consuming vendor domain events over Kafka (`supply.vendor.v1`, `vendor.registered.v1`, `identity.vendor.v1`).
 - Resolving user identity via `identity-service-java` when a JWT's `sub` claim is an email rather than a UUID.
@@ -33,20 +33,45 @@ Vendor Service does not know anything about tenders or bids — that domain belo
 
 ## Construction Vendor Taxonomy
 
-The service ships with a predefined construction category taxonomy (`category_groups` / `category_definitions`), seeded via Flyway migration and exposed read-only. The taxonomy is organized into **8 major vendor groups**, each with subcategories, reflecting how vendors are classified and matched to tenders.
+> **Source:** `services/vendor-service-java/construction_vendor_taxonomy.pdf` — "Construction Vendor Taxonomy & Procurement Platform Model"
+
+The service ships with a predefined construction category taxonomy (`category_groups` / `category_definitions`), seeded via Flyway migration (`V005__vendor_taxonomy_8_groups.sql`) and exposed read-only. The taxonomy is organized into **8 major vendor groups** and **100 subcategories**, reflecting how vendors are classified and matched to tenders.
 
 ### Major Vendor Groups
 
-| # | Vendor Group | Subcategories (examples) |
+| # | Vendor Group | Subcategories (100 total) |
 |---|---|---|
-| 1 | **Construction Trades** | Site Preparation & Earthworks, Demolition, Foundations, Concrete & Reinforced Concrete, Masonry, Structural Steel, Timber Structures, Roofing, Waterproofing, Facade, Windows & Glazing, Doors & Gates, Drywall & Partitions, Ceilings, Screed, Flooring, Tiling, Painting & Decorating, Landscaping |
-| 2 | **MEP / Building Services** | Electrical, Lighting, Plumbing, Sanitary, Heating, Cooling / Air Conditioning, Ventilation, Refrigeration, Fire Protection, Building Automation, Smart Building, Solar / PV, Energy Systems |
-| 3 | **Civil & Infrastructure** | Roads, Bridges, Tunnels, Utilities, Water & Sewer, Drainage, Rail, Traffic Systems, Infrastructure Construction |
-| 4 | **Materials & Products** | Concrete & Cement, Steel, Timber, Bricks & Blocks, Insulation, Drywall, Roofing Materials, Facade Materials, Glass, Tiles, Flooring, Paint & Coatings, Construction Chemicals, Fasteners & Hardware, Electrical / MEP Materials |
-| 5 | **Machinery & Equipment** | Excavators, Loaders, Cranes, Forklifts, Concrete Equipment, Compaction Equipment, Generators, Compressors, Scaffolding, Site Equipment, Equipment Rental |
-| 6 | **Professional & Engineering Services** | Architecture, Structural Engineering, Civil Engineering, MEP Engineering, Geotechnical Engineering, Surveying, Quantity Surveying, Cost Consulting, Project Management, Construction Management, Site Supervision, Inspection & Testing, Certification |
-| 7 | **Specialized Systems** | Elevators & Escalators, Access Control, CCTV & Security, Fire Alarm, Building Management Systems, Parking Systems, Acoustic Systems, Solar, EV Charging, Renewable Energy |
-| 8 | **Site & Temporary Services** | Site Containers, Temporary Electricity, Temporary Water, Site Security, Site Facilities, Waste Management, Cleaning, Logistics, Transportation, Material Handling |
+| 1 | **Construction Trades** *(19)* | Site Preparation & Earthworks, Demolition, Foundations, Concrete & Reinforced Concrete, Masonry, Structural Steel, Timber Structures, Roofing, Waterproofing, Facade, Windows & Glazing, Doors & Gates, Drywall & Partitions, Ceilings, Screed, Flooring, Tiling, Painting & Decorating, Landscaping |
+| 2 | **MEP / Building Services** *(13)* | Electrical, Lighting, Plumbing, Sanitary, Heating, Cooling / Air Conditioning, Ventilation, Refrigeration, Fire Protection, Building Automation, Smart Building, Solar / PV, Energy Systems |
+| 3 | **Civil & Infrastructure** *(9)* | Roads, Bridges, Tunnels, Utilities, Water & Sewer, Drainage, Rail, Traffic Systems, Infrastructure Construction |
+| 4 | **Materials & Products** *(15)* | Concrete & Cement, Steel, Timber, Bricks & Blocks, Insulation, Drywall, Roofing Materials, Facade Materials, Glass, Tiles, Flooring, Paint & Coatings, Construction Chemicals, Fasteners & Hardware, Electrical / MEP Materials |
+| 5 | **Machinery & Equipment** *(11)* | Excavators, Loaders, Cranes, Forklifts, Concrete Equipment, Compaction Equipment, Generators, Compressors, Scaffolding, Site Equipment, Equipment Rental |
+| 6 | **Professional & Engineering Services** *(13)* | Architecture, Structural Engineering, Civil Engineering, MEP Engineering, Geotechnical Engineering, Surveying, Quantity Surveying, Cost Consulting, Project Management, Construction Management, Site Supervision, Inspection & Testing, Certification |
+| 7 | **Specialized Systems** *(10)* | Elevators & Escalators, Access Control, CCTV & Security, Fire Alarm, Building Management Systems, Parking Systems, Acoustic Systems, Solar, EV Charging, Renewable Energy |
+| 8 | **Site & Temporary Services** *(10)* | Site Containers, Temporary Electricity, Temporary Water, Site Security, Site Facilities, Waste Management, Cleaning, Logistics, Transportation, Material Handling |
+
+### Implementation Details
+
+- **Migration:** `V005__vendor_taxonomy_8_groups.sql` (replaces the original V004 seed data)
+- **Idempotent:** Uses `ON CONFLICT DO UPDATE` — safe to re-run
+- **UUIDs:** All groups and categories use deterministic UUIDs (`a0000000-0005-...` for groups, `b0000000-0005-...` for categories)
+- **Schema:** Seeded into `supply.category_groups` (8 rows) and `supply.category_definitions` (100 rows)
+- **Read-only API:** Exposed via `GET /vendors/categories` and `GET /vendors/categories/groups`
+- **Database functions:** `get_categories_by_group(p_group_id UUID)` and `get_all_categories()` return active categories in order
+- **View:** `active_categories_view` joins categories with their group names
+
+#### Group Descriptions
+
+| # | Group | Purpose |
+|---|---|---|
+| 1 | **Construction Trades** | Site preparation, structural works, finishes, and external trades |
+| 2 | **MEP / Building Services** | Mechanical, electrical, plumbing, and building automation systems |
+| 3 | **Civil & Infrastructure** | Roads, bridges, tunnels, utilities, drainage, and rail infrastructure |
+| 4 | **Materials & Products** | Raw materials, construction products, coatings, and fasteners |
+| 5 | **Machinery & Equipment** | Construction machinery, tools, equipment rental, and site plant |
+| 6 | **Professional & Engineering Services** | Architecture, engineering, surveying, project management, and certification |
+| 7 | **Specialized Systems** | Elevators, security, fire alarm, BMS, solar, EV charging, and renewable energy |
+| 8 | **Site & Temporary Services** | Site containers, temporary services, security, waste management, and logistics |
 
 ### Recommended Data Model
 
@@ -54,7 +79,7 @@ Each vendor entity in the system captures the following dimensions:
 
 - **Company** — legal entity name and details
 - **Vendor Types** — `Contractor`, `Subcontractor`, `Manufacturer`, `Distributor`, `Supplier`, `Rental Company`, `Consultant`
-- **Categories** — which taxonomy group(s) the company operates in
+- **Categories** — which taxonomy group(s) the company operates in (from the 8-group construction taxonomy)
 - **Capabilities** — specific trades/services the company can perform
 - **Products** — materials/products the company supplies
 - **Services** — professional or project services offered
@@ -62,6 +87,16 @@ Each vendor entity in the system captures the following dimensions:
 - **Regions** — geographic areas of operation
 - **Project Types** — types of projects the vendor has experience with
 - **Experience** — track record and portfolio
+
+#### Three Taxonomy Types
+
+The data model distinguishes three separate taxonomy dimensions to support accurate tender matching:
+
+| Dimension | Example Values | Purpose |
+|---|---|---|
+| **Vendor Category** | Construction Trades, MEP, Civil & Infrastructure | What area the company operates in (from `category_groups`) |
+| **Capability / Trade** | Piling, Tiling, HVAC, Structural Engineering | What the company can actually do |
+| **Product / Material** | Concrete, Steel, Insulation, Paint | What the company can supply |
 
 ### Key Design Principle
 

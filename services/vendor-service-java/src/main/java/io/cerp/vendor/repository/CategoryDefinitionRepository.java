@@ -12,10 +12,10 @@ public interface CategoryDefinitionRepository extends JpaRepository<CategoryDefi
                             cd.icon, cd.display_order, cd.is_active,
                             cd.created_at, cd.updated_at,
                             cg.name as group_name
-                     FROM supply.category_definitions cd
-                     LEFT JOIN supply.category_groups cg ON cd.group_id = cg.id
+                     FROM vendor.category_definitions cd
+                     LEFT JOIN vendor.category_groups cg ON cd.group_id = cg.id
                      WHERE cd.is_active = TRUE
-                     ORDER BY COALESCE((SELECT display_order FROM supply.category_groups WHERE id = cd.group_id), 999), cd.display_order
+                     ORDER BY COALESCE((SELECT display_order FROM vendor.category_groups WHERE id = cd.group_id), 999), cd.display_order
                      """, nativeQuery = true)
        List<CategoryDefinition> findAllActiveCategories();
 
@@ -24,8 +24,8 @@ public interface CategoryDefinitionRepository extends JpaRepository<CategoryDefi
                             cd.icon, cd.display_order, cd.is_active,
                             cd.created_at, cd.updated_at,
                             cg.name as group_name
-                     FROM supply.category_definitions cd
-                     LEFT JOIN supply.category_groups cg ON cd.group_id = cg.id
+                     FROM vendor.category_definitions cd
+                     LEFT JOIN vendor.category_groups cg ON cd.group_id = cg.id
                      WHERE cd.is_active = TRUE AND cd.group_id = :groupId
                      ORDER BY cd.display_order
                      """, nativeQuery = true)

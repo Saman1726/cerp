@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(schema = "supply", name = "vendor_favorites", indexes = {
+@Table(schema = "vendor", name = "vendor_favorites", indexes = {
         @Index(name = "idx_vendor_favorites_user_id", columnList = "user_id"),
         @Index(name = "idx_vendor_favorites_vendor_id", columnList = "vendor_id")
 })

@@ -28,13 +28,13 @@ public class CategoryService {
 
     private CategoryResponse toResponse(CategoryDefinition entity) {
         return new CategoryResponse(
-            entity.getId(),
+            entity.getId().toString(),
             entity.getCode(),
             entity.getName(),
             entity.getDescription(),
             entity.getIcon(),
             entity.getDisplayOrder(),
-            entity.getGroupId(),
+            entity.getGroupId() != null ? entity.getGroupId().toString() : null,
             entity.getGroupName());
     }
 }

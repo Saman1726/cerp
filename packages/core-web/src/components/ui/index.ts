@@ -12,3 +12,5 @@ export * from './textarea';
 export * from './tabs';
 export * from './tree';
 export * from './detail-popup';
+export * from './checkbox';
+export * from './collapsible-section';

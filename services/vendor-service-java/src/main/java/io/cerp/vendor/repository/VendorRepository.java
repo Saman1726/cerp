@@ -18,6 +18,15 @@ public interface VendorRepository extends JpaRepository<Vendor, UUID> {
 
     List<Vendor> findByStatus(String status);
 
-    @Query(value = "SELECT * FROM supply.vendors v WHERE :category = ANY(v.categories)", nativeQuery = true)
+    @Query(value = "SELECT * FROM vendor.vendors v WHERE :category = ANY(v.categories)", nativeQuery = true)
     List<Vendor> findByCategoriesContains(@Param("category") String category);
+    
+    @Query(value = "SELECT * FROM vendor.vendors v WHERE :vendorType = ANY(v.vendor_types)", nativeQuery = true)
+    List<Vendor> findByVendorTypesContains(@Param("vendorType") String vendorType);
+    
+    @Query(value = "SELECT * FROM vendor.vendors v WHERE :capId = ANY(v.capability_ids)", nativeQuery = true)
+    List<Vendor> findByCapabilityIdsContains(@Param("capId") UUID capId);
+    
+    @Query(value = "SELECT * FROM vendor.vendors v WHERE :groupId = ANY(v.category_group_ids)", nativeQuery = true)
+    List<Vendor> findByCategoryGroupIdsContains(@Param("groupId") UUID groupId);
 }

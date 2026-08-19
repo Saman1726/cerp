@@ -17,9 +17,11 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 @Entity
-@Table(name = "catalog_items", schema = "supply", indexes = {
+@Table(name = "catalog_items", schema = "catalog", indexes = {
         @Index(name = "idx_catalog_items_tenant_id", columnList = "tenant_id"),
-        @Index(name = "idx_catalog_items_sku", columnList = "sku")
+        @Index(name = "idx_catalog_items_sku", columnList = "sku"),
+        @Index(name = "idx_catalog_items_vendor_id", columnList = "vendor_id"),
+        @Index(name = "idx_catalog_items_vendor_type", columnList = "vendor_type")
 })
 public class CatalogItem {
 
@@ -28,6 +30,12 @@ public class CatalogItem {
 
     @Column(name = "tenant_id", nullable = false)
     private UUID tenantId;
+
+    @Column(name = "vendor_id")
+    private UUID vendorId;
+
+    @Column(name = "vendor_type")
+    private String vendorType = "PRODUCT";
 
     @Column(name = "sku", nullable = false)
     private String sku;
@@ -69,6 +77,22 @@ public class CatalogItem {
 
     public void setTenantId(UUID tenantId) {
         this.tenantId = tenantId;
+    }
+
+    public UUID getVendorId() {
+        return vendorId;
+    }
+
+    public void setVendorId(UUID vendorId) {
+        this.vendorId = vendorId;
+    }
+
+    public String getVendorType() {
+        return vendorType;
+    }
+
+    public void setVendorType(String vendorType) {
+        this.vendorType = vendorType != null ? vendorType : "PRODUCT";
     }
 
     public String getSku() {

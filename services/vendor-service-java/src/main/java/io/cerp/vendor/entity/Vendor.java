@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "vendors", schema = "supply")
+@Table(name = "vendors", schema = "vendor")
 public class Vendor {
 
     @Id
@@ -48,6 +48,38 @@ public class Vendor {
     @Column(name = "country")
     private String country;
 
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "vendor_types", nullable = false, columnDefinition = "text[] default '{}'")
+    private List<String> vendorTypes = List.of();
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "category_group_ids", nullable = false, columnDefinition = "uuid[] default '{}'")
+    private List<UUID> categoryGroupIds = List.of();
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "capability_ids", nullable = false, columnDefinition = "uuid[] default '{}'")
+    private List<UUID> capabilityIds = List.of();
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "project_types", nullable = false, columnDefinition = "text[] default '{}'")
+    private List<String> projectTypes = List.of();
+
+    @Column(name = "years_in_business")
+    private Integer yearsInBusiness;
+
+    @Column(name = "description")
+    private String description;
+
+    @Column(name = "logo_url")
+    private String logoUrl;
+
+    @Column(name = "registration_number")
+    private String registrationNumber;
+
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "regions", nullable = false, columnDefinition = "text[] default '{}'")
+    private List<String> regions = List.of();
+
     @Column(name = "status", nullable = false)
     private String status = "pending";
 
@@ -55,6 +87,11 @@ public class Vendor {
     @Column(name = "tax_profile", columnDefinition = "jsonb")
     private Object taxProfile;
 
+    /**
+     * @deprecated Use {@link #categoryGroupIds} and {@link #capabilityIds} instead.
+     *             This field is retained for backward compatibility.
+     */
+    @Deprecated(forRemoval = true)
     @JdbcTypeCode(SqlTypes.ARRAY)
     @Column(name = "categories", nullable = false, columnDefinition = "text[]")
     private List<String> categories;
@@ -78,6 +115,21 @@ public class Vendor {
         }
         if (this.categories == null) {
             this.categories = List.of();
+        }
+        if (this.vendorTypes == null) {
+            this.vendorTypes = List.of();
+        }
+        if (this.categoryGroupIds == null) {
+            this.categoryGroupIds = List.of();
+        }
+        if (this.capabilityIds == null) {
+            this.capabilityIds = List.of();
+        }
+        if (this.projectTypes == null) {
+            this.projectTypes = List.of();
+        }
+        if (this.regions == null) {
+            this.regions = List.of();
         }
         this.createdAt = OffsetDateTime.now();
     }
@@ -195,10 +247,99 @@ public class Vendor {
         return this;
     }
 
+    public List<String> getVendorTypes() {
+        return vendorTypes;
+    }
+
+    public Vendor setVendorTypes(List<String> vendorTypes) {
+        this.vendorTypes = vendorTypes != null ? vendorTypes : List.of();
+        return this;
+    }
+
+    public List<UUID> getCategoryGroupIds() {
+        return categoryGroupIds;
+    }
+
+    public Vendor setCategoryGroupIds(List<UUID> categoryGroupIds) {
+        this.categoryGroupIds = categoryGroupIds != null ? categoryGroupIds : List.of();
+        return this;
+    }
+
+    public List<UUID> getCapabilityIds() {
+        return capabilityIds;
+    }
+
+    public Vendor setCapabilityIds(List<UUID> capabilityIds) {
+        this.capabilityIds = capabilityIds != null ? capabilityIds : List.of();
+        return this;
+    }
+
+    public List<String> getProjectTypes() {
+        return projectTypes;
+    }
+
+    public Vendor setProjectTypes(List<String> projectTypes) {
+        this.projectTypes = projectTypes != null ? projectTypes : List.of();
+        return this;
+    }
+
+    public Integer getYearsInBusiness() {
+        return yearsInBusiness;
+    }
+
+    public Vendor setYearsInBusiness(Integer yearsInBusiness) {
+        this.yearsInBusiness = yearsInBusiness;
+        return this;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public Vendor setDescription(String description) {
+        this.description = description;
+        return this;
+    }
+
+    public String getLogoUrl() {
+        return logoUrl;
+    }
+
+    public Vendor setLogoUrl(String logoUrl) {
+        this.logoUrl = logoUrl;
+        return this;
+    }
+
+    public String getRegistrationNumber() {
+        return registrationNumber;
+    }
+
+    public Vendor setRegistrationNumber(String registrationNumber) {
+        this.registrationNumber = registrationNumber;
+        return this;
+    }
+
+    public List<String> getRegions() {
+        return regions;
+    }
+
+    public Vendor setRegions(List<String> regions) {
+        this.regions = regions != null ? regions : List.of();
+        return this;
+    }
+
+    /**
+     * @deprecated Use {@link #getCategoryGroupIds()} or {@link #getCapabilityIds()} instead.
+     */
+    @Deprecated(forRemoval = true)
     public List<String> getCategories() {
         return categories;
     }
 
+    /**
+     * @deprecated Use {@link #setCategoryGroupIds(List)} and {@link #setCapabilityIds(List)} instead.
+     */
+    @Deprecated(forRemoval = true)
     public Vendor setCategories(List<String> categories) {
         this.categories = categories;
         return this;

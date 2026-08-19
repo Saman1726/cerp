@@ -15,7 +15,6 @@ import type {
   WorkflowTemplate,
   WorkflowTemplateStep,
   WorkflowResponse,
-  WorkflowTemplateResponse,
   WorkflowStatus,
   WorkflowStepStatus,
   WorkflowStepType,
@@ -193,7 +192,6 @@ export default function SubProjectDetailClient({
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowSteps, setWorkflowSteps] = useState<Record<string, WorkflowInstanceStep[]>>({});
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
-  const [templateDetail, setTemplateDetail] = useState<WorkflowTemplateResponse | null>(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [workflowLoading, setWorkflowLoading] = useState(false);
   const [createWorkflowModalOpen, setCreateWorkflowModalOpen] = useState(false);
@@ -285,17 +283,6 @@ export default function SubProjectDetailClient({
       // Silently fail — templates are optional
     } finally {
       setTemplatesLoading(false);
-    }
-  }, []);
-
-  const fetchTemplateDetail = useCallback(async (templateCode: string) => {
-    try {
-      const res = await fetch(`/api/workflows/templates/${templateCode}`);
-      if (!res.ok) throw new Error('Failed to fetch template detail');
-      const data: WorkflowTemplateResponse = await res.json();
-      setTemplateDetail(data);
-    } catch {
-      alert('Failed to load template details');
     }
   }, []);
 

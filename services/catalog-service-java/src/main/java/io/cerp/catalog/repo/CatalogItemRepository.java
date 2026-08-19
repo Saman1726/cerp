@@ -18,6 +18,10 @@ public interface CatalogItemRepository extends JpaRepository<CatalogItem, UUID> 
 
     Optional<CatalogItem> findBySkuAndTenantId(String sku, UUID tenantId);
 
+    List<CatalogItem> findByVendorId(UUID vendorId);
+
+    List<CatalogItem> findByVendorIdAndVendorType(UUID vendorId, String vendorType);
+
     @Query(value = """
             select ci.*
             from supply.catalog_items ci

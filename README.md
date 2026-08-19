@@ -1,5 +1,7 @@
 # cerp
 
+'pnpm turbo run lint typecheck build'
+
 ERP SaaS for the Properties & Construction industry. Multi-tenant, built to run in Kubernetes.
 
 Migration note: Backend services now default to Java (Spring Boot). The former Node.js backends have been removed from the repository.

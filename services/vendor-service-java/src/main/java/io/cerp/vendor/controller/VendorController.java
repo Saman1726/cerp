@@ -1,6 +1,8 @@
 package io.cerp.vendor.controller;
 
+import io.cerp.vendor.dto.CategoryGroupResponse;
 import io.cerp.vendor.entity.Vendor;
+import io.cerp.vendor.service.CategoryService;
 import io.cerp.vendor.service.VendorService;
 import io.cerp.vendor.security.TenantContext;
 import io.cerp.vendor.security.UserContext;
@@ -11,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +25,12 @@ import java.util.UUID;
 public class VendorController {
 
     private final VendorService vendorService;
+    private final CategoryService categoryService;
 
     @Autowired
-    public VendorController(VendorService vendorService) {
+    public VendorController(VendorService vendorService, CategoryService categoryService) {
         this.vendorService = vendorService;
+        this.categoryService = categoryService;
     }
 
     public record CreateVendorRequest(
@@ -34,14 +40,24 @@ public class VendorController {
             String contactName,
             String phone,
             String website,
-            List<String> categories,
+            List<String> vendorTypes,
+            List<UUID> categoryGroupIds,
+            List<UUID> capabilityIds,
+            List<String> projectTypes,
+            Integer yearsInBusiness,
+            String description,
+            String logoUrl,
+            String registrationNumber,
+            List<String> regions,
             String address,
             String city,
             String country,
             String region,
             String tenantName,
             UUID tenantId,
-            UUID userId) {
+            UUID userId,
+            // Deprecated — use capabilityIds instead
+            @Deprecated List<String> categories) {
     }
 
     public record VendorResponse(
@@ -55,8 +71,17 @@ public class VendorController {
             String address,
             String city,
             String country,
+            List<String> vendorTypes,
+            List<UUID> categoryGroupIds,
+            List<UUID> capabilityIds,
+            List<String> projectTypes,
+            Integer yearsInBusiness,
+            String description,
+            String logoUrl,
+            String registrationNumber,
+            List<String> regions,
             String status,
-            List<String> categories,
+            @Deprecated List<String> categories,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt) {
     }
@@ -73,6 +98,15 @@ public class VendorController {
             v.getAddress(),
             v.getCity(),
             v.getCountry(),
+            v.getVendorTypes(),
+            v.getCategoryGroupIds(),
+            v.getCapabilityIds(),
+            v.getProjectTypes(),
+            v.getYearsInBusiness(),
+            v.getDescription(),
+            v.getLogoUrl(),
+            v.getRegistrationNumber(),
+            v.getRegions(),
             v.getStatus(),
             v.getCategories(),
             v.getCreatedAt(),
@@ -96,7 +130,16 @@ public class VendorController {
             body.tenantName(),
             body.tenantId(),
             body.userId(),
-            body.categories());
+            body.vendorTypes() != null ? body.vendorTypes() : List.of(),
+            body.categoryGroupIds() != null ? body.categoryGroupIds() : List.of(),
+            body.capabilityIds() != null ? body.capabilityIds() : List.of(),
+            body.projectTypes() != null ? body.projectTypes() : List.of(),
+            body.yearsInBusiness(),
+            body.description(),
+            body.logoUrl(),
+            body.registrationNumber(),
+            body.regions() != null ? body.regions() : List.of(),
+            body.categories() != null ? body.categories() : List.of());
         return toResponse(vendor);
     }
 
@@ -131,6 +174,43 @@ public class VendorController {
     public VendorResponse updateStatus(@PathVariable UUID id, @RequestBody UpdateStatusRequest request) {
         Vendor vendor = vendorService.updateStatus(id, request.status());
         return toResponse(vendor);
+    }
+
+    // ── Category Groups ──────────────────────────────────────────────
+
+    @GetMapping("/groups")
+    public List<CategoryGroupResponse> getGroups() {
+        return vendorService.findAllGroupsWithActiveCounts();
+    }
+
+    // ── Vendor Certifications ────────────────────────────────────────
+
+    @PostMapping("/{vendorId}/certifications")
+    public io.cerp.vendor.dto.VendorCertificationResponse addCertification(
+            @PathVariable UUID vendorId,
+            @Valid @RequestBody io.cerp.vendor.dto.CreateVendorCertificationRequest req) {
+        return vendorService.addCertification(vendorId, req);
+    }
+
+    @DeleteMapping("/{vendorId}/certifications/{certId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeCertification(@PathVariable UUID vendorId, @PathVariable UUID certId) {
+        vendorService.removeCertification(vendorId, certId);
+    }
+
+    // ── Vendor Projects ──────────────────────────────────────────────
+
+    @PostMapping("/{vendorId}/projects")
+    public io.cerp.vendor.dto.VendorProjectResponse addProject(
+            @PathVariable UUID vendorId,
+            @Valid @RequestBody io.cerp.vendor.dto.CreateVendorProjectRequest req) {
+        return vendorService.addProject(vendorId, req);
+    }
+
+    @DeleteMapping("/{vendorId}/projects/{projectId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeProject(@PathVariable UUID vendorId, @PathVariable UUID projectId) {
+        vendorService.removeProject(vendorId, projectId);
     }
 
     /**
@@ -215,6 +295,24 @@ public class VendorController {
             vendor.setCity(request.city());
         if (request.countryCode() != null)
             vendor.setCountry(request.countryCode());
+        if (request.vendorTypes() != null)
+            vendor.setVendorTypes(request.vendorTypes());
+        if (request.categoryGroupIds() != null)
+            vendor.setCategoryGroupIds(request.categoryGroupIds());
+        if (request.capabilityIds() != null)
+            vendor.setCapabilityIds(request.capabilityIds());
+        if (request.projectTypes() != null)
+            vendor.setProjectTypes(request.projectTypes());
+        if (request.yearsInBusiness() != null)
+            vendor.setYearsInBusiness(request.yearsInBusiness());
+        if (request.description() != null)
+            vendor.setDescription(request.description());
+        if (request.logoUrl() != null)
+            vendor.setLogoUrl(request.logoUrl());
+        if (request.registrationNumber() != null)
+            vendor.setRegistrationNumber(request.registrationNumber());
+        if (request.regions() != null)
+            vendor.setRegions(request.regions());
 
         vendor = vendorService.updateStatus(vendor.getId(), vendor.getStatus());
         return ResponseEntity.ok(toProfileResponse(vendor));
@@ -235,6 +333,15 @@ public class VendorController {
             null, // postalCode - not stored yet
             v.getCity(),
             v.getCountry(),
+            v.getVendorTypes(),
+            v.getCategoryGroupIds(),
+            v.getCapabilityIds(),
+            v.getProjectTypes(),
+            v.getYearsInBusiness(),
+            v.getDescription(),
+            v.getLogoUrl(),
+            v.getRegistrationNumber(),
+            v.getRegions(),
             v.getTaxProfile(),
             getCategoriesForProfile(v),
             v.getStatus() != null ? v.getStatus() : "pending",
@@ -258,15 +365,26 @@ public class VendorController {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getCategoriesForProfile(Vendor v) {
-        List<String> cats = v.getCategories();
-        if (cats == null || cats.isEmpty()) {
-            return List.of();
+        List<UUID> capIds = v.getCapabilityIds();
+        if (capIds == null || capIds.isEmpty()) {
+            List<String> cats = v.getCategories();
+            if (cats == null || cats.isEmpty()) {
+                return List.of();
+            }
+            return cats.stream().map(cat -> {
+                java.util.Map<String, Object> m = new java.util.HashMap<>();
+                m.put("categoryId", cat);
+                m.put("categoryName", cat);
+                m.put("categoryCode", cat);
+                return m;
+            }).toList();
         }
-        return cats.stream().map(cat -> {
+        // Resolve capability IDs to category details
+        return capIds.stream().map(capId -> {
             java.util.Map<String, Object> m = new java.util.HashMap<>();
-            m.put("categoryId", cat);
-            m.put("categoryName", cat);
-            m.put("categoryCode", cat);
+            m.put("categoryId", capId.toString());
+            m.put("categoryName", capId.toString());
+            m.put("categoryCode", capId.toString());
             return m;
         }).toList();
     }
@@ -283,7 +401,16 @@ public class VendorController {
             String postalCode,
             String city,
             String countryCode,
-            List<String> categoryIds) {
+            List<String> vendorTypes,
+            List<UUID> categoryGroupIds,
+            List<UUID> capabilityIds,
+            List<String> projectTypes,
+            Integer yearsInBusiness,
+            String description,
+            String logoUrl,
+            String registrationNumber,
+            List<String> regions,
+            @Deprecated List<String> categoryIds) {
     }
 
     public record VendorProfileResponse(
@@ -300,6 +427,15 @@ public class VendorController {
             String postalCode,
             String city,
             String countryCode,
+            List<String> vendorTypes,
+            List<UUID> categoryGroupIds,
+            List<UUID> capabilityIds,
+            List<String> projectTypes,
+            Integer yearsInBusiness,
+            String description,
+            String logoUrl,
+            String registrationNumber,
+            List<String> regions,
             Object taxProfile,
             List<Map<String, Object>> categories,
             String status,

@@ -27,6 +27,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+    schemas: vendor
+    validate-on-migrate: false
     # Use default schema "public" unless overridden
     baseline-on-migrate: true
     out-of-order: true

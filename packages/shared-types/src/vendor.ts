@@ -59,6 +59,7 @@ export interface VendorCategoryGroup {
   description: string | null;
   displayOrder: number;
   isActive: boolean;
+  activeCategoryCount: number;
   categories: VendorCategory[];
 }
 
@@ -68,18 +69,74 @@ export type VendorStatus = 'pending' | 'approved' | 'rejected';
 
 export interface Vendor {
   id: string;
-  tenantId: string;
+  tenantId: string | null;
+  userId: string | null;
   legalName: string;
+  contactName: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  vendorTypes: string[];
+  categoryGroupIds: string[];
+  capabilityIds: string[];
+  projectTypes: string[];
+  yearsInBusiness: number | null;
+  description: string | null;
+  logoUrl: string | null;
+  registrationNumber: string | null;
+  regions: string[];
   status: VendorStatus;
-  taxProfile?: Record<string, unknown>;
-  /** @deprecated Use categoriesLink instead. Kept for backward compatibility. */
-  categories: string[];
+  /** @deprecated Use capabilityIds instead. Kept for backward compatibility. */
+  categories: string[] | null;
   categoriesLink: VendorCategoryLink[];
-  city?: string;
   ratingAvg?: number;
   isFavorite?: boolean;
   createdAt: string;
   updatedAt?: string;
+}
+
+export type VendorType = 'CONTRACTOR' | 'SUBCONTRACTOR' | 'MANUFACTURER' | 'DISTRIBUTOR' | 'SUPPLIER' | 'CONSULTANT' | 'SERVICE_PROVIDER';
+
+export const VENDOR_TYPES: VendorType[] = [
+  'CONTRACTOR', 'SUBCONTRACTOR', 'MANUFACTURER', 'DISTRIBUTOR',
+  'SUPPLIER', 'CONSULTANT', 'SERVICE_PROVIDER',
+];
+
+export type VendorProjectType = 'INFRASTRUCTURE' | 'BUILDING' | 'ROAD' | 'BRIDGE' | 'COMMERCIAL' | 'RESIDENTIAL' | 'OTHER';
+
+export const VENDOR_PROJECT_TYPES: VendorProjectType[] = [
+  'INFRASTRUCTURE', 'BUILDING', 'ROAD', 'BRIDGE',
+  'COMMERCIAL', 'RESIDENTIAL', 'OTHER',
+];
+
+export interface VendorCertification {
+  id: string;
+  vendorId: string;
+  name: string;
+  issuingBody: string | null;
+  issueDate: string | null;
+  expiryDate: string | null;
+  certificateNumber: string | null;
+  documentUrl: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface VendorProject {
+  id: string;
+  vendorId: string;
+  name: string;
+  description: string | null;
+  projectType: VendorProjectType | null;
+  startDate: string | null;
+  endDate: string | null;
+  estimatedValue: number | null;
+  imageUrl: string | null;
+  createdAt: string;
+  updatedAt: string | null;
 }
 
 export interface VendorCategoryLink {
@@ -109,8 +166,8 @@ export type CategoryGroupResponse = {
   name: string;
   description: string | null;
   displayOrder: number;
-  isActive: boolean;
-  categories: VendorCategory[];
+  active: boolean;
+  activeCategoryCount: number;
 };
 
 export interface CreateCategoryGroupRequest {
@@ -406,6 +463,15 @@ export const updateVendorProfileSchema = z.object({
   postalCode: z.string().max(20).optional(),
   city: z.string().max(100).optional(),
   countryCode: z.string().max(10).optional(),
+  vendorTypes: z.array(z.string()).optional(),
+  categoryGroupIds: z.array(z.string().uuid()).optional(),
+  capabilityIds: z.array(z.string().uuid()).optional(),
+  projectTypes: z.array(z.string()).optional(),
+  yearsInBusiness: z.number().int().positive().optional(),
+  description: z.string().max(2000).optional(),
+  logoUrl: z.string().url().optional(),
+  registrationNumber: z.string().max(100).optional(),
+  regions: z.array(z.string()).optional(),
   taxProfile: z.record(z.string(), z.unknown()).optional(),
   categoryIds: z.array(z.string().uuid()).optional(),
   avatarUrl: z.string().url().optional(),

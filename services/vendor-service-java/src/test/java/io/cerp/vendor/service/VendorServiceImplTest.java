@@ -5,7 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import io.cerp.vendor.entity.Vendor;
+import io.cerp.vendor.repository.VendorCertificationRepository;
+import io.cerp.vendor.repository.VendorProjectRepository;
 import io.cerp.vendor.repository.VendorRepository;
+import io.cerp.vendor.repository.CategoryGroupRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,13 +29,23 @@ class VendorServiceImplTest {
     VendorRepository vendorRepository;
 
     @Mock
+    VendorCertificationRepository vendorCertificationRepository;
+
+    @Mock
+    VendorProjectRepository vendorProjectRepository;
+
+    @Mock
+    CategoryGroupRepository categoryGroupRepository;
+
+    @Mock
     KafkaTemplate<String, Object> kafkaTemplate;
 
     private VendorServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new VendorServiceImpl(vendorRepository, kafkaTemplate, "test-topic");
+        service = new VendorServiceImpl(vendorRepository, vendorCertificationRepository,
+            vendorProjectRepository, categoryGroupRepository, kafkaTemplate, "test-topic");
     }
 
     @AfterEach
@@ -75,7 +88,8 @@ class VendorServiceImplTest {
 
         Vendor vendor = service.register("vendor@example.com", "password123",
             "Acme Suppliers", "John", "555-1234", "https://acme.com",
-            "123 Main St", "Berlin", "DE", "BE", "Acme Tenant", List.of("electrical"));
+            "123 Main St", "Berlin", "DE", "BE", "Acme Tenant", List.of("electrical"),
+            List.of(), List.of(), List.of(), null, null, null, null, List.of());
 
         assertNotNull(vendor.getId());
         assertEquals("Acme Suppliers", vendor.getLegalName());
@@ -97,7 +111,8 @@ class VendorServiceImplTest {
 
         assertDoesNotThrow(() -> service.register("vendor@example.com", "password123",
             "Acme Suppliers", "John", "555-1234", "https://acme.com",
-            "123 Main St", "Berlin", "DE", "BE", "Acme Tenant", List.of("electrical")));
+            "123 Main St", "Berlin", "DE", "BE", "Acme Tenant", List.of("electrical"),
+            List.of(), List.of(), List.of(), null, null, null, null, List.of()));
 
         verify(vendorRepository).save(any(Vendor.class));
     }
@@ -244,7 +259,8 @@ class VendorServiceImplTest {
 
         Vendor vendor = service.register("vendor@example.com", "password123",
             "Acme Suppliers", null, null, null,
-            null, null, null, null, null, null);
+            null, null, null, null, null, null,
+            List.of(), List.of(), List.of(), null, null, null, null, List.of());
 
         assertNotNull(vendor.getId());
         assertEquals(List.of(), vendor.getCategories());

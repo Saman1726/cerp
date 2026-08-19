@@ -72,4 +72,16 @@ public class MembershipService {
             membershipRepository.delete(m);
         });
     }
+
+    public Membership updateScopes(UUID id, Map<String, Object> updates) {
+        Membership m = membershipRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("Membership not found: " + id));
+        Map<String, Object> currentScopes = m.getScopes();
+        if (currentScopes == null) {
+            currentScopes = new java.util.HashMap<>();
+        }
+        currentScopes.putAll(updates);
+        m.setScopes(currentScopes);
+        return membershipRepository.save(m);
+    }
 }

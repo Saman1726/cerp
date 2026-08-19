@@ -36,7 +36,7 @@ public class SecurityConfig {
         // /users/profile is intentionally NOT listed here - it falls through to
         // defaultFilterChain (Order 3), which requires a validated Keycloak JWT.
         http
-            .securityMatcher("/tenants", "/users", "/memberships", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription",
+            .securityMatcher("/tenants", "/users", "/memberships", "/memberships/*", "/subscriptions", "/auth/login", "/auth/*", "/api/v1/users/*/subscription",
                 "/api/v1/users/*/can-write-project", "/api/v1/users/*/can-read-project", "/api/v1/users/*/can-delete-project",
                 "/api/v1/users/*/accessible-projects", "/api/v1/users/*/is-tenant-admin-or-manager")
             .csrf(csrf -> csrf.disable())
@@ -64,6 +64,9 @@ public class SecurityConfig {
                 // GET /memberships?tenantId=... called by internal services (e.g. workflow-service)
                 // to resolve vendor notification recipients without a user JWT
                 .requestMatchers(HttpMethod.GET, "/memberships").permitAll()
+                // PATCH /memberships/{id} called by registration flows to update membership scopes
+                // with vendor IDs after vendor creation - internal service-to-service call
+                .requestMatchers(HttpMethod.PATCH, "/memberships/**").permitAll()
                 // called by project-service (and, later, workflow-service) to resolve a
                 // user's plan limits for quota enforcement - internal service-to-service call
                 .requestMatchers(HttpMethod.GET, "/api/v1/users/*/subscription").permitAll()

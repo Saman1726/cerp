@@ -39,6 +39,7 @@ export function CategorySelector({
             description: null,
             displayOrder: 0,
             isActive: true,
+            activeCategoryCount: 0,
             categories: [],
           };
           groups[cat.groupId] = group;

@@ -1,5 +1,10 @@
 package io.cerp.vendor.service;
 
+import io.cerp.vendor.dto.CategoryGroupResponse;
+import io.cerp.vendor.dto.CreateVendorCertificationRequest;
+import io.cerp.vendor.dto.CreateVendorProjectRequest;
+import io.cerp.vendor.dto.VendorCertificationResponse;
+import io.cerp.vendor.dto.VendorProjectResponse;
 import io.cerp.vendor.entity.Vendor;
 import java.util.List;
 import java.util.Optional;
@@ -36,17 +41,39 @@ public interface VendorService {
          */
         Vendor register(String email, String password, String legalName, String contactName,
                         String phone, String website, String address, String city,
-                        String country, String region, String tenantName, List<String> categories);
+                        String country, String region, String tenantName, List<String> vendorTypes,
+                        List<UUID> categoryGroupIds, List<UUID> capabilityIds,
+                        List<String> projectTypes, Integer yearsInBusiness,
+                        String description, String logoUrl, String registrationNumber,
+                        List<String> regions);
 
         /**
          * Register a new external vendor with explicit tenantId and userId.
          */
         Vendor register(String email, String password, String legalName, String contactName,
                         String phone, String website, String address, String city,
-                        String country, String region, String tenantName, UUID tenantId, UUID userId, List<String> categories);
+                        String country, String region, String tenantName, UUID tenantId, UUID userId,
+                        List<String> vendorTypes, List<UUID> categoryGroupIds,
+                        List<UUID> capabilityIds, List<String> projectTypes,
+                        Integer yearsInBusiness, String description, String logoUrl,
+                        String registrationNumber, List<String> regions,
+                        List<String> categories);
 
         /**
          * After identity creation, link the vendor record with tenantId and userId. Called by VendorIdentityCreatedConsumer when identity-service completes.
          */
         Vendor linkIdentity(UUID vendorId, UUID tenantId, UUID userId);
+
+        // Category Groups
+        List<CategoryGroupResponse> findAllGroupsWithActiveCounts();
+
+        // Certifications
+        VendorCertificationResponse addCertification(UUID vendorId, CreateVendorCertificationRequest req);
+
+        void removeCertification(UUID vendorId, UUID certId);
+
+        // Projects
+        VendorProjectResponse addProject(UUID vendorId, CreateVendorProjectRequest req);
+
+        void removeProject(UUID vendorId, UUID projectId);
 }

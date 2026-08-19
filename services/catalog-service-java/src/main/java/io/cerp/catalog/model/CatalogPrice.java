@@ -14,7 +14,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 @Entity
-@Table(name = "catalog_prices", schema = "supply", indexes = {
+@Table(name = "catalog_prices", schema = "catalog", indexes = {
         @Index(name = "idx_catalog_prices_item_id", columnList = "item_id"),
         @Index(name = "idx_catalog_prices_item_id_valid_from", columnList = "item_id, valid_from")
 })
