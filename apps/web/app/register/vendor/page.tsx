@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ArrowLeft, Check, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@cerp/core-web/components/ui';
 import { Button } from '@cerp/core-web/components/ui/button';
@@ -12,6 +12,8 @@ import { Label } from '@cerp/core-web/components/ui/label';
 import { Textarea } from '@cerp/core-web/components/ui/textarea';
 import { Checkbox } from '@cerp/core-web/components/ui/checkbox';
 import { CollapsibleSection } from '@cerp/core-web/components/ui/collapsible-section';
+import { CategorySelector } from '@cerp/core-web/vendors';
+import type { VendorCategory } from '@cerp/shared-types/vendor';
 import {
   VENDOR_TYPES,
   VENDOR_PROJECT_TYPES,
@@ -40,7 +42,11 @@ interface FormData {
   country: string;
   regions: string[];
 
-  // Step 3: Vendor Details
+  // Step 3: Categories & Capabilities
+  categoryGroupIds: string[];
+  capabilityIds: string[];
+
+  // Step 4: Vendor Details
   vendorTypes: string[];
   projectTypes: VendorProjectType[];
   yearsInBusiness: string;
@@ -65,13 +71,16 @@ const initialFormData: FormData = {
   vendorTypes: [],
   projectTypes: [] as VendorProjectType[],
   yearsInBusiness: '',
+  categoryGroupIds: [],
+  capabilityIds: [],
 };
 
 const STEPS = [
   { id: 0, title: 'Account', description: 'Login credentials' },
   { id: 1, title: 'Company', description: 'Business details' },
-  { id: 2, title: 'Vendor Profile', description: 'Categories & types' },
-  { id: 3, title: 'Review', description: 'Confirm & submit' },
+  { id: 2, title: 'Categories', description: 'Select your capabilities' },
+  { id: 3, title: 'Vendor Profile', description: 'Types & experience' },
+  { id: 4, title: 'Review', description: 'Confirm & submit' },
 ];
 
 const REGIONS = ['Central', 'Eastern', 'Western', 'Northern', 'Southern', 'Coastal'];
@@ -84,6 +93,28 @@ export default function VendorRegisterPage() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<FormData>(initialFormData);
+
+  // ── Category data ──
+  const [categories, setCategories] = useState<VendorCategory[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  // Fetch available categories on mount
+  useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await fetch('/api/vendors/categories');
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data);
+        }
+      } catch {
+        console.error('Failed to fetch categories');
+      } finally {
+        setCategoriesLoading(false);
+      }
+    }
+    fetchCategories();
+  }, []);
 
   const updateField = useCallback(
     (field: keyof FormData, value: string) => {
@@ -116,6 +147,19 @@ export default function VendorRegisterPage() {
     setError(null);
   }, []);
 
+  const handleCategoriesChange = useCallback((selectedCategoryIds: string[]) => {
+    const selectedCategories = categories.filter((c) => selectedCategoryIds.includes(c.id));
+    const categoryGroupIds = Array.from(
+      new Set(selectedCategories.map((c) => c.groupId).filter((g) => g != null)) as unknown as string[]
+    );
+    setFormData((prev) => ({
+      ...prev,
+      categoryGroupIds,
+      capabilityIds: selectedCategoryIds,
+    }));
+    setError(null);
+  }, [categories]);
+
   const nextStep = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
   const prevStep = () => setStep((s) => Math.max(s - 1, 0));
 
@@ -134,10 +178,12 @@ export default function VendorRegisterPage() {
       case 1: // Company
         if (!formData.legalName.trim()) { setError('Legal company name is required'); return false; }
         return true;
-      case 2: // Vendor Details
+      case 2: // Categories (optional, no validation required)
+        return true;
+      case 3: // Vendor Profile
         if (formData.vendorTypes.length === 0) { setError('Select at least one vendor type'); return false; }
         return true;
-      case 3: // Review
+      case 4: // Review
         return true;
       default:
         return true;
@@ -165,6 +211,8 @@ export default function VendorRegisterPage() {
             phone: formData.phone || undefined,
             website: formData.website || undefined,
             vendorTypes: formData.vendorTypes,
+            categoryGroupIds: formData.categoryGroupIds.length > 0 ? formData.categoryGroupIds : undefined,
+            capabilityIds: formData.capabilityIds.length > 0 ? formData.capabilityIds : undefined,
             projectTypes: formData.projectTypes,
             registrationNumber: formData.registrationNumber || undefined,
             description: formData.description || undefined,
@@ -284,6 +332,29 @@ export default function VendorRegisterPage() {
     </div>
   );
 
+  const renderCategoriesStep = () => (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Select the categories that represent your company's capabilities and areas of expertise.
+      </p>
+      {categoriesLoading ? (
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          Loading categories...
+        </div>
+      ) : categories.length === 0 ? (
+        <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+          No categories available.
+        </div>
+      ) : (
+        <CategorySelector
+          categories={categories}
+          selectedCategoryIds={formData.capabilityIds}
+          onChange={handleCategoriesChange}
+        />
+      )}
+    </div>
+  );
+
   const renderVendorDetailsStep = () => (
     <div className="space-y-5">
       <div className="grid gap-2">
@@ -340,6 +411,30 @@ export default function VendorRegisterPage() {
           </dd>
         </dl>
       </CollapsibleSection>
+      <CollapsibleSection title="Categories & Capabilities">
+        {formData.capabilityIds.length > 0 ? (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+            <dt className="text-muted-foreground">Selected:</dt>
+            <dd className="col-span-1 text-wrap">
+              {categories
+                .filter((c) => formData.capabilityIds.includes(c.id))
+                .map((c) => c.name)
+                .join(', ')}
+            </dd>
+            <dt className="text-muted-foreground">Groups:</dt>
+            <dd className="col-span-1 text-wrap">
+              {[...new Set(
+                categories
+                  .filter((c) => formData.capabilityIds.includes(c.id))
+                  .map((c) => c.groupName)
+                  .filter(Boolean)
+              )].join(', ') || '—'}
+            </dd>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">No categories selected</p>
+        )}
+      </CollapsibleSection>
       <CollapsibleSection title="Vendor Profile">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
           <dt className="text-muted-foreground">Types:</dt>
@@ -354,7 +449,7 @@ export default function VendorRegisterPage() {
     </div>
   );
 
-  const stepContent = [renderAccountStep, renderCompanyStep, renderVendorDetailsStep, renderReviewStep][step]!();
+  const stepContent = [renderAccountStep, renderCompanyStep, renderCategoriesStep, renderVendorDetailsStep, renderReviewStep][step]!();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">

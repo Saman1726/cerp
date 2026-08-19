@@ -173,7 +173,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         categoryGroupIds: vendorData.categoryGroupIds || [],
         capabilityIds: vendorData.capabilityIds || [],
         projectTypes: vendorData.projectTypes || [],
-        yearsInBusiness: vendorData.yearsInBusiness,
+        yearsInBusiness: vendorData.yearsInBusiness ? Number(vendorData.yearsInBusiness) : null,
         description: vendorData.description,
         logoUrl: vendorData.logoUrl,
         registrationNumber: vendorData.registrationNumber,

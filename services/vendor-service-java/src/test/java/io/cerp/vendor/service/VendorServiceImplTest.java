@@ -84,7 +84,7 @@ class VendorServiceImplTest {
             return v;
         });
         doReturn(java.util.concurrent.CompletableFuture.completedFuture(null))
-            .when(kafkaTemplate).send(any(Message.class));
+            .when(kafkaTemplate).send(any(String.class), any(Message.class));
 
         Vendor vendor = service.register("vendor@example.com", "password123",
             "Acme Suppliers", "John", "555-1234", "https://acme.com",
@@ -97,7 +97,7 @@ class VendorServiceImplTest {
         assertNull(vendor.getUserId());
         assertEquals("pending", vendor.getStatus());
         verify(vendorRepository).save(any(Vendor.class));
-        verify(kafkaTemplate).send(any(Message.class));
+        verify(kafkaTemplate).send(any(String.class), any(Message.class));
     }
 
     @Test
@@ -107,7 +107,7 @@ class VendorServiceImplTest {
             v.setId(UUID.randomUUID());
             return v;
         });
-        doThrow(new RuntimeException("kafka error")).when(kafkaTemplate).send(any(Message.class));
+        doThrow(new RuntimeException("kafka error")).when(kafkaTemplate).send(any(String.class), any(Message.class));
 
         assertDoesNotThrow(() -> service.register("vendor@example.com", "password123",
             "Acme Suppliers", "John", "555-1234", "https://acme.com",
@@ -255,7 +255,7 @@ class VendorServiceImplTest {
             return v;
         });
         doReturn(java.util.concurrent.CompletableFuture.completedFuture(null))
-            .when(kafkaTemplate).send(any(Message.class));
+            .when(kafkaTemplate).send(any(String.class), any(Message.class));
 
         Vendor vendor = service.register("vendor@example.com", "password123",
             "Acme Suppliers", null, null, null,
