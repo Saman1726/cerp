@@ -125,8 +125,13 @@ public class VendorServiceImpl implements VendorService {
         event.setTimestamp(OffsetDateTime.now());
         Message<VendorRegistrationEvent> message = MessageBuilder.withPayload(event)
                 .setHeader("vendorId", vendor.getId().toString()).build();
-        kafkaTemplate.send(vendorRegistrationTopic, message);
-        log.info("Vendor registration event published for vendor: {}", vendor.getId());
+        try {
+            kafkaTemplate.send(vendorRegistrationTopic, message);
+            log.info("Vendor registration event published for vendor: {}", vendor.getId());
+        } catch (Exception e) {
+            log.warn("Failed to publish vendor registration event for vendor: {}, error: {}",
+                    vendor.getId(), e.getMessage());
+        }
         return vendor;
     }
 

@@ -335,7 +335,7 @@ export default function VendorRegisterPage() {
   const renderCategoriesStep = () => (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Select the categories that represent your company's capabilities and areas of expertise.
+        Select the categories that represent your company&apos;s capabilities and areas of expertise.
       </p>
       {categoriesLoading ? (
         <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">

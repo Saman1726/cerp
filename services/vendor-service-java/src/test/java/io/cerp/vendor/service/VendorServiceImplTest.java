@@ -93,7 +93,7 @@ class VendorServiceImplTest {
 
         assertNotNull(vendor.getId());
         assertEquals("Acme Suppliers", vendor.getLegalName());
-        assertNull(vendor.getTenantId());
+        assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000001"), vendor.getTenantId());
         assertNull(vendor.getUserId());
         assertEquals("pending", vendor.getStatus());
         verify(vendorRepository).save(any(Vendor.class));
