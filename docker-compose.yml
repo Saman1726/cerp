@@ -134,6 +134,7 @@ services:
       OAUTH_ISSUER_URI: http://keycloak:8081/realms/cerp
       IDENTITY_SERVICE_URL: http://identity-service-java:8090
       WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
+      DOCUMENT_SERVICE_URL: http://document-service-java:8092
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5006"
@@ -239,8 +240,30 @@ services:
       # phone on the same Wi-Fi), not Docker's internal network. Update this
       # if the laptop's LAN IP changes.
       MINIO_PUBLIC_ENDPOINT: http://192.168.8.213:9000
+      JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5008"
     ports:
       - '8092:8092'
+      - '5008:5008'
+
+  # IFC Renderer Service — parse IFC files, generate 2D previews, 3D exports, Blender renders
+  # Usage: docker compose --profile bim up -d
+  ifc-renderer-python:
+    build:
+      context: services/ifc-renderer-python
+      dockerfile: Dockerfile
+    container_name: cerp-ifc-renderer-python
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8093
+      WORKERS: 2
+      DOCUMENT_SERVICE_URL: http://document-service-java:8092
+      MAX_UPLOAD_SIZE_MB: 500
+      BLENDER_PATH: /usr/bin/blender
+    ports:
+      - '8093:8093'
+    profiles:
+      - bim
+      - legacy
 
   web:
     build:
@@ -257,6 +280,7 @@ services:
       - vendor-service-java
       - notification-service-java
       - document-service-java
+      - ifc-renderer-python
     environment:
       NODE_ENV: development
       PORT: 3001
@@ -274,6 +298,7 @@ services:
       VENDOR_SERVICE_URL: http://vendor-service-java:8085
       NOTIFICATION_SERVICE_URL: http://notification-service-java:8091
       DOCUMENT_SERVICE_URL: http://document-service-java:8092
+      IFC_RENDERER_URL: http://ifc-renderer-python:8093
       # These get embedded in the browser bundle, so they must be reachable
       # from whatever device is actually running the browser (this laptop or
       # a phone on the same Wi-Fi) - Docker-internal hostnames mean nothing
@@ -286,6 +311,7 @@ services:
       NEXT_PUBLIC_IDENTITY_SERVICE_URL: http://192.168.8.213:8090
       NEXT_PUBLIC_VENDOR_SERVICE_URL: http://192.168.8.213:8085
       NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: http://192.168.8.213:8091
+      NEXT_PUBLIC_IFC_RENDERER_URL: http://192.168.8.213:8093
     ports:
       - '3001:3001'
     profiles:

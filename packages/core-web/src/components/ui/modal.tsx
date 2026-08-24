@@ -7,11 +7,19 @@ export interface ModalProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   children: React.ReactNode;
 }
 
-export function Modal({ open, onClose, title, className, children }: ModalProps) {
+const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-md',
+  lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
+};
+
+export function Modal({ open, onClose, title, size, className, children }: ModalProps) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -38,6 +46,7 @@ export function Modal({ open, onClose, title, className, children }: ModalProps)
       <div
         className={cn(
           'w-full max-w-lg rounded-md border border-border bg-background shadow-lg',
+          size ? sizeClasses[size] : '',
           'animate-in fade-in-0 zoom-in-95',
           className,
         )}

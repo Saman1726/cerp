@@ -101,7 +101,6 @@ public class MaterialServiceImpl implements MaterialServiceService {
         eventsPublisher.publish("material_service.updated", toEventPayload(saved));
 
         return toMaterialServiceResponse(saved, null);
-return toMaterialServiceResponse(saved, null);
     }
 
     @Override
@@ -132,10 +131,6 @@ return toMaterialServiceResponse(saved, null);
         UUID tenantId = requireTenant();
         List<MaterialService> entities = materialServiceRepository.findByTypeAndTenantId(type, tenantId);
         return entities.stream()
-                .map(entity -> toMaterialServiceResponse(entity, getLatestPrice(entity.getId())))
-                .toList();
-    }
-return entities.stream()
                 .map(entity -> toMaterialServiceResponse(entity, getLatestPrice(entity.getId())))
                 .toList();
     }
@@ -178,8 +173,6 @@ return entities.stream()
         eventsPublisher.publish("price_table.created", toPriceEventPayload(saved));
 
         return toPriceTableResponse(saved);
-    }
-return toPriceTableResponse(saved);
     }
 
     @Override
@@ -231,8 +224,6 @@ return toPriceTableResponse(saved);
 
         return toPriceTableResponse(entity);
     }
-return toPriceTableResponse(entity);
-    }
 
     @Override
     @Transactional(readOnly = true)
@@ -248,8 +239,6 @@ return toPriceTableResponse(entity);
         UUID tenantId = requireTenant();
         List<PriceTable> entities = priceTableRepository.findByMaterialServiceIdAndTenantId(materialServiceId, tenantId);
         return entities.stream().map(this::toPriceTableResponse).toList();
-    }
-return entities.stream().map(this::toPriceTableResponse).toList();
     }
 
     @Override
@@ -292,8 +281,6 @@ return entities.stream().map(this::toPriceTableResponse).toList();
         // Fall back to most recent price
         return priceTableRepository.findFirstByMaterialServiceIdOrderByValidFromDesc(materialServiceId);
     }
-return priceTableRepository.findFirstByMaterialServiceIdOrderByValidFromDesc(materialServiceId);
-    }
 
     private MaterialServiceResponse toMaterialServiceResponse(MaterialService entity, Optional<PriceTable> latestPrice) {
         MaterialServiceResponse response = new MaterialServiceResponse();
@@ -319,8 +306,6 @@ return priceTableRepository.findFirstByMaterialServiceIdOrderByValidFromDesc(mat
         });
 
         return response;
-    }
-return response;
     }
 
     private PriceTableResponse toPriceTableResponse(PriceTable entity) {
@@ -380,4 +365,4 @@ return response;
                 "validFrom", price.getValidFrom().toString(),
                 "validTo", price.getValidTo() != null ? price.getValidTo().toString() : null);
     }
-    }
+}

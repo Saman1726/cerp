@@ -19,6 +19,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Building entity representing a building within a construction site.
@@ -40,6 +41,15 @@ public class Building {
 
     @OneToMany(mappedBy = "building", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     private List<Floor> floors = new ArrayList<>();
+
+    /**
+     * Materials linked to this building. Populated from {@link ConstructionMaterial}
+     * where {@code physicalObjectType=BUILDING} and {@code physicalObjectId=id}.
+     * Not a bidirectional JPA relationship because ConstructionMaterial uses a
+     * polymorphic discriminator (physicalObjectType + physicalObjectId).
+     */
+    @Transient
+    private List<ConstructionMaterial> materials = new ArrayList<>();
 
     @Column(name = "usable_area", precision = 12, scale = 2)
     private BigDecimal usableArea;

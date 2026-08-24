@@ -1,5 +1,7 @@
 package io.cerp.document.service;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -58,7 +60,11 @@ public class DocumentService {
             .putObjectRequest(putObjectRequest)
             .build());
 
-        return new PresignResponse(presigned.url().toString(), objectKey, Instant.now().plus(ttl).toString());
+        // Return two URLs: the original with the internal endpoint for server-side uploads,
+        // and the public-endpoint version for browser uploads.
+        String serverUploadUrl = presigned.url().toString();
+        String uploadUrl = replaceHost(serverUploadUrl, storageProperties.publicEndpoint());
+        return new PresignResponse(uploadUrl, serverUploadUrl, objectKey, Instant.now().plus(ttl).toString());
     }
 
     // Symmetric to presign() above, but for reading an already-uploaded object back: presign()
@@ -78,7 +84,8 @@ public class DocumentService {
             .getObjectRequest(getObjectRequest)
             .build());
 
-        return new PresignDownloadResponse(presigned.url().toString(), Instant.now().plus(ttl).toString());
+        String downloadUrl = replaceHost(presigned.url().toString(), storageProperties.publicEndpoint());
+        return new PresignDownloadResponse(downloadUrl, Instant.now().plus(ttl).toString());
     }
 
     // Uses the internal (Docker-network) S3Client directly, not a presigned URL - this is a
@@ -91,6 +98,21 @@ public class DocumentService {
             .bucket(storageProperties.bucket())
             .key(request.objectKey())
             .build());
+    }
+
+    public byte[] downloadForServerSide(String objectKey) {
+        var response = s3Client.getObject(
+                software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
+                    .bucket(storageProperties.bucket())
+                    .key(objectKey)
+                    .build());
+        try {
+            return response.readAllBytes();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Failed to read IFC file", e);
+        } finally {
+            try { response.close(); } catch (java.io.IOException ignored) {}
+        }
     }
 
     public SiteCaptureSubmissionResponse submit(UUID tenantId, SiteCaptureSubmissionRequest request) {
@@ -118,6 +140,31 @@ public class DocumentService {
                 repository.save(capture);
                 return new SiteCaptureSubmissionResponse(capture.getId().toString(), capture.getStatus());
             });
+    }
+
+    /**
+     * The s3Presigner signs against the Docker-internal endpoint (e.g. minio:9000)
+     * so the container can always reach MinIO. This rewrites the host portion of
+     * the resulting presigned URL so browsers on the LAN can reach MinIO directly.
+     */
+    private String replaceHost(String presignedUrl, String publicEndpoint) {
+        try {
+            URI original = new URI(presignedUrl);
+            URI publicUri = new URI(publicEndpoint);
+            // Rebuild with public host:port, keeping path + query params intact
+            return new URI(
+                publicUri.getScheme(),
+                null, // no userInfo
+                publicUri.getHost(),
+                publicUri.getPort() >= 0 ? publicUri.getPort() : -1,
+                original.getPath(),
+                original.getQuery(),
+                original.getFragment()
+            ).toString();
+        } catch (URISyntaxException e) {
+            // Should never happen with well-formed URLs, but return original as fallback
+            return presignedUrl;
+        }
     }
 
     private String extensionFor(String contentType, String fileName) {

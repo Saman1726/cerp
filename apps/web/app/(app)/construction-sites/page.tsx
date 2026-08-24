@@ -10,12 +10,18 @@ import {
   deleteUnitAction,
   updateSiteAction,
   duplicateSiteAction,
+  importIfcAction,
   updateBuildingAction,
   duplicateBuildingAction,
   updateFloorAction,
   duplicateFloorAction,
   updateUnitAction,
   duplicateUnitAction,
+  uploadIfcFileAction,
+  deleteIfcFileAction,
+  triggerPreviewAction,
+  triggerBlenderRenderAction,
+  listIfcFilesAction,
 } from './actions';
 
 export default function ConstructionSitesPage() {
@@ -24,6 +30,7 @@ export default function ConstructionSitesPage() {
     deleteSite: deleteSiteAction,
     duplicateSite: duplicateSiteAction,
     updateSite: updateSiteAction,
+    importIfc: importIfcAction,
     addBuilding: addBuildingAction,
     deleteBuilding: deleteBuildingAction,
     duplicateBuilding: duplicateBuildingAction,
@@ -36,6 +43,11 @@ export default function ConstructionSitesPage() {
     deleteUnit: deleteUnitAction,
     duplicateUnit: duplicateUnitAction,
     updateUnit: updateUnitAction,
+    uploadFile: uploadIfcFileAction,
+    deleteFile: deleteIfcFileAction,
+    triggerPreview: triggerPreviewAction,
+    triggerBlenderRender: triggerBlenderRenderAction,
+    listFiles: listIfcFilesAction,
   };
 
   return <ConstructionSitesPageBody actions={siteActions} />;

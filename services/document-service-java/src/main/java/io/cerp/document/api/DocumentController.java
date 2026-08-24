@@ -59,4 +59,18 @@ public class DocumentController {
         documentService.deleteObject(request);
         return ResponseEntity.noContent().build();
     }
+
+    /** Server-to-server download: serves the file content directly using the internal S3Client,
+     * bypassing the public MinIO endpoint that external services (like project-service) cannot reach. */
+    @PostMapping("/media/download/internal")
+    public ResponseEntity<byte[]> downloadForServerSide(
+            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @Valid @RequestBody io.cerp.document.dto.DownloadForServerSideRequest request) {
+        try {
+            byte[] content = documentService.downloadForServerSide(request.objectKey());
+            return ResponseEntity.ok().contentType(org.springframework.http.MediaType.APPLICATION_OCTET_STREAM).body(content);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(e.getMessage().getBytes());
+        }
+    }
 }

@@ -1,4 +1,6 @@
 import { apiClient } from '../lib/api-client';
+import { DOCUMENT_SERVICE_URL, PROJECT_SERVICE_URL } from '../lib/env';
+import { SESSION_COOKIE } from '../lib/session-cookies';
 import type { SimpleActionState } from './types';
 import type { Building, ConstructionSite, Floor, Unit, CreateFloorRequest, CreateUnitRequest, CreateBuildingRequest, CreateConstructionSiteRequest } from '@cerp/shared-types';
 
@@ -433,5 +435,236 @@ export async function duplicateUnit(formData: FormData): Promise<SimpleActionSta
   } catch (error) {
     console.error('[duplicateUnit] Failed:', error);
     return { error: error instanceof Error ? error.message : 'Failed to duplicate unit' };
+  }
+}
+
+// Reads the session cookie server-side via next/headers (same pattern as api-client.ts).
+async function getServerCookieMap(): Promise<Record<string, string>> {
+  const { cookies } = await import('next/headers');
+  const store = await cookies();
+  const map: Record<string, string> = {};
+  for (const { name, value } of store.getAll()) {
+    map[name] = value;
+  }
+  return map;
+}
+
+/**
+ * Import an IFC file into a construction site:
+ * 1. Presign upload URL from document-service
+ * 2. PUT file to S3 directly
+ * 3. Presign download URL from document-service
+ * 4. Call BimIngestionController with the presigned URL
+ */
+export async function importIfc(formData: FormData): Promise<SimpleActionState> {
+  const siteId = formData.get('siteId')?.toString();
+  const file = formData.get('ifcFile') as File | null;
+  if (!siteId) return { error: 'Missing siteId' };
+  if (!file) return { error: 'No IFC file selected' };
+
+  // Validate file extension
+  if (!file.name.toLowerCase().endsWith('.ifc')) {
+    return { error: 'Only .ifc files are accepted' };
+  }
+
+  try {
+    // Extract server cookies to build auth headers for document-service calls.
+    const cookieMap = await getServerCookieMap();
+    const token = cookieMap[SESSION_COOKIE] || '';
+    const tenantId = cookieMap['x-tenant-id'] || '00000000-0000-0000-0000-000000000001';
+    const docHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'X-Tenant-Id': tenantId,
+    };
+
+    // Step 1: Get presigned upload URL from document-service
+    const presignRes = await fetch(`${DOCUMENT_SERVICE_URL}/api/v1/media/presign`, {
+      method: 'POST',
+      headers: docHeaders,
+      body: JSON.stringify({
+        projectId: siteId,
+        kind: 'IFC_FILE',
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+      }),
+    });
+
+    if (!presignRes.ok) {
+      const details = await presignRes.text();
+      throw new Error(`Failed to obtain upload URL: ${details}`);
+    }
+
+    const { serverUploadUrl, objectKey }: { serverUploadUrl: string; objectKey: string } = await presignRes.json();
+
+    // Step 2: Upload file directly to S3 via presigned URL.
+    // Use serverUploadUrl (internal endpoint) because this code runs inside the Next.js
+    // server container which needs the Docker-internal DNS name to reach MinIO.
+    const uploadRes = await fetch(serverUploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Upload to storage failed: ${uploadRes.status}`);
+    }
+
+    // Step 3: Call BimIngestionController in project-service to trigger BIM parsing
+    // (passes objectKey - project-service fetches via document-service internal endpoint)
+    const bimRes = await fetch(`${PROJECT_SERVICE_URL}/api/v1/construction-sites/${siteId}/bim/ingest`, {
+      method: 'POST',
+      headers: docHeaders,
+      body: JSON.stringify({
+        constructionSiteId: siteId,
+        objectKey,
+        contentLength: file.size,
+        fileName: file.name,
+      }),
+    });
+
+    if (!bimRes.ok) {
+      const details = await bimRes.text();
+      throw new Error(`BIM ingestion failed: ${details}`);
+    }
+
+    console.log(`[importIfc] IFC file "${file.name}" ingested successfully into site ${siteId}`);
+    return {};
+  } catch (error) {
+    console.error('[importIfc] Failed:', error);
+    return { error: error instanceof Error ? error.message : 'Failed to import IFC file' };
+  }
+}
+
+// ── IFC File Management ────────────────────────────────────────────────
+
+import type { IFCFile } from './types';
+
+/**
+ * List all IFC files for a construction site.
+ */
+export async function listIfcFiles(siteId: string): Promise<IFCFile[]> {
+  try {
+    const res = await apiClient.get<IFCFile[]>(`/construction-sites/${siteId}/ifc-files`);
+    return res;
+  } catch (error) {
+    console.error('[listIfcFiles] Failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Upload an IFC file and register it with the construction site.
+ * Steps: presign -> upload to S3 -> register with project-service.
+ */
+export async function uploadIfcFile(
+  siteId: string,
+  file: File
+): Promise<{ success: boolean; error?: string; file?: IFCFile }> {
+  if (!file.name.toLowerCase().endsWith('.ifc')) {
+    return { success: false, error: 'Only .ifc files are accepted' };
+  }
+
+  try {
+    const cookieMap = await getServerCookieMap();
+    const token = cookieMap[SESSION_COOKIE] || '';
+    const tenantId = cookieMap['x-tenant-id'] || '00000000-0000-0000-0000-000000000001';
+    const docHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'X-Tenant-Id': tenantId,
+    };
+
+    // Step 1: Presign upload URL from document-service
+    const presignRes = await fetch(`${DOCUMENT_SERVICE_URL}/api/v1/media/presign`, {
+      method: 'POST',
+      headers: docHeaders,
+      body: JSON.stringify({
+        projectId: siteId,
+        kind: 'IFC_FILE',
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+      }),
+    });
+
+    if (!presignRes.ok) {
+      const details = await presignRes.text();
+      throw new Error(`Failed to obtain upload URL: ${details}`);
+    }
+
+    const { serverUploadUrl, objectKey }: { serverUploadUrl: string; objectKey: string } = await presignRes.json();
+
+    // Step 2: Upload file to S3
+    const uploadRes = await fetch(serverUploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Upload to storage failed: ${uploadRes.status}`);
+    }
+
+    // Step 3: Register with project-service IFC file endpoint
+    const registerRes = await fetch(`${PROJECT_SERVICE_URL}/api/v1/construction-sites/${siteId}/ifc-files`, {
+      method: 'POST',
+      headers: docHeaders,
+      body: JSON.stringify({
+        objectKey,
+        fileName: file.name,
+        contentLength: file.size,
+        fileKey: objectKey,
+      }),
+    });
+
+    if (!registerRes.ok) {
+      const details = await registerRes.text();
+      throw new Error(`IFC file registration failed: ${details}`);
+    }
+
+    const ifcFile: IFCFile = await registerRes.json();
+    return { success: true, file: ifcFile };
+  } catch (error) {
+    console.error('[uploadIfcFile] Failed:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to upload IFC file' };
+  }
+}
+
+/**
+ * Trigger 2D preview generation for an IFC file.
+ */
+export async function triggerPreview(siteId: string, fileId: string): Promise<IFCFile> {
+  try {
+    const res = await apiClient.post<object, IFCFile>(`/construction-sites/${siteId}/ifc-files/${fileId}/preview`, {});
+    return res;
+  } catch (error) {
+    console.error('[triggerPreview] Failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Trigger Blender 3D render for an IFC file.
+ */
+export async function triggerBlenderRender(siteId: string, fileId: string, view?: string): Promise<IFCFile> {
+  try {
+    const params = view ? `?view=${view}` : '';
+    const res = await apiClient.post<object, IFCFile>(`/construction-sites/${siteId}/ifc-files/${fileId}/blender-render${params}`, {});
+    return res;
+  } catch (error) {
+    console.error('[triggerBlenderRender] Failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete an IFC file record.
+ */
+export async function deleteIfcFile(siteId: string, fileId: string): Promise<void> {
+  try {
+    await apiClient.delete(`/construction-sites/${siteId}/ifc-files/${fileId}`);
+  } catch (error) {
+    console.error('[deleteIfcFile] Failed:', error);
+    throw error;
   }
 }

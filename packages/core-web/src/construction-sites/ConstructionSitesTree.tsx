@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ConstructionSite } from '@cerp/shared-types';
-import { Building2, Home, Layers, MapPin, MoreHorizontal, Plus } from 'lucide-react';
+import { Building2, FileUp, FileText, Home, Layers, MapPin, MoreHorizontal, Plus, Copy } from 'lucide-react';
 import {
   Button,
   Input,
@@ -21,6 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '../components/ui';
+import { IfcFileManager } from './IfcFileManager';
 import type { ConstructionSitesActions, SimpleFormAction } from './types';
 
 type Building = ConstructionSite['buildings'][number];
@@ -36,6 +37,7 @@ type DetailState =
 export interface ConstructionSitesTreeProps {
   sites: ConstructionSite[];
   actions: ConstructionSitesActions;
+  onSiteSelect?: (siteId: string, siteName: string) => void;
 }
 
 function toFormData(fields: Record<string, string>): FormData {
@@ -44,12 +46,15 @@ function toFormData(fields: Record<string, string>): FormData {
   return formData;
 }
 
-export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeProps) {
+export function ConstructionSitesTree({ sites, actions, onSiteSelect }: ConstructionSitesTreeProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
   // Modal state
   const [createSiteOpen, setCreateSiteOpen] = useState(false);
+  const [importIfcOpen, setImportIfcOpen] = useState<{ siteId: string; siteName: string } | null>(null);
+  const [uploadIfcOpen, setUploadIfcOpen] = useState<{ siteId: string; siteName: string } | null>(null);
+  const [manageIfcOpen, setManageIfcOpen] = useState<{ siteId: string; siteName: string } | null>(null);
   const [addBuildingOpen, setAddBuildingOpen] = useState<{ siteId: string } | null>(null);
   const [addFloorOpen, setAddFloorOpen] = useState<{ siteId: string; buildingId: string } | null>(null);
   const [addUnitOpen, setAddUnitOpen] = useState<{ siteId: string; buildingId: string; floorId: string } | null>(null);
@@ -106,7 +111,10 @@ export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeP
             icon={<MapPin className="size-4 text-blue-500" />}
             label={site.name}
             meta={<span className="truncate">{site.address}</span>}
-            onSelect={() => setDetail({ kind: 'site', site })}
+            onSelect={() => {
+              setDetail({ kind: 'site', site });
+              onSiteSelect?.(site.id, site.name);
+            }}
             actions={
               <>
                 <Button
@@ -129,7 +137,21 @@ export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeP
                       Edit
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setDuplicateSiteOpen({ id: site.id, name: site.name, address: site.address })}>
+                      <Copy className="mr-2 size-4" />
                       Duplicate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setUploadIfcOpen({ siteId: site.id, siteName: site.name })}>
+                      <FileUp className="mr-2 size-4" />
+                      Upload IFC File
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setManageIfcOpen({ siteId: site.id, siteName: site.name })}>
+                      <FileText className="mr-2 size-4" />
+                      Manage IFC Files
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setImportIfcOpen({ siteId: site.id, siteName: site.name })}>
+                      <FileUp className="mr-2 size-4" />
+                      Import IFC (parse &amp; build)
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -842,6 +864,217 @@ export function ConstructionSitesTree({ sites, actions }: ConstructionSitesTreeP
           </form>
         ) : null}
       </Modal>
+
+      {/* Import IFC Modal */}
+      <Modal open={!!importIfcOpen} onClose={() => setImportIfcOpen(null)} title="Import IFC file">
+        {importIfcOpen ? (
+          <ImportIfcModalContent
+            siteId={importIfcOpen.siteId}
+            siteName={importIfcOpen.siteName}
+            onClose={() => setImportIfcOpen(null)}
+            onSubmit={async (file) => {
+              const formData = new FormData();
+              formData.set('siteId', importIfcOpen.siteId);
+              formData.set('ifcFile', file);
+              await handleAction(actions.importIfc, formData, () => {
+                setImportIfcOpen(null);
+                startTransition(() => {
+                  router.refresh();
+                });
+              });
+            }}
+          />
+        ) : null}
+      </Modal>
+
+      {/* Upload IFC File Modal (register only, no parsing) */}
+      <Modal open={!!uploadIfcOpen} onClose={() => setUploadIfcOpen(null)} title="Upload IFC File">
+        {uploadIfcOpen ? (
+          <UploadIfcModalContent
+            siteId={uploadIfcOpen.siteId}
+            siteName={uploadIfcOpen.siteName}
+            onClose={() => setUploadIfcOpen(null)}
+            onSubmit={async (file) => {
+              const formData = new FormData();
+              formData.set('siteId', uploadIfcOpen.siteId);
+              formData.set('ifcFile', file);
+              await handleAction(actions.uploadFile, formData, () => {
+                setUploadIfcOpen(null);
+                setManageIfcOpen({ siteId: uploadIfcOpen.siteId, siteName: uploadIfcOpen.siteName });
+              });
+            }}
+          />
+        ) : null}
+      </Modal>
+
+      {/* Manage IFC Files Modal */}
+      <Modal open={!!manageIfcOpen} onClose={() => setManageIfcOpen(null)} title="Manage IFC Files" size="lg">
+        {manageIfcOpen ? (
+          <IfcFileManager
+            siteId={manageIfcOpen.siteId}
+            siteName={manageIfcOpen.siteName}
+            actions={actions}
+          />
+        ) : null}
+      </Modal>
+    </div>
+  );
+}
+function ImportIfcModalContent({
+  siteId: _siteId,
+  siteName,
+  onClose,
+  onSubmit,
+}: {
+  siteId: string;
+  siteName: string;
+  onClose: () => void;
+  onSubmit: (file: File) => Promise<void>;
+}) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadProgress('Uploading file...');
+    setError(null);
+
+    try {
+      await onSubmit(selectedFile);
+      setUploadProgress('File uploaded. Processing IFC data...');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import IFC file');
+    } finally {
+      setUploading(false);
+      setUploadProgress('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Importing an IFC file for <strong>{siteName}</strong> will parse the building/floor/unit hierarchy and populate the site.
+      </p>
+      <div className="grid gap-2">
+        <Label htmlFor="ifc-file">IFC File</Label>
+        <Input
+          id="ifc-file"
+          name="ifcFile"
+          type="file"
+          accept=".ifc"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              setSelectedFile(file);
+              setError(null);
+              setUploadProgress('');
+            }
+          }}
+          disabled={uploading}
+        />
+        <p className="text-xs text-muted-foreground">
+          {selectedFile ? `${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)` : 'No file selected'}
+        </p>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {uploadProgress && (
+        <div className="flex items-center gap-2">
+          <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-sm text-muted-foreground">{uploadProgress}</span>
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={uploading}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={!selectedFile || uploading}>
+          {uploading ? 'Processing...' : 'Import'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+
+function UploadIfcModalContent({
+  siteId: _siteId,
+  siteName,
+  onClose,
+  onSubmit,
+}: {
+  siteId: string;
+  siteName: string;
+  onClose: () => void;
+  onSubmit: (file: File) => Promise<void>;
+}) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadProgress('Uploading file...');
+    setError(null);
+
+    try {
+      await onSubmit(selectedFile);
+      setUploadProgress('File uploaded. Queued for processing.');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload IFC file');
+    } finally {
+      setUploading(false);
+      setUploadProgress('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Uploading an IFC file for <strong>{siteName}</strong> will register the file and queue it for background processing.
+      </p>
+      <div className="grid gap-2">
+        <Label htmlFor="upload-ifc-file">IFC File</Label>
+        <Input
+          id="upload-ifc-file"
+          name="ifcFile"
+          type="file"
+          accept=".ifc"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              setSelectedFile(file);
+              setError(null);
+              setUploadProgress('');
+            }
+          }}
+          disabled={uploading}
+        />
+        <p className="text-xs text-muted-foreground">
+          {selectedFile ? `${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)` : "No file selected"}
+        </p>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {uploadProgress && (
+        <div className="flex items-center gap-2">
+          <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <span className="text-sm text-muted-foreground">{uploadProgress}</span>
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={uploading}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={!selectedFile || uploading}>
+          {uploading ? "Uploading..." : "Upload"}
+        </Button>
+      </div>
     </div>
   );
 }

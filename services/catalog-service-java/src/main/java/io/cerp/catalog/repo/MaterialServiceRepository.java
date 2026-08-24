@@ -22,7 +22,7 @@ public interface MaterialServiceRepository extends JpaRepository<MaterialService
 
     List<MaterialService> findByTenantIdAndType(UUID tenantId, String type);
 
-    @Query("SELECT ms FROM catalog.material_services ms WHERE ms.tenantId = :tenantId " +
+    @Query("SELECT ms FROM MaterialService ms WHERE ms.tenantId = :tenantId " +
            "AND (:type IS NULL OR ms.type = :type)")
     List<MaterialService> findAllByTenantAndOptionalType(
             @Param("tenantId") UUID tenantId,

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Virtual envs
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Cache
+cache/
+*.png
+*.obj
+*.gltf
+*.glb
+*.stl
+
+# Misc
+.env
+*.log
+.git/
+.gitignore

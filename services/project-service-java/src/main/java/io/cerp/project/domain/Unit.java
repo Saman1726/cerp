@@ -2,6 +2,8 @@ package io.cerp.project.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -15,6 +17,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Unit entity representing a unit/apartment within a floor.
@@ -48,6 +51,13 @@ public class Unit {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "floor_id", nullable = false)
     private Floor floor;
+
+    /**
+     * Materials linked to this unit. Populated where physicalObjectType=UNIT.
+     * Not a bidirectional JPA relationship (see Building.materials for details).
+     */
+    @Transient
+    private List<ConstructionMaterial> materials = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

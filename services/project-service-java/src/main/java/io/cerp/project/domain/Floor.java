@@ -19,6 +19,7 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 
 /**
  * Floor entity representing a floor within a building.
@@ -46,6 +47,13 @@ public class Floor {
 
     @OneToMany(mappedBy = "floor", cascade = CascadeType.ALL, fetch = FetchType.EAGER, orphanRemoval = true)
     private List<Unit> units = new ArrayList<>();
+
+    /**
+     * Materials linked to this floor. Populated where physicalObjectType=FLOOR.
+     * Not a bidirectional JPA relationship (see Building.materials for details).
+     */
+    @Transient
+    private List<ConstructionMaterial> materials = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

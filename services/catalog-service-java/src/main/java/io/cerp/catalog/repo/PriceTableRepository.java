@@ -16,8 +16,6 @@ public interface PriceTableRepository extends JpaRepository<PriceTable, UUID> {
 
     List<PriceTable> findByMaterialServiceIdAndTenantId(UUID materialServiceId, UUID tenantId);
 
-    Optional<PriceTable> findByMaterialServiceIdAndTenantId(UUID materialServiceId, UUID tenantId);
-
     Optional<PriceTable> findFirstByMaterialServiceIdOrderByValidFromDesc(UUID materialServiceId);
 
     Optional<PriceTable> findFirstByMaterialServiceIdAndTenantIdOrderByValidFromDesc(
@@ -32,7 +30,7 @@ public interface PriceTableRepository extends JpaRepository<PriceTable, UUID> {
 
     Optional<PriceTable> findByNextPriceId(UUID nextPriceId);
 
-    @Query("SELECT p FROM catalog.price_table p WHERE p.materialService.id = :materialServiceId " +
+    @Query("SELECT p FROM PriceTable p WHERE p.materialService.id = :materialServiceId " +
            "AND p.validFrom <= :now AND (p.validTo IS NULL OR p.validTo >= :now)")
     Optional<PriceTable> findActivePriceForMaterial(
             @Param("materialServiceId") UUID materialServiceId,

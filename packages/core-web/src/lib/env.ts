@@ -15,6 +15,7 @@ export const IDENTITY_SERVICE_URL = process.env.IDENTITY_SERVICE_URL ?? process.
 // directly instead - so this one has no real client-side use yet, but keeps
 // the same override shape as the others for consistency.
 export const DOCUMENT_SERVICE_URL = process.env.DOCUMENT_SERVICE_URL ?? process.env.NEXT_PUBLIC_DOCUMENT_SERVICE_URL ?? 'http://document-service-java:8092';
+export const IFC_RENDERER_URL = process.env.IFC_RENDERER_URL ?? process.env.NEXT_PUBLIC_IFC_RENDERER_URL ?? 'http://ifc-renderer-python:8093';
 
 export const ENV = {
   API_URL,
@@ -23,4 +24,5 @@ export const ENV = {
   VENDOR_SERVICE_URL,
   IDENTITY_SERVICE_URL,
   DOCUMENT_SERVICE_URL,
+  IFC_RENDERER_URL,
 };

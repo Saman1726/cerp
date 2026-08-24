@@ -18,8 +18,10 @@ export interface SiteCapturePresignRequest {
 }
 
 export interface SiteCapturePresignResponse {
-  /** Presigned S3 PUT URL the browser uploads the compressed blob to directly. */
+  /** Presigned S3 PUT URL with the public endpoint (for browser uploads). */
   uploadUrl: string;
+  /** Presigned S3 PUT URL with the internal endpoint (for server-side uploads). */
+  serverUploadUrl: string;
   /** Storage object key the backend will associate with the metadata below. */
   objectKey: string;
   /** ISO timestamp the presigned URL stops being valid. */

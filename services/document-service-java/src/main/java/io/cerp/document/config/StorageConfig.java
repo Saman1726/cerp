@@ -19,11 +19,10 @@ import software.amazon.awssdk.services.s3.presigner.S3Presigner;
  * Two separate clients on purpose. `s3Client` talks to storage over the
  * Docker-internal network (bucket/CORS bootstrap, any server-side reads) -
  * cheap and doesn't depend on the host's network being reachable from inside
- * a container. `s3Presigner` only ever produces a signed URL string (no
- * network call of its own) and must be built against the LAN-facing endpoint,
- * since that URL is handed to the browser - which could be this laptop or a
- * phone on the same Wi-Fi, never something that can resolve Docker's internal
- * hostnames.
+ * a container. `s3Presigner` is also built against the internal endpoint to
+ * avoid host-NAT issues (the container might not reach the laptop's LAN IP),
+ * and we rewrite the host in the resulting presigned URL to the public endpoint
+ * so the browser can reach MinIO directly.
  */
 @Configuration
 @EnableConfigurationProperties(StorageProperties.class)
@@ -49,8 +48,11 @@ public class StorageConfig {
 
     @Bean
     public S3Presigner s3Presigner(StorageProperties props) {
+        // Use the internal endpoint for signing — the container always knows
+        // how to reach MinIO on the Docker network. The public host is patched
+        // into the returned URL inside DocumentService.presign().
         return S3Presigner.builder()
-            .endpointOverride(URI.create(props.publicEndpoint()))
+            .endpointOverride(URI.create(props.endpoint()))
             .region(Region.of(props.region()))
             .credentialsProvider(credentials(props))
             .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())

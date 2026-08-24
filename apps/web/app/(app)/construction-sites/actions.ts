@@ -18,6 +18,7 @@ import {
   duplicateFloor,
   updateUnit,
   duplicateUnit,
+  importIfc,
 } from '@cerp/core-web/construction-sites';
 
 function revalidateOrThrow(result: { error?: string }, path: string): void {
@@ -44,6 +45,10 @@ export async function updateSiteAction(formData: FormData): Promise<void> {
 
 export async function duplicateSiteAction(formData: FormData): Promise<void> {
   const result = await duplicateSite(formData);
+  revalidateOrThrow(result, '/construction-sites');
+}
+export async function importIfcAction(formData: FormData): Promise<void> {
+  const result = await importIfc(formData);
   revalidateOrThrow(result, '/construction-sites');
 }
 
@@ -105,4 +110,53 @@ export async function updateUnitAction(formData: FormData): Promise<void> {
 export async function duplicateUnitAction(formData: FormData): Promise<void> {
   const result = await duplicateUnit(formData);
   revalidateOrThrow(result, '/construction-sites');
+}
+
+// ── IFC File Actions ───────────────────────────────────────────────────
+
+import {
+  uploadIfcFile as uploadIfcFileLogic,
+  deleteIfcFile as deleteIfcFileLogic,
+  triggerPreview as triggerPreviewLogic,
+  triggerBlenderRender as triggerBlenderRenderLogic,
+  listIfcFiles as listIfcFilesLogic,
+} from '@cerp/core-web/construction-sites';
+
+export async function uploadIfcFileAction(formData: FormData): Promise<void> {
+  const siteId = formData.get('siteId')?.toString();
+  const file = formData.get('ifcFile') as File | null;
+  if (!siteId) {
+    throw new Error('Missing siteId');
+  }
+  if (!file) {
+    throw new Error('No IFC file selected');
+  }
+
+  const result = await uploadIfcFileLogic(siteId, file);
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  revalidatePath('/construction-sites');
+}
+
+export async function deleteIfcFileAction(formData: FormData): Promise<void> {
+  const siteId = formData.get('siteId')?.toString();
+  const fileId = formData.get('fileId')?.toString();
+  if (!siteId || !fileId) {
+    throw new Error('Missing siteId or fileId');
+  }
+  await deleteIfcFileLogic(siteId, fileId);
+  revalidatePath('/construction-sites');
+}
+
+export async function triggerPreviewAction(siteId: string, fileId: string): Promise<void> {
+  await triggerPreviewLogic(siteId, fileId);
+}
+
+export async function triggerBlenderRenderAction(siteId: string, fileId: string, view?: string): Promise<void> {
+  await triggerBlenderRenderLogic(siteId, fileId, view);
+}
+
+export async function listIfcFilesAction(siteId: string): Promise<import('@cerp/core-web/construction-sites').IFCFile[]> {
+  return listIfcFilesLogic(siteId);
 }
