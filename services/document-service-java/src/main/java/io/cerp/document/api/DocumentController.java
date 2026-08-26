@@ -61,10 +61,16 @@ public class DocumentController {
     }
 
     /** Server-to-server download: serves the file content directly using the internal S3Client,
-     * bypassing the public MinIO endpoint that external services (like project-service) cannot reach. */
+     * bypassing the public MinIO endpoint that external services (like project-service) cannot reach.
+     *
+     * <p>The X-Tenant-Id header is optional with a default of the system tenant ID, since this
+     * is an internal service-to-service endpoint where the calling Python service always includes
+     * the header (with a fallback of its own). Making it optional ensures the endpoint never fails
+     * if the header is accidentally omitted.</p>
+     */
     @PostMapping("/media/download/internal")
     public ResponseEntity<byte[]> downloadForServerSide(
-            @RequestHeader("X-Tenant-Id") UUID tenantId,
+            @RequestHeader(value = "X-Tenant-Id", required = false, defaultValue = "00000000-0000-0000-0000-000000000001") UUID tenantId,
             @Valid @RequestBody io.cerp.document.dto.DownloadForServerSideRequest request) {
         try {
             byte[] content = documentService.downloadForServerSide(request.objectKey());
