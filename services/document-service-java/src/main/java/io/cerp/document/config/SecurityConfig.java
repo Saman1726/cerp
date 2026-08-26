@@ -70,7 +70,8 @@ public class SecurityConfig {
             "/actuator/health",
             "/actuator/info",
             "/actuator/metrics",
-            "/actuator/prometheus");
+            "/actuator/prometheus",
+            "/api/v1/media/download/internal");
 
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
