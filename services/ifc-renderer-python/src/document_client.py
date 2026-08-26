@@ -23,23 +23,38 @@ logger = logging.getLogger(__name__)
 class DocumentClient:
     """Thin wrapper around the document-service HTTP API."""
 
-    def __init__(self, base_url: str, auth_token: Optional[str] = None):
+    def __init__(self, base_url: str, auth_token: Optional[str] = None,
+                 tenant_id: Optional[str] = None):
         self.base_url = base_url.rstrip("/")
         self.auth_token = auth_token
+        self.tenant_id = tenant_id
         self._client: httpx.Client | None = None
+        self._override_auth: Optional[str] = None
 
     @property
     def client(self) -> httpx.Client:
         if self._client is None:
             headers = {}
-            if self.auth_token:
-                headers["Authorization"] = f"Bearer {self.auth_token}"
+            auth = self._override_auth or self.auth_token
+            if auth:
+                headers["Authorization"] = f"Bearer {auth}"
+            # document-service rejects every /api/** request (including the
+            # internal server-to-server download route) without this header.
+            headers["X-Tenant-Id"] = self.tenant_id or "00000000-0000-0000-0000-000000000001"
             self._client = httpx.Client(
                 base_url=self.base_url,
                 headers=headers,
                 timeout=httpx.Timeout(30.0, connect=10.0),
             )
         return self._client
+
+    def with_auth(self, auth_token: str) -> "DocumentClient":
+        """Return a new client that uses the given auth token (overrides constructor token)."""
+        if self._client:
+            self._client.close()
+            self._client = None
+        clone = DocumentClient(self.base_url, auth_token, self.tenant_id)
+        return clone
 
     def close(self) -> None:
         if self._client is not None:
@@ -93,14 +108,24 @@ class DocumentClient:
     # ------------------------------------------------------------------
 
     def download_internal(self, object_key: str) -> bytes:
-        """Download file content via the internal download endpoint."""
-        response = self.client.post(
-            "/api/v1/media/download/internal",
-            json={"objectKey": object_key},
-            timeout=httpx.Timeout(120.0, connect=10.0),
-        )
-        response.raise_for_status()
-        return response.content
+        """Download file content via the internal download endpoint.
+
+        This method explicitly omits the Authorization header to avoid
+        triggering the document service's OAuth2 JWT filter, which evaluates
+        *before* the permitAll authorization rule.  An invalid/expired bearer
+        token causes a 401 before the endpoint is ever reached.
+        """
+        internal = self.with_auth(None)
+        try:
+            response = internal.client.post(
+                "/api/v1/media/download/internal",
+                json={"objectKey": object_key},
+                timeout=httpx.Timeout(120.0, connect=10.0),
+            )
+            response.raise_for_status()
+            return response.content
+        finally:
+            internal.close()
 
     # ------------------------------------------------------------------
     # 4. Presign GET — get a presigned download URL for a stored object

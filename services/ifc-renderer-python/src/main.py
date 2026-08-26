@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import io
 import logging
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile, Request
 from fastapi.responses import Response
 
 from src.config import DOCUMENT_SERVICE_URL
@@ -42,8 +43,8 @@ app = FastAPI(
 )
 
 
-def _doc_client() -> DocumentClient:
-    return DocumentClient(DOCUMENT_SERVICE_URL)
+def _doc_client(auth_token: Optional[str] = None, tenant_id: Optional[str] = None) -> DocumentClient:
+    return DocumentClient(DOCUMENT_SERVICE_URL, auth_token, tenant_id)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -62,6 +63,26 @@ def health_check():
         blender_available=_ensure_blender(),
         document_service_available=doc_ok,
     )
+
+
+@app.post("/api/v1/ifc/register")
+def register_ifc_file(
+    file_key: str = Query(..., description="S3 key of the already-uploaded IFC file"),
+    project_id: str = Query(..., description="Project/site ID"),
+):
+    """Register an already-uploaded IFC file and return a file_id for subsequent calls.
+    
+    This endpoint does NOT upload the file again — the file must already exist
+    at *file_key* in the document service (e.g. uploaded by the project service
+    via a presigned URL). It simply generates a UUID and returns it so that
+    downstream preview / render / export calls can address the file by ID.
+    """
+    file_id = str(uuid.uuid4())
+    return {
+        "file_id": file_id,
+        "file_key": file_key,
+        "project_id": project_id,
+    }
 
 
 @app.post("/api/v1/ifc/upload", response_model=UploadResponse)
@@ -93,28 +114,42 @@ async def upload_ifc_file(
 
 
 @app.get("/api/v1/ifc/{file_id}/metadata")
-def get_metadata_route(file_id: str, file_key: str = Query(...)):
+def get_metadata_route(file_id: str, file_key: str = Query(...), request: Request = None):
     """Retrieve metadata extracted from the IFC file."""
-    client = _doc_client()
+    tenant_id = None
+    if request:
+        tenant_id = request.headers.get("X-Tenant-Id")
+    # Use None for auth_token — download_internal() creates an unauthenticated
+    # client for the internal server-to-server endpoint to avoid triggering the
+    # document service's OAuth2 JWT filter.
+    client = _doc_client(None, tenant_id)
     try:
         ifc_bytes = client.download_internal(file_key)
         metadata = get_metadata(ifc_bytes)
         return metadata.model_dump()
     except Exception:
+        logger.exception("Metadata extraction failed for file_id=%s file_key=%s", file_id, file_key)
         raise HTTPException(status_code=500, detail="Metadata extraction failed")
     finally:
         client.close()
 
 
 @app.get("/api/v1/ifc/{file_id}/preview")
-def get_preview_route(file_id: str, file_key: str = Query(...)):
+def get_preview_route(file_id: str, file_key: str = Query(...), request: Request = None):
     """Return the 2D preview image."""
-    client = _doc_client()
+    tenant_id = None
+    if request:
+        tenant_id = request.headers.get("X-Tenant-Id")
+    # Use None for auth_token — download_internal() creates an unauthenticated
+    # client for the internal server-to-server endpoint to avoid triggering the
+    # document service's OAuth2 JWT filter.
+    client = _doc_client(None, tenant_id)
     try:
         ifc_bytes = client.download_internal(file_key)
         preview_data = generate_preview(ifc_bytes)
         return Response(content=preview_data, media_type="image/png")
     except Exception:
+        logger.exception("Preview generation failed for file_id=%s file_key=%s", file_id, file_key)
         raise HTTPException(status_code=500, detail="Preview generation failed")
     finally:
         client.close()
@@ -125,9 +160,16 @@ def request_export(
     file_id: str,
     export_req: ExportRequest,
     file_key: str = Query(...),
+    request: Request = None,
 ):
     """Export the IFC geometry to glTF, glb, OBJ, or STL."""
-    client = _doc_client()
+    tenant_id = None
+    if request:
+        tenant_id = request.headers.get("X-Tenant-Id")
+    # Use None for auth_token — download_internal() creates an unauthenticated
+    # client for the internal server-to-server endpoint to avoid triggering the
+    # document service's OAuth2 JWT filter.
+    client = _doc_client(None, tenant_id)
     try:
         ifc_bytes = client.download_internal(file_key)
         export_data = export_3d_model(ifc_bytes, export_req.format)
@@ -140,6 +182,7 @@ def request_export(
         return ExportResponse(file_id=file_id, format=export_req.format.value,
                               output_url=purl)
     except Exception:
+        logger.exception("Export failed for file_id=%s file_key=%s", file_id, file_key)
         raise HTTPException(status_code=500, detail="Export failed")
     finally:
         client.close()
@@ -151,9 +194,16 @@ def request_blender_render(
     file_id: str,
     render_req: BlenderRenderRequest | None = None,
     file_key: str = Query(...),
+    request: Request = None,
 ):
     """Render the IFC model with Blender and return the PNG."""
-    client = _doc_client()
+    tenant_id = None
+    if request:
+        tenant_id = request.headers.get("X-Tenant-Id")
+    # Use None for auth_token — download_internal() creates an unauthenticated
+    # client for the internal server-to-server endpoint to avoid triggering the
+    # document service's OAuth2 JWT filter.
+    client = _doc_client(None, tenant_id)
     try:
         ifc_bytes = client.download_internal(file_key)
         rx = render_req.resolution_x if render_req else 1920
@@ -167,8 +217,10 @@ def request_blender_render(
         return BlenderRenderResponse(file_id=file_id, resolution=(rx, ry),
                                      samples=sp, output_url=purl)
     except RuntimeError as e:
+        logger.exception("Blender render unavailable for file_id=%s file_key=%s", file_id, file_key)
         raise HTTPException(status_code=503, detail=str(e))
     except Exception:
+        logger.exception("Render failed for file_id=%s file_key=%s", file_id, file_key)
         raise HTTPException(status_code=500, detail="Render failed")
     finally:
         client.close()
