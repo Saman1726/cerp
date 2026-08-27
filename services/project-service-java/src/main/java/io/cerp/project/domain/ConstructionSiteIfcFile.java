@@ -70,6 +70,21 @@ public class ConstructionSiteIfcFile {
     @Column(name = "blender_render_view", length = 32)
     private String blenderRenderView;
 
+    @Column(name = "last_presigned_at")
+    private LocalDateTime lastPresignedAt;
+
+    @Column(name = "preview_object_key", length = 2048)
+    private String previewObjectKey;
+
+    @Column(name = "render_object_key", length = 2048)
+    private String renderObjectKey;
+
+    @Column(name = "export_object_key", length = 2048)
+    private String exportObjectKey;
+
+    @Column(name = "metadata_object_key", length = 2048)
+    private String metadataObjectKey;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -145,6 +160,21 @@ public class ConstructionSiteIfcFile {
 
     public String getBlenderRenderView() { return blenderRenderView; }
     public void setBlenderRenderView(String blenderRenderView) { this.blenderRenderView = blenderRenderView; }
+
+    public LocalDateTime getLastPresignedAt() { return lastPresignedAt; }
+    public void setLastPresignedAt(LocalDateTime lastPresignedAt) { this.lastPresignedAt = lastPresignedAt; }
+
+    public String getPreviewObjectKey() { return previewObjectKey; }
+    public void setPreviewObjectKey(String previewObjectKey) { this.previewObjectKey = previewObjectKey; }
+
+    public String getRenderObjectKey() { return renderObjectKey; }
+    public void setRenderObjectKey(String renderObjectKey) { this.renderObjectKey = renderObjectKey; }
+
+    public String getExportObjectKey() { return exportObjectKey; }
+    public void setExportObjectKey(String exportObjectKey) { this.exportObjectKey = exportObjectKey; }
+
+    public String getMetadataObjectKey() { return metadataObjectKey; }
+    public void setMetadataObjectKey(String metadataObjectKey) { this.metadataObjectKey = metadataObjectKey; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

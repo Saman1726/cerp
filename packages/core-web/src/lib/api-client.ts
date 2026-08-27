@@ -40,14 +40,31 @@ function isProjectServicePath(path: string): boolean {
 // Paths that have Next.js API route proxies (server-side proxying).
 // These use relative URLs so Next.js can intercept and proxy to the backend.
 function hasApiRouteProxy(path: string): boolean {
-  return path.startsWith('/api/sagas') || path.startsWith('/api/workflows') || path.startsWith('/api/projects') || path.startsWith('/api/vendors/');
+  return path.startsWith('/api/sagas') ||
+         path.startsWith('/api/workflows') ||
+         path.startsWith('/api/projects') ||
+         path.startsWith('/api/vendors/') ||
+         path.startsWith('/api/construction-sites');
 }
 
-function baseUrlFor(path: string): string {
+// Whether a path should go through the Next.js API proxy instead of direct
+// backend access. Some paths (e.g. /construction-sites) only need proxying
+// from the browser side; the server calls the backend directly.
+function shouldUseApiProxy(path: string, isServer: boolean): boolean {
+  // For construction-sites, only use the Next.js API proxy from the browser.
+  if (path.startsWith('/construction-sites')) {
+    return !isServer;
+  }
+  // For already-proxied API paths, always use the proxy.
+  return hasApiRouteProxy(path);
+}
+
+function baseUrlFor(path: string, opts: { isServer: boolean }): string {
   // Endpoints with Next.js API route proxies use relative paths.
-  // This allows the browser to fetch from /api/sagas, /api/workflows, /api/projects
-  // which are server-side proxied to the respective backend services.
-  if (hasApiRouteProxy(path)) {
+  // This allows the browser to fetch from /api/sagas, /api/workflows, /api/projects,
+  // /api/construction-sites — which are server-side proxied to the respective
+  // backend services.
+  if (shouldUseApiProxy(path, opts.isServer)) {
     return '';
   }
 
@@ -57,7 +74,7 @@ function baseUrlFor(path: string): string {
   }
 
   // Project service endpoints route to the project service (direct Docker access)
-  // Note: /api/projects paths are handled by hasApiRouteProxy above
+  // Note: /api/projects and /api/construction-sites paths are handled above
   if (isProjectServicePath(path)) {
     return PROJECT_SERVICE_URL;
   }
@@ -66,9 +83,20 @@ function baseUrlFor(path: string): string {
 }
 
 // Get the normalized path for the actual HTTP request
-function normalizedPathFor(path: string): string {
-  if (!isProjectServicePath(path)) {
+function normalizedPathFor(path: string, opts: { isServer: boolean }): string {
+  // If path is already an API proxy route, keep as-is
+  if (hasApiRouteProxy(path)) {
     return path;
+  }
+
+  // Handle construction-sites specially
+  if (path.startsWith('/construction-sites')) {
+    if (!opts.isServer) {
+      // Browser calls the Next.js API route at /api/construction-sites
+      return `/api${path}`;
+    }
+    // Server calls backend directly; ensure /api/v1 prefix
+    return path.startsWith('/api/v1') ? path : `/api/v1${path}`;
   }
 
   // Add /api/v1 prefix if missing for construction-sites paths
@@ -148,8 +176,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headersInit.set('X-Tenant-Id', tenantId);
   }
 
-  const base = baseUrlFor(path);
-  const effectivePath = normalizedPathFor(path);
+  const base = baseUrlFor(path, { isServer });
+  const effectivePath = normalizedPathFor(path, { isServer });
   const fullUrl = `${base}${effectivePath}`;
 
   console.log('[apiClient] REQUEST:', {

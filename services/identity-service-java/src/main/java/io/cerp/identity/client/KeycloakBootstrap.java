@@ -144,6 +144,12 @@ public class KeycloakBootstrap {
         log.info("Created 'internal_user_id' protocol mapper on client '{}'", CLIENT_ID);
     }
 
+    /**
+     * Obtain a Keycloak master-realm admin token using the built-in "admin-cli" client.
+     * Retries with exponential backoff for up to 30 seconds to tolerate Keycloak
+     * startup latency (Keycloak 24 takes ~30-45s in dev mode, so a simple
+     * docker-compose "depends_on: service_started" is insufficient).
+     */
     private String getMasterAdminToken() {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "password");
@@ -151,17 +157,39 @@ public class KeycloakBootstrap {
         form.add("username", adminUsername);
         form.add("password", adminPassword);
 
-        Map<String, Object> body = restClient.post()
-            .uri("/realms/master/protocol/openid-connect/token")
-            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-            .body(form)
-            .retrieve()
-            .body(new ParameterizedTypeReference<Map<String, Object>>() {
-            });
-        if (body == null || body.get("access_token") == null) {
-            throw new IllegalStateException("Could not obtain a Keycloak master admin token");
+        int maxRetries = 15;
+        long delayMs = 2000; // start at 2s, double each retry (~30s total window)
+        Exception lastException = null;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                log.info("Attempting to obtain Keycloak master admin token (attempt {}/{})", attempt, maxRetries);
+                Map<String, Object> body = restClient.post()
+                    .uri("/realms/master/protocol/openid-connect/token")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {
+                    });
+                if (body == null || body.get("access_token") == null) {
+                    throw new IllegalStateException("Could not obtain a Keycloak master admin token");
+                }
+                log.info("Successfully obtained Keycloak master admin token after {} attempt(s)", attempt);
+                return (String) body.get("access_token");
+            } catch (Exception e) {
+                lastException = e;
+                if (attempt < maxRetries) {
+                    log.warn("Failed to obtain Keycloak master admin token (attempt {}/{}): {}. Retrying in {}ms...",
+                        attempt, maxRetries, e.getMessage(), delayMs);
+                    try { Thread.sleep(delayMs); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException("Interrupted while waiting for Keycloak", ie);
+                    }
+                    delayMs = Math.min(delayMs * 2, 5000); // cap at 5s
+                }
+            }
         }
-        return (String) body.get("access_token");
+        throw new IllegalStateException("Could not obtain Keycloak master admin token after " + maxRetries + " attempts", lastException);
     }
 
     private void ensureRealmExists(String adminToken) {
@@ -175,7 +203,7 @@ public class KeycloakBootstrap {
             restClient.post()
                 .uri("/admin/realms")
                 .header("Authorization", "Bearer " + adminToken)
-                .body(Map.of("realm", REALM, "enabled", true))
+                .body(Map.of("realm", REALM, "enabled", true, "sslRequired", "none"))
                 .retrieve()
                 .toBodilessEntity();
             log.info("Created Keycloak realm '{}'", REALM);

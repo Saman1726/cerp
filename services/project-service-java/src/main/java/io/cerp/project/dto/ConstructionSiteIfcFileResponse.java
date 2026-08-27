@@ -15,5 +15,6 @@ public record ConstructionSiteIfcFileResponse(
         String exportUrl,
         String blenderRenderUrl,
         String blenderRenderView,
+        LocalDateTime lastPresignedAt,
         LocalDateTime createdAt
 ) {}

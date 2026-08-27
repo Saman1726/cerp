@@ -135,6 +135,7 @@ services:
       IDENTITY_SERVICE_URL: http://identity-service-java:8090
       WORKFLOW_SERVICE_URL: http://workflow-service-java:8089
       DOCUMENT_SERVICE_URL: http://document-service-java:8092
+      IFC_RENDERER_URL: http://ifc-renderer-python:8093
       SPRING_FLYWAY_ENABLED: "true"
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5006"
@@ -236,10 +237,9 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: site-captures
       # Endpoint baked into presigned URLs handed to the browser - must be
-      # reachable from wherever the browser actually is (this laptop or a
-      # phone on the same Wi-Fi), not Docker's internal network. Update this
-      # if the laptop's LAN IP changes.
-      MINIO_PUBLIC_ENDPOINT: http://192.168.8.213:9000
+      # reachable from wherever the browser actually is, not Docker's
+      # internal network.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://192.168.8.213:9000}
       JAVA_OPTS: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=0.0.0.0:5008"
     ports:
       - '8092:8092'
@@ -321,12 +321,21 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.5
     container_name: cerp-keycloak
-    command: start-dev --http-port 8081
+    command: start-dev
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_PROXY: none
+      KC_HOSTNAME: keycloak
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_HTTP_PORT: 8081
+      KC_HTTPS_ENABLED: false
+      KC_HOSTNAME_STRICT: false
+      KC_HEALTH_ENABLED: true
     ports:
       - '8081:8081'
+      - '8443:8443'
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:8081/realms/master']
       interval: 10s

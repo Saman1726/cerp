@@ -170,7 +170,7 @@ function IfcFileCard({ file, actionLoading, onAction, renderView, onRenderViewCh
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onAction('preview')} disabled={actionLoading !== null}>
-              <Image className="mr-2 size-3.5" alt="" />
+              <Image className="mr-2 size-3.5" />
               2D Preview
             </DropdownMenuItem>
             <DropdownMenuSeparator />

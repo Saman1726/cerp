@@ -1,7 +1,5 @@
 package io.cerp.document.service;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -31,14 +29,17 @@ import io.cerp.document.repository.SiteCaptureRepository;
 public class DocumentService {
 
     private final S3Client s3Client;
-    private final S3Presigner s3Presigner;
+    private final S3Presigner internalS3Presigner;
+    private final S3Presigner publicS3Presigner;
     private final StorageProperties storageProperties;
     private final SiteCaptureRepository repository;
 
-    public DocumentService(S3Client s3Client, S3Presigner s3Presigner, StorageProperties storageProperties,
-            SiteCaptureRepository repository) {
+    public DocumentService(S3Client s3Client,
+            S3Presigner internalS3Presigner, S3Presigner publicS3Presigner,
+            StorageProperties storageProperties, SiteCaptureRepository repository) {
         this.s3Client = s3Client;
-        this.s3Presigner = s3Presigner;
+        this.internalS3Presigner = internalS3Presigner;
+        this.publicS3Presigner = publicS3Presigner;
         this.storageProperties = storageProperties;
         this.repository = repository;
     }
@@ -55,15 +56,20 @@ public class DocumentService {
             .contentType(request.contentType())
             .build();
 
-        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(PutObjectPresignRequest.builder()
+        PresignedPutObjectRequest internalPresigned = internalS3Presigner.presignPutObject(PutObjectPresignRequest.builder()
             .signatureDuration(ttl)
             .putObjectRequest(putObjectRequest)
             .build());
 
-        // Return two URLs: the original with the internal endpoint for server-side uploads,
-        // and the public-endpoint version for browser uploads.
-        String serverUploadUrl = presigned.url().toString();
-        String uploadUrl = replaceHost(serverUploadUrl, storageProperties.publicEndpoint());
+        PresignedPutObjectRequest publicPresigned = publicS3Presigner.presignPutObject(PutObjectPresignRequest.builder()
+            .signatureDuration(ttl)
+            .putObjectRequest(putObjectRequest)
+            .build());
+
+        // serverUploadUrl: internal endpoint for server-to-server uploads (e.g. project-service)
+        String serverUploadUrl = internalPresigned.url().toString();
+        // uploadUrl: public endpoint for browser uploads (site capture, etc.)
+        String uploadUrl = publicPresigned.url().toString();
         return new PresignResponse(uploadUrl, serverUploadUrl, objectKey, Instant.now().plus(ttl).toString());
     }
 
@@ -79,12 +85,13 @@ public class DocumentService {
             .key(request.objectKey())
             .build();
 
-        PresignedGetObjectRequest presigned = s3Presigner.presignGetObject(GetObjectPresignRequest.builder()
+        PresignedGetObjectRequest presigned = publicS3Presigner.presignGetObject(GetObjectPresignRequest.builder()
             .signatureDuration(ttl)
             .getObjectRequest(getObjectRequest)
             .build());
 
-        String downloadUrl = replaceHost(presigned.url().toString(), storageProperties.publicEndpoint());
+        // Already signed against the public endpoint — no host rewriting needed.
+        String downloadUrl = presigned.url().toString();
         return new PresignDownloadResponse(downloadUrl, Instant.now().plus(ttl).toString());
     }
 
@@ -143,30 +150,8 @@ public class DocumentService {
     }
 
     /**
-     * The s3Presigner signs against the Docker-internal endpoint (e.g. minio:9000)
-     * so the container can always reach MinIO. This rewrites the host portion of
-     * the resulting presigned URL so browsers on the LAN can reach MinIO directly.
+     * Extract the file extension from content type or filename, defaulting to empty.
      */
-    private String replaceHost(String presignedUrl, String publicEndpoint) {
-        try {
-            URI original = new URI(presignedUrl);
-            URI publicUri = new URI(publicEndpoint);
-            // Rebuild with public host:port, keeping path + query params intact
-            return new URI(
-                publicUri.getScheme(),
-                null, // no userInfo
-                publicUri.getHost(),
-                publicUri.getPort() >= 0 ? publicUri.getPort() : -1,
-                original.getPath(),
-                original.getQuery(),
-                original.getFragment()
-            ).toString();
-        } catch (URISyntaxException e) {
-            // Should never happen with well-formed URLs, but return original as fallback
-            return presignedUrl;
-        }
-    }
-
     private String extensionFor(String contentType, String fileName) {
         if (contentType != null) {
             int slash = contentType.indexOf('/');

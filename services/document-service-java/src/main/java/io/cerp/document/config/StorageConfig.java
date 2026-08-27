@@ -16,13 +16,21 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
- * Two separate clients on purpose. `s3Client` talks to storage over the
- * Docker-internal network (bucket/CORS bootstrap, any server-side reads) -
- * cheap and doesn't depend on the host's network being reachable from inside
- * a container. `s3Presigner` is also built against the internal endpoint to
- * avoid host-NAT issues (the container might not reach the laptop's LAN IP),
- * and we rewrite the host in the resulting presigned URL to the public endpoint
- * so the browser can reach MinIO directly.
+ * Three clients on purpose:
+ *
+ * <ul>
+ *   <li>{@code s3Client} — talks to storage over the Docker-internal network
+ *       (bucket/CORS bootstrap, any server-side reads). Cheap and doesn't depend
+ *       on the host's network being reachable from inside a container.</li>
+ *   <li>{@code internalS3Presigner} — signs against the Docker-internal endpoint
+ *       for server-to-server presigned URLs (e.g. project-service uploading a
+ *       preview PNG from inside the container). The {@code serverUploadUrl} in
+ *       {@code PresignResponse} carries this host.</li>
+ *   <li>{@code publicS3Presigner} — signs against the public endpoint so the
+ *       generated signature is valid for requests arriving at the public host.
+ *       Used for download URLs and the {@code uploadUrl} browser-facing URL in
+ *       {@code PresignResponse}. No host-rewriting is needed.</li>
+ * </ul>
  */
 @Configuration
 @EnableConfigurationProperties(StorageProperties.class)
@@ -46,13 +54,32 @@ public class StorageConfig {
             .build();
     }
 
+    /**
+     * Presigner for server-to-server operations: signs against the Docker-internal
+     * endpoint. The returned server upload URL is used by other services uploading
+     * directly from inside the container (e.g. project-service uploading a preview
+     * PNG to MinIO).
+     */
     @Bean
-    public S3Presigner s3Presigner(StorageProperties props) {
-        // Use the internal endpoint for signing — the container always knows
-        // how to reach MinIO on the Docker network. The public host is patched
-        // into the returned URL inside DocumentService.presign().
+    public S3Presigner internalS3Presigner(StorageProperties props) {
         return S3Presigner.builder()
             .endpointOverride(URI.create(props.endpoint()))
+            .region(Region.of(props.region()))
+            .credentialsProvider(credentials(props))
+            .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+            .build();
+    }
+
+    /**
+     * Presigner for browser-facing URLs: signs against the public endpoint so the
+     * generated signature is valid for requests arriving at the public host. No
+     * host-rewriting is needed — the signature already matches the host the browser
+     * will send.
+     */
+    @Bean
+    public S3Presigner publicS3Presigner(StorageProperties props) {
+        return S3Presigner.builder()
+            .endpointOverride(URI.create(props.publicEndpoint()))
             .region(Region.of(props.region()))
             .credentialsProvider(credentials(props))
             .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())

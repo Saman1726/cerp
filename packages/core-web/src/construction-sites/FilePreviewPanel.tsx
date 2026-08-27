@@ -36,6 +36,25 @@ export function FilePreviewPanel({ siteId, siteName, actions, onClose }: FilePre
   const [selectedFile, setSelectedFile] = useState<FileSelection | null>(null);
   const [selectedView, setSelectedView] = useState<'front' | 'side' | 'top' | 'perspective'>('perspective');
 
+  /**
+   * Fetch a fresh presigned URL from the backend.
+   * The backend re-signs the same MinIO object each time, so the URL
+   * is always valid regardless of when it was originally generated.
+   */
+  const getFreshUrl = useCallback(async (
+    siteId: string,
+    fileId: string,
+    urlType: 'preview' | 'render' | 'export' | 'metadata',
+  ): Promise<string> => {
+    const res = await fetch(`/api/construction-sites/${siteId}/ifc-files/${fileId}/${urlType}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(`Failed to get ${urlType} URL`);
+    const data = await res.json();
+    return data.url;
+  }, []);
+
   const loadFiles = useCallback(async () => {
     if (!siteId) return;
     setLoading(true);
@@ -108,32 +127,34 @@ export function FilePreviewPanel({ siteId, siteName, actions, onClose }: FilePre
             </div>
           ) : (
             <div className="flex flex-col">
-              {files.map((file) => (
-                <button
-                  key={file.id}
-                  type="button"
-                  onClick={() => handleSelectFile(file, selectedView)}
-                  className={`group flex items-start gap-2.5 border-b border-border px-3 py-2.5 text-left hover:bg-muted/50 transition-colors ${
-                    selectedFile?.file.id === file.id ? 'bg-muted/80 ring-inset ring-1 ring-primary/30' : ''
-                  }`}
-                >
-                  <div className="mt-0.5 shrink-0">
-                    <FileText className="size-4 text-muted-foreground" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium">{file.fileName}</p>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <FileStatusBadge status={file.status} />
+              {[...files]
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    onClick={() => handleSelectFile(file, selectedView)}
+                    className={`group flex items-start gap-2.5 border-b border-border px-3 py-2.5 text-left hover:bg-muted/50 transition-colors ${
+                      selectedFile?.file.id === file.id ? 'bg-muted/80 ring-inset ring-1 ring-primary/30' : ''
+                    }`}
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      <FileText className="size-4 text-muted-foreground" />
                     </div>
-                  </div>
-                </button>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium">{file.fileName}</p>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <FileStatusBadge status={file.status} />
+                      </div>
+                    </div>
+                  </button>
+                ))}
             </div>
           )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {selectedFile ? (
-            <FilePreviewContent file={selectedFile.file} view={selectedFile.view} onViewChange={setSelectedView} />
+            <FilePreviewContent siteId={siteId} file={selectedFile.file} view={selectedFile.view} onViewChange={setSelectedView} getFreshUrl={getFreshUrl} />
           ) : (
             <div className="flex flex-1 items-center justify-center p-8">
               <div className="text-center">
@@ -165,13 +186,17 @@ function FileStatusBadge({ status }: { status: IFCFile['status'] }) {
 }
 
 function FilePreviewContent({
+  siteId,
   file,
   view,
   onViewChange,
+  getFreshUrl,
 }: {
+  siteId: string | null;
   file: IFCFile;
   view: 'front' | 'side' | 'top' | 'perspective';
   onViewChange: (v: 'front' | 'side' | 'top' | 'perspective') => void;
+  getFreshUrl: (siteId: string, fileId: string, urlType: 'preview' | 'render' | 'export' | 'metadata') => Promise<string>;
 }) {
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -199,29 +224,41 @@ function FilePreviewContent({
         </div>
       </div>
       <div className="flex min-h-0 flex-1 overflow-auto bg-muted/20">
-        <PreviewRenderer file={file} view={view} />
+        <PreviewRenderer siteId={siteId} file={file} view={view} />
       </div>
       <div className="flex shrink-0 items-center gap-2 border-t px-4 py-2">
         {file.previewUrl && (
-          <Button size="sm" variant="outline" onClick={() => window.open(file.previewUrl, '_blank')}>
+          <Button size="sm" variant="outline"
+                  onClick={() => getFreshUrl(siteId!, file.id, 'preview')
+                    .then((url: string) => window.open(url, '_blank'))
+                    .catch(() => {})}>
             <Image className="mr-1.5 size-3" />
             2D Preview
           </Button>
         )}
         {file.blenderRenderUrl && (
-          <Button size="sm" variant="outline" onClick={() => window.open(file.blenderRenderUrl, '_blank')}>
+          <Button size="sm" variant="outline"
+                  onClick={() => getFreshUrl(siteId!, file.id, 'render')
+                    .then((url: string) => window.open(url, '_blank'))
+                    .catch(() => {})}>
             <Box className="mr-1.5 size-3" />
             3D Render ({view})
           </Button>
         )}
         {file.exportUrl && (
-          <Button size="sm" variant="outline" onClick={() => window.open(file.exportUrl, '_blank')}>
+          <Button size="sm" variant="outline"
+                  onClick={() => getFreshUrl(siteId!, file.id, 'export')
+                    .then((url: string) => window.open(url, '_blank'))
+                    .catch(() => {})}>
             <Download className="mr-1.5 size-3" />
             Export 3D Model
           </Button>
         )}
         {file.metadataUrl && (
-          <Button size="sm" variant="outline" onClick={() => window.open(file.metadataUrl, '_blank')}>
+          <Button size="sm" variant="outline"
+                  onClick={() => getFreshUrl(siteId!, file.id, 'metadata')
+                    .then((url: string) => window.open(url, '_blank'))
+                    .catch(() => {})}>
             <Eye className="mr-1.5 size-3" />
             View Metadata
           </Button>
@@ -232,21 +269,50 @@ function FilePreviewContent({
 }
 
 function PreviewRenderer({
+  siteId,
   file,
   view,
 }: {
+  siteId: string | null;
   file: IFCFile;
   view: 'front' | 'side' | 'top' | 'perspective';
 }) {
   const renderView = view === 'perspective' ? null : view;
-  const blenderRenderUrl = file.blenderRenderUrl;
-  const previewUrl = file.previewUrl;
 
-  if (blenderRenderUrl && renderView) {
+  // Fetch fresh presigned URLs so the images never show expired links.
+  const [renderUrl, setRenderUrl] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!siteId) return;
+    if (file.blenderRenderUrl && renderView) {
+      fetch(`/api/construction-sites/${siteId}/ifc-files/${file.id}/render`, {
+        method: 'GET',
+        credentials: 'include',
+      })
+        .then(res => res.ok ? res.json().then(d => d.url) : null)
+        .then(url => setRenderUrl(url ?? null))
+        .catch(() => {});
+    }
+    if (file.previewUrl) {
+      fetch(`/api/construction-sites/${siteId}/ifc-files/${file.id}/preview`, {
+        method: 'GET',
+        credentials: 'include',
+      })
+        .then(res => res.ok ? res.json().then(d => d.url) : null)
+        .then(url => setPreviewUrl(url ?? null))
+        .catch(() => {});
+    }
+  }, [siteId, file.id, file.blenderRenderUrl, file.previewUrl, renderView]);
+
+  const effectiveRenderUrl = renderUrl ?? file.blenderRenderUrl;
+  const effectivePreviewUrl = previewUrl ?? file.previewUrl;
+
+  if (effectiveRenderUrl && renderView) {
     return (
       <div className="flex items-center justify-center p-4">
         <img
-          src={blenderRenderUrl}
+          src={effectiveRenderUrl}
           alt={`Blender render - ${view}`}
           className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
         />
@@ -254,11 +320,11 @@ function PreviewRenderer({
     );
   }
 
-  if (blenderRenderUrl) {
+  if (effectiveRenderUrl) {
     return (
       <div className="flex items-center justify-center p-4">
         <img
-          src={blenderRenderUrl}
+          src={effectiveRenderUrl}
           alt="Blender render"
           className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
         />
@@ -266,11 +332,11 @@ function PreviewRenderer({
     );
   }
 
-  if (previewUrl) {
+  if (effectivePreviewUrl) {
     return (
       <div className="flex items-center justify-center p-4">
         <img
-          src={previewUrl}
+          src={effectivePreviewUrl}
           alt="2D Preview"
           className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
         />

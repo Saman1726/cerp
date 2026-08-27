@@ -66,27 +66,67 @@ def upload_ifc(file: BinaryIO, original_filename: str,
         "metadata_url": f"/api/v1/ifc/{file_id}/metadata",
     }
 # test include: '"IfcWall", "IfcSlab", "IfcStair", "IfcRoof", "IfcColumn", "IfcBeam", "IfcWindow", "IfcDoor"'
+def _open_ifc(ifc_bytes: bytes):
+    """Parse raw IFC-SPF bytes into an ifcopenshell.file.
+
+    ifcopenshell.open() only accepts a filesystem path (no file-like/bytes
+    argument), and the returned ifcopenshell.file has no context-manager
+    support, so files must be decoded to text and loaded via from_string().
+    """
+    ifc_text = ifc_bytes.decode("ISO-8859-1")
+    return ifcopenshell.file.from_string(ifc_text)
+
+
 def get_metadata(ifc_bytes: bytes) -> IFCMetadata:
     """Parse IFC bytes and extract structured metadata."""
     logger.info("Extracting metadata (%d bytes)", len(ifc_bytes))
     try:
-        with ifcopenshell.open(file=io.BytesIO(ifc_bytes)) as ifc_file:
-            proj = (ifc_file.by_type("IfcProject") or [None])[0]
-            name = proj.Name or "" if proj else ""
-            desc = proj.Description or "" if proj else ""
-            counts: dict[str, int] = defaultdict(int)
-            for ent in ifc_file.by_type():
-                counts[ent.wrapped_data.is_a()] += 1
-            top = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10])
-            return IFCMetadata(
-                file_version=ifc_file.schema, name=name, description=desc,
-                units=getattr(ifc_file.units, "name", "METER"),
-                total_elements=sum(counts.values()), building_name=name,
-                storeys=len(ifc_file.by_type("IfcBuildingStorey")),
-                elements_by_type=top)
+        ifc_file = _open_ifc(ifc_bytes)
+        proj = (ifc_file.by_type("IfcProject") or [None])[0]
+        name = proj.Name or "" if proj else ""
+        desc = proj.Description or "" if proj else ""
+        counts: dict[str, int] = defaultdict(int)
+        for ent in ifc_file:
+            counts[ent.is_a()] += 1
+        top = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10])
+        return IFCMetadata(
+            file_version=ifc_file.schema, name=name, description=desc,
+            units=getattr(ifc_file.units, "name", "METER"),
+            total_elements=sum(counts.values()), building_name=name,
+            storeys=len(ifc_file.by_type("IfcBuildingStorey")),
+            elements_by_type=top)
     except Exception:
         logger.exception("Metadata extraction failed")
         raise
+
+
+_GEOM_INCLUDE_TYPES = [
+    "IfcWall", "IfcSlab", "IfcStair", "IfcRoof",
+    "IfcColumn", "IfcBeam", "IfcWindow", "IfcDoor"]
+
+
+def _iter_meshes(ifc_file) -> list["trimesh.Trimesh"]:
+    """Iterate building-element geometry and return a list of trimeshes.
+
+    ifcopenshell.geom exposes shape generation via the module-level
+    iterate()/iterator() generator API (there is no create_geometry()
+    function on this ifcopenshell version). Each yielded shape carries
+    flat vertex/face buffers on shape.geometry that are already
+    triangulated.
+    """
+    settings = ifcopenshell.geom.settings()
+    settings.set("use-world-coords", True)
+    meshes: list[trimesh.Trimesh] = []
+    for shape in ifcopenshell.geom.iterate(
+            settings, ifc_file, include=_GEOM_INCLUDE_TYPES):
+        geometry = shape.geometry
+        verts = np.array(geometry.verts, dtype=float).reshape(-1, 3)
+        faces = np.array(geometry.faces, dtype=int).reshape(-1, 3)
+        if len(verts) == 0 or len(faces) == 0:
+            continue
+        meshes.append(trimesh.Trimesh(
+            vertices=verts, faces=faces, process=False))
+    return meshes
 
 
 def generate_preview(ifc_bytes: bytes,
@@ -94,23 +134,11 @@ def generate_preview(ifc_bytes: bytes,
     """Generate a 2D preview PNG from IFC geometry."""
     target_size = target_size or PREVIEW_SIZE
     try:
-        with ifcopenshell.open(file=io.BytesIO(ifc_bytes)) as ifc_file:
-            gs = ifcopenshell.geom.settings()
-            gs.set(gs.USE_WORLD_COORDS, True)
-            meshes = []
-            inc = [
-                "IfcWall", "IfcSlab", "IfcStair", "IfcRoof",
-                "IfcColumn", "IfcBeam", "IfcWindow", "IfcDoor"]
-            for g in ifcopenshell.geom.create_geometry(
-                    ifc_file, gs, include=inc):
-                v = g.geometry.vertices
-                if len(v) == 0:
-                    continue
-                meshes.append(trimesh.Trimesh(
-                    vertices=v, faces=g.geometry.faces))
+        ifc_file = _open_ifc(ifc_bytes)
+        meshes = _iter_meshes(ifc_file)
         if not meshes:
             return _placeholder_preview(target_size)
-        av = np.vstack(meshes)
+        av = np.vstack([m.vertices for m in meshes])
         if len(av) < 2:
             return _placeholder_preview(target_size)
         xs, ys, zs = av[:, 0], av[:, 1], av[:, 2]
@@ -151,30 +179,22 @@ def _placeholder_preview(size: tuple[int, int]) -> bytes:
               "No geometry", fill="#999999")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def export_3d_model(ifc_bytes: bytes, fmt: ExportFormat) -> bytes:
     """Export IFC geometry to a 3D format via trimesh."""
     logger.info("Exporting IFC -> %s (%d bytes)", fmt.value, len(ifc_bytes))
     try:
-        with ifcopenshell.open(file=io.BytesIO(ifc_bytes)) as ifc_file:
-            gs = ifcopenshell.geom.settings()
-            gs.set(gs.USE_WORLD_COORDS, True)
-            av, af, fo = [], [], 0
-            inc = [
-                "IfcWall", "IfcSlab", "IfcStair", "IfcRoof",
-                "IfcColumn", "IfcBeam", "IfcWindow", "IfcDoor"]
-            for g in ifcopenshell.geom.create_geometry(
-                    ifc_file, gs, include=inc):
-                verts = g.geometry.vertices
-                faces = g.geometry.faces.reshape(-1)
-                if len(verts) == 0:
-                    continue
-                tf = _triangulate(faces)
-                if len(tf) > 0:
-                    av.append(verts)
-                    af.append(tf + fo)
-                fo += len(verts)
-        if not av:
+        ifc_file = _open_ifc(ifc_bytes)
+        meshes = _iter_meshes(ifc_file)
+        if not meshes:
             raise ValueError("No geometry found for export")
+        av, af, fo = [], [], 0
+        for m in meshes:
+            av.append(m.vertices)
+            af.append(m.faces + fo)
+            fo += len(m.vertices)
         mesh = trimesh.Trimesh(
             vertices=np.vstack(av),
             faces=np.vstack(af) if af else np.array([]),
@@ -195,16 +215,6 @@ def export_3d_model(ifc_bytes: bytes, fmt: ExportFormat) -> bytes:
         raise
 
 
-def _triangulate(faces: np.ndarray) -> np.ndarray:
-    triangles = []
-    for f in faces:
-        f = [int(x) for x in f]
-        if len(f) == 3:
-            triangles.append(f)
-        elif len(f) > 3:
-            for i in range(1, len(f) - 1):
-                triangles.append([f[0], f[i], f[i+1]])
-    return np.array(triangles) if triangles else np.empty((0, 3), dtype=int)
 def render_with_blender(
         ifc_bytes: bytes,
         resolution_x: int = 1920, resolution_y: int = 1080,
@@ -293,4 +303,3 @@ def _write_blender_script(script_path: str, obj_path: str,
     lines.append('    print(f"Saved: {output_png}")')
     lines.append("main()")
     Path(script_path).write_text(chr(10).join(lines) + chr(10))
-    return buf.getvalue()

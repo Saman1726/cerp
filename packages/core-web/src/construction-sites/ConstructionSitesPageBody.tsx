@@ -28,7 +28,7 @@ export function ConstructionSitesPageBody({ actions }: ConstructionSitesPageBody
         title="Construction Sites"
         description="Manage construction sites, buildings, floors and units."
       />
-      <div className="flex flex-1 gap-4">
+      <div className="flex flex-1 flex-col gap-4">
         <ConstructionSitesTree
           sites={sites}
           actions={actions}

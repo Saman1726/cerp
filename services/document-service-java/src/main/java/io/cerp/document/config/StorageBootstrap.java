@@ -14,10 +14,11 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
  * starts (compose only waits for it to *start*, not to be ready to accept S3
  * calls yet).
  *
- * <p>Deliberately doesn't call PutBucketCors: MinIO returns 501 Not
- * Implemented for it (confirmed against a real MinIO instance - it handles
- * CORS on presigned/browser requests itself, rather than through that S3
- * API), so there's nothing useful for this bootstrap to configure there.
+ * <p>CORS is configured server-wide on the MinIO instance via
+ * {@code mc admin config set local api cors_allow_origin=*}, so browser
+ * requests to presigned URLs (e.g. opening an IFC preview image) are not
+ * blocked. (Note: the current MinIO version does not implement
+ * PutBucketCors via the S3 API.)
  */
 @Component
 public class StorageBootstrap implements ApplicationRunner {
