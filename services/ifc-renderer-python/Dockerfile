@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# CERP IFC Renderer — Multi-stage Docker image
+# CERP IFC Renderer - Multi-stage Docker image
 # Stage 1: System deps + Blender
 # Stage 2: Python runtime
 # ---------------------------------------------------------------------------
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 python3.12-venv python3.12-dev python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Blender via apt (reliable, avoids Cloudflare-protected download server)
+# Install Blender via apt
 ARG BLENDER_VERSION=4.0.2
 RUN apt-get update && apt-get install -y --no-install-recommends \
         blender=${BLENDER_VERSION}+dfsg-1ubuntu8 \
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Blender in runtime stage (avoid dependency on copy from builder)
+# Install Blender in runtime stage
 ARG BLENDER_VERSION=4.0.2
 RUN apt-get update && apt-get install -y --no-install-recommends \
         blender=${BLENDER_VERSION}+dfsg-1ubuntu8 \

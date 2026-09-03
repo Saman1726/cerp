@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   FileText,
   Image,
@@ -47,6 +47,11 @@ export function IfcFileManager({ siteId, siteName, actions }: IfcFileManagerProp
       setLoading(false);
     }
   }, [actions, siteId]);
+
+  // Auto-load files when the component mounts (e.g., when the modal opens)
+  useEffect(() => {
+    loadFiles();
+  }, [loadFiles]);
 
   return (
     <div className="mt-4 border-t pt-4">
@@ -170,7 +175,8 @@ function IfcFileCard({ file, actionLoading, onAction, renderView, onRenderViewCh
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onAction('preview')} disabled={actionLoading !== null}>
-              <Image className="mr-2 size-3.5" />
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+              <Image aria-hidden="true" className="mr-2 size-3.5" />
               2D Preview
             </DropdownMenuItem>
             <DropdownMenuSeparator />

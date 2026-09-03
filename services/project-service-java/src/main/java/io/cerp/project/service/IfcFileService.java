@@ -197,7 +197,7 @@ public class IfcFileService {
         return toResponse(ifcFile);
     }
     @Transactional
-    public ConstructionSiteIfcFileResponse triggerBlenderRender(UUID fileId, String view, String authorization, String tenantId) throws Exception {
+    public ConstructionSiteIfcFileResponse triggerBlenderRender(UUID fileId, String view, String authorization, String tenantId, String projectId) throws Exception {
         ConstructionSiteIfcFile ifcFile = ifcFileRepository.findById(fileId)
                 .orElseThrow(() -> new IllegalArgumentException("IFC file not found: " + fileId));
         ifcFile.setStatus(IfcFileStatus.PROCESSING);
@@ -208,6 +208,7 @@ public class IfcFileService {
             HttpRequest.Builder blenderBuilder = HttpRequest.newBuilder().uri(URI.create(url))
                     .header("Content-Type", "application/json")
                     .header("X-Tenant-Id", effectiveTenantId(tenantId))
+                    .header("X-Project-Id", projectId != null ? projectId : "")
                     .POST(HttpRequest.BodyPublishers.ofString("{}"))
                     .timeout(java.time.Duration.ofSeconds(600));
             if (authorization != null && !authorization.isBlank()) {
@@ -217,7 +218,25 @@ public class IfcFileService {
                     .send(blenderBuilder.build(),
                             HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                JsonNode json = objectMapper.readTree(response.body());
+                String responseBody = response.body();
+                String contentType = response.headers()
+                        .firstValue("Content-Type")
+                        .orElse("");
+                if (!contentType.contains("application/json")
+                        || responseBody == null || responseBody.isBlank()) {
+                    log.error("Blender render service returned non-JSON response. "
+                            + "Content-Type: {}, body (first 500 chars): {}",
+                            contentType,
+                            responseBody != null && responseBody.length() > 500
+                                    ? responseBody.substring(0, 500)
+                                    : responseBody);
+                    ifcFile.setStatus(IfcFileStatus.FAILED);
+                    ifcFileRepository.save(ifcFile);
+                    throw new RuntimeException(
+                            "Blender render service returned unexpected response format (expected JSON, got: "
+                                    + contentType + ")");
+                }
+                JsonNode json = objectMapper.readTree(responseBody);
                 String renderUrl = json.path("output_url").asText();
                 if (renderUrl != null && !renderUrl.isBlank()) {
                     ifcFile.setBlenderRenderUrl(renderUrl);
@@ -226,9 +245,11 @@ public class IfcFileService {
                 ifcFile.setStatus(IfcFileStatus.COMPLETED);
                 ifcFile = ifcFileRepository.save(ifcFile);
             } else {
+                log.error("Blender render service returned status {}: body={}",
+                        response.statusCode(), response.body());
                 ifcFile.setStatus(IfcFileStatus.FAILED);
                 ifcFileRepository.save(ifcFile);
-                throw new RuntimeException("Blender render failed: " + response.statusCode());
+                throw new RuntimeException("Blender render failed: HTTP " + response.statusCode());
             }
         } catch (Exception e) {
             log.error("Blender render failed for file {}: {}", fileId, e.getMessage());
@@ -264,11 +285,16 @@ public class IfcFileService {
     }
 
     public Map<String, Object> export3D(String ifcFileId, String format, String fileKey, String authorization, String tenantId) throws Exception {
+        return export3D(ifcFileId, format, fileKey, authorization, tenantId, null);
+    }
+
+    public Map<String, Object> export3D(String ifcFileId, String format, String fileKey, String authorization, String tenantId, String projectId) throws Exception {
         String url = ifcRendererUrl + "/api/v1/ifc/" + ifcFileId + "/export?file_key=" + fileKey;
         String requestBody = objectMapper.writeValueAsString(Map.of("fileId", ifcFileId, "format", format));
         HttpRequest.Builder exportBuilder = HttpRequest.newBuilder().uri(URI.create(url))
                 .header("Content-Type", "application/json")
                 .header("X-Tenant-Id", effectiveTenantId(tenantId))
+                .header("X-Project-Id", projectId != null ? projectId : "")
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .timeout(java.time.Duration.ofSeconds(300));
         if (authorization != null && !authorization.isBlank()) {

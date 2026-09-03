@@ -19,7 +19,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # --- Rendering ---
 PREVIEW_SIZE = (800, 600)
 BLENDER_VERSION = os.getenv("BLENDER_VERSION", "4.1.0")
-BLENDER_PATH = os.getenv("BLENDER_PATH", "/opt/blender/blender")
+BLENDER_PATH = os.getenv(
+    "BLENDER_PATH",
+    str(Path.home() / "local" / "apps" / "Blender.app" / "Contents" / "MacOS" / "Blender"),
+)
 
 # --- File Limits ---
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "500")) * 1024 * 1024  # bytes

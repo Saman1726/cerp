@@ -144,7 +144,11 @@ export function ConstructionSitesTree({ sites, actions, onSiteSelect }: Construc
                       <FileUp className="mr-2 size-4" />
                       Upload IFC File
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setManageIfcOpen({ siteId: site.id, siteName: site.name })}>
+                    <DropdownMenuItem onClick={() => {
+                      setDetail({ kind: 'site', site });
+                      onSiteSelect?.(site.id, site.name);
+                      setManageIfcOpen({ siteId: site.id, siteName: site.name });
+                    }}>
                       <FileText className="mr-2 size-4" />
                       Manage IFC Files
                     </DropdownMenuItem>

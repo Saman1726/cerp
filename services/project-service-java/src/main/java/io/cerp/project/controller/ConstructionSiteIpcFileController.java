@@ -73,7 +73,7 @@ public class ConstructionSiteIpcFileController {
             @RequestParam(defaultValue = "front") String view,
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestHeader(value = "X-Tenant-Id", required = false) String tenantId) throws Exception {
-        ConstructionSiteIfcFileResponse response = ifcFileService.triggerBlenderRender(fileId, view, authorization, tenantId);
+        ConstructionSiteIfcFileResponse response = ifcFileService.triggerBlenderRender(fileId, view, authorization, tenantId, siteId.toString());
         return ResponseEntity.ok(response);
     }
 
@@ -106,7 +106,7 @@ public class ConstructionSiteIpcFileController {
         if (ifcFile.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        Map<String, Object> result = ifcFileService.export3D(ifcFile.get().ifcFileId(), format, ifcFile.get().fileKey(), authorization, tenantId);
+        Map<String, Object> result = ifcFileService.export3D(ifcFile.get().ifcFileId(), format, ifcFile.get().fileKey(), authorization, tenantId, siteId.toString());
         return ResponseEntity.ok(result);
     }
 

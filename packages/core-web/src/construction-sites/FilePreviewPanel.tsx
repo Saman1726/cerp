@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileText,
   Image,
@@ -36,6 +36,14 @@ export function FilePreviewPanel({ siteId, siteName, actions, onClose }: FilePre
   const [selectedFile, setSelectedFile] = useState<FileSelection | null>(null);
   const [selectedView, setSelectedView] = useState<'front' | 'side' | 'top' | 'perspective'>('perspective');
 
+  const filesRef = useRef(files);
+
+  // Sync ref outside of render cycle so the polling effects always read
+  // the freshest list without triggering re-renders.
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
   /**
    * Fetch a fresh presigned URL from the backend.
    * The backend re-signs the same MinIO object each time, so the URL
@@ -68,21 +76,41 @@ export function FilePreviewPanel({ siteId, siteName, actions, onClose }: FilePre
     }
   }, [actions, siteId]);
 
+  // Poll every 5s while files are still being processed (QUEUED / PROCESSING)
   useEffect(() => {
-    const hasActive = files.some((f) => f.status === 'QUEUED' || f.status === 'PROCESSING');
+    const hasActive = filesRef.current.some((f) => f.status === 'QUEUED' || f.status === 'PROCESSING');
     if (!hasActive) return;
     const interval = setInterval(loadFiles, 5000);
     return () => clearInterval(interval);
-  }, [files, loadFiles]);
+  }, [loadFiles]);
 
+  // Poll every 15s for completed files so that once preview/render URLs
+  // become available (after background processing finishes), they are picked
+  // up even though the "active" polling has stopped.
+  useEffect(() => {
+    if (!siteId) return;
+    const interval = setInterval(loadFiles, 15000);
+    return () => clearInterval(interval);
+  }, [siteId, loadFiles]);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // Clearing state here is intentional: when siteId becomes null we must
+  // reset files / selection so stale data from the previous site does not
+  // leak into the UI.  The loadFiles call is in a separate effect below
+  // to keep the "clear" and "load" concerns distinct.
   useEffect(() => {
     if (!siteId) {
       setFiles([]);
       setSelectedFile(null);
-      return;
     }
-    loadFiles();
+  }, [siteId]);
+
+  useEffect(() => {
+    if (siteId) {
+      loadFiles();
+    }
   }, [siteId, loadFiles]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSelectFile = (file: IFCFile, view: 'front' | 'side' | 'top' | 'perspective') => {
     setSelectedFile({ file, view });
@@ -232,7 +260,8 @@ function FilePreviewContent({
                   onClick={() => getFreshUrl(siteId!, file.id, 'preview')
                     .then((url: string) => window.open(url, '_blank'))
                     .catch(() => {})}>
-            <Image className="mr-1.5 size-3" />
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image aria-hidden="true" className="mr-1.5 size-3" />
             2D Preview
           </Button>
         )}
@@ -283,9 +312,18 @@ function PreviewRenderer({
   const [renderUrl, setRenderUrl] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Fetch fresh presigned URLs when the file changes or renderView changes.
+  // ── Render URL ─────────────────────────────────────────────────────────
+  // For specific angles (front / side / top) we only fetch when the stored
+  // render view matches the currently selected view.  For perspective (where
+  // renderView is null) we always fetch when a Blender render exists.
   useEffect(() => {
     if (!siteId) return;
-    if (file.blenderRenderUrl && renderView) {
+
+    const showSpecificRender = renderView !== null && file.blenderRenderView === renderView;
+    const showPerspectiveRender = renderView === null && file.blenderRenderUrl;
+
+    if (showSpecificRender || showPerspectiveRender) {
       fetch(`/api/construction-sites/${siteId}/ifc-files/${file.id}/render`, {
         method: 'GET',
         credentials: 'include',
@@ -294,6 +332,8 @@ function PreviewRenderer({
         .then(url => setRenderUrl(url ?? null))
         .catch(() => {});
     }
+
+    // ── Preview URL ──────────────────────────────────────────────────────
     if (file.previewUrl) {
       fetch(`/api/construction-sites/${siteId}/ifc-files/${file.id}/preview`, {
         method: 'GET',
@@ -303,29 +343,19 @@ function PreviewRenderer({
         .then(url => setPreviewUrl(url ?? null))
         .catch(() => {});
     }
-  }, [siteId, file.id, file.blenderRenderUrl, file.previewUrl, renderView]);
+  }, [siteId, file.id, file.blenderRenderUrl, file.blenderRenderView, file.previewUrl, renderView]);
 
   const effectiveRenderUrl = renderUrl ?? file.blenderRenderUrl;
   const effectivePreviewUrl = previewUrl ?? file.previewUrl;
 
-  if (effectiveRenderUrl && renderView) {
-    return (
-      <div className="flex items-center justify-center p-4">
-        <img
-          src={effectiveRenderUrl}
-          alt={`Blender render - ${view}`}
-          className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
-        />
-      </div>
-    );
-  }
-
   if (effectiveRenderUrl) {
     return (
       <div className="flex items-center justify-center p-4">
-        <img
-          src={effectiveRenderUrl}
-          alt="Blender render"
+            {/* Remote presigned MinIO URLs — no next.config remotePatterns configured. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={effectiveRenderUrl}
+              alt={`Blender render - ${view}`}
           className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
         />
       </div>
@@ -335,9 +365,11 @@ function PreviewRenderer({
   if (effectivePreviewUrl) {
     return (
       <div className="flex items-center justify-center p-4">
-        <img
-          src={effectivePreviewUrl}
-          alt="2D Preview"
+            {/* Remote presigned MinIO URL — no next.config remotePatterns configured. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={effectivePreviewUrl}
+              alt="2D Preview"
           className="max-w-full max-h-[60vh] rounded-lg shadow object-contain"
         />
       </div>

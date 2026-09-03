@@ -69,20 +69,45 @@ class DocumentClient:
         self,
         file_key: str,
         content_type: str = "application/octet-stream",
+        project_id: str = "",
+        kind: str = "",
+        file_name: str = "",
     ) -> tuple[str, str]:
         """Request a presigned PUT URL and the resulting objectKey.
+
+        This method explicitly omits the Authorization header to avoid
+        triggering the document service's OAuth2 JWT filter, which evaluates
+        *before* the permitAll authorization rule.  An invalid/expired bearer
+        token causes a 401 before the endpoint is ever reached.
+
+        Parameters
+        ----------
+        file_key : str
+            The storage path prefix (e.g. "renders/{file_id}/render.png").
+        project_id : str
+            The CERP project ID — required by the document-service DTO.
+        kind : str
+            Document kind enum value (e.g. "IFC", "RENDER", "EXPORT").
+        file_name : str
+            Human-readable file name for the document-service audit trail.
 
         Returns
         -------
         (server_upload_url, object_key)
         """
-        response = self.client.post("/api/v1/media/presign", json={
-            "fileKey": file_key,
-            "contentType": content_type,
-        })
-        response.raise_for_status()
-        data = response.json()
-        return data["serverUploadUrl"], data["objectKey"]
+        internal = self.with_auth(None)
+        try:
+            response = internal.client.post("/api/v1/media/presign", json={
+                "projectId": project_id,
+                "kind": kind,
+                "fileName": file_name,
+                "contentType": content_type,
+            })
+            response.raise_for_status()
+            data = response.json()
+            return data["serverUploadUrl"], data["objectKey"]
+        finally:
+            internal.close()
 
     # ------------------------------------------------------------------
     # 2. Upload — PUT file bytes to a presigned URL
@@ -132,11 +157,21 @@ class DocumentClient:
     # ------------------------------------------------------------------
 
     def presign_download(self, object_key: str) -> tuple[str, str]:
-        """Return (presigned_get_url, expires_at) for an existing object."""
-        response = self.client.post(
-            "/api/v1/media/presign-download",
-            json={"objectKey": object_key},
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["url"], data["expiresAt"]
+        """Return (presigned_get_url, expires_at) for an existing object.
+
+        This method explicitly omits the Authorization header to avoid
+        triggering the document service's OAuth2 JWT filter, which evaluates
+        *before* the permitAll authorization rule.  An invalid/expired bearer
+        token causes a 401 before the endpoint is ever reached.
+        """
+        internal = self.with_auth(None)
+        try:
+            response = internal.client.post(
+                "/api/v1/media/presign-download",
+                json={"objectKey": object_key},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["url"], data["expiresAt"]
+        finally:
+            internal.close()
